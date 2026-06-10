@@ -1,0 +1,4 @@
+load_from:
+  - grpc_server:
+      host: dagster-rag-api
+      port: 4000

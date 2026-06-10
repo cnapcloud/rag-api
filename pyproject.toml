@@ -1,0 +1,81 @@
+[project]
+name = "rag-api"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    # LlamaIndex 코어
+    "llama-index-core>=0.10.0",
+    "llama-index-readers-file>=0.1.0",
+    "llama-index-embeddings-ollama>=0.1.0",
+    "llama-index-embeddings-openai>=0.1.0",
+    "llama-index-vector-stores-qdrant>=0.2.0",
+
+    # Dagster
+    "dagster>=1.7.0",
+    "dagster-webserver>=1.7.0",
+    "dagster-postgres",
+
+    # FastAPI
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+
+    # 인프라 클라이언트
+    "boto3>=1.34.0",
+    "qdrant-client>=1.9.0",
+    "redis>=5.0.0",
+    "fastembed>=0.3.0",
+
+    # 문서 파싱
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
+    "llama-index-readers-hwp>=0.1.0",
+
+    # 리랭커
+    "httpx>=0.27.0",
+
+    # 설정
+    "pydantic-settings>=2.2.0",
+    "pyyaml>=6.0",
+
+    # CLI
+    "typer>=0.12.0",
+
+    # MCP
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.14.0",
+    "dagster-webserver>=1.7.0",
+    "ruff>=0.4.0",
+    "mypy>=1.9.0",
+]
+
+[project.scripts]
+rag-api = "main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+src = ["src"]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]

@@ -1,0 +1,135 @@
+"""POST /api/search — Hybrid Search + Rerank."""
+
+from __future__ import annotations
+
+import time
+from typing import Any
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from exceptions import IngestValidationError
+
+router = APIRouter()
+
+
+# ──────────────────────────────────────────────
+# 요청/응답 스키마
+# ──────────────────────────────────────────────
+
+class RerankOptions(BaseModel):
+    enabled: bool = True
+    top_n: int = 3
+
+
+class SearchOptions(BaseModel):
+    mode: str = "hybrid"
+    top_k: int = 10
+    alpha: float = 0.5
+    rerank: RerankOptions = Field(default_factory=RerankOptions)
+
+
+class SearchRequest(BaseModel):
+    query: str
+    kb_ids: list[str]
+    options: SearchOptions = Field(default_factory=SearchOptions)
+
+
+class SearchResultItem(BaseModel):
+    chunk_id: str
+    kb_id: str
+    doc_key: str
+    doc_type: str
+    chunk_index: int
+    page_num: Any | None
+    text: str
+    score: float
+    rerank_score: float | None
+    indexed_at: str
+
+
+class SearchMeta(BaseModel):
+    total_candidates: int
+    returned: int
+    search_mode: str
+    reranked: bool
+    rerank_provider: str
+    rerank_fallback: bool
+    latency_ms: int
+
+
+class SearchResponse(BaseModel):
+    query: str
+    results: list[SearchResultItem]
+    meta: SearchMeta
+
+
+# ──────────────────────────────────────────────
+# 엔드포인트
+# ──────────────────────────────────────────────
+
+@router.post("/search", response_model=SearchResponse)
+async def search(req: SearchRequest):
+    from config.settings import get_settings
+    from rag.reranker import rerank_async
+    from rag.retriever import hybrid_search
+
+    cfg = get_settings().retrieval
+
+    if not req.kb_ids:
+        raise IngestValidationError("kb_ids must contain at least one entry.")
+
+    start = time.monotonic()
+
+    # 1. Hybrid Search (복수 KB 병렬 + RRF 머지)
+    candidates = await hybrid_search(
+        query=req.query,
+        kb_ids=req.kb_ids,
+        top_k=req.options.top_k,
+        alpha=req.options.alpha,
+    )
+    total_candidates = len(candidates)
+
+    # 2. Rerank
+    rerank_enabled = req.options.rerank.enabled and cfg.rerank.enabled
+    rerank_provider = cfg.rerank.provider if rerank_enabled else "none"
+    fallback_used = False
+
+    if rerank_enabled and candidates:
+        final_results, rerank_provider, fallback_used = await rerank_async(
+            query=req.query,
+            results=candidates,
+            top_n=req.options.rerank.top_n,
+        )
+    else:
+        final_results = candidates[: req.options.rerank.top_n]
+
+    latency_ms = int((time.monotonic() - start) * 1000)
+
+    return SearchResponse(
+        query=req.query,
+        results=[
+            SearchResultItem(
+                chunk_id=r.chunk_id,
+                kb_id=r.kb_id,
+                doc_key=r.doc_key,
+                doc_type=r.doc_type,
+                chunk_index=r.chunk_index,
+                page_num=r.page_num,
+                text=r.text,
+                score=r.score,
+                rerank_score=r.rerank_score,
+                indexed_at=r.indexed_at,
+            )
+            for r in final_results
+        ],
+        meta=SearchMeta(
+            total_candidates=total_candidates,
+            returned=len(final_results),
+            search_mode=req.options.mode,
+            reranked=rerank_enabled and not fallback_used,
+            rerank_provider=rerank_provider,
+            rerank_fallback=fallback_used,
+            latency_ms=latency_ms,
+        ),
+    )

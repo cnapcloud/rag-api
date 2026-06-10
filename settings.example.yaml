@@ -1,0 +1,66 @@
+s3:
+  endpoint: "http://minio:9000"
+  access_key: ""
+  secret_key: ""
+  rag_bucket: "rag-api"
+  dagster_bucket: "dagster-storage"
+  region: "us-east-1"
+  poll_interval_sec: 10
+  insecure: false
+
+qdrant:
+  host: "https://qdrant.cnapcloud.com"
+  port: 6333
+  insecure: true
+
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  db: 0
+
+ingestion:
+  max_file_size_mb: 200
+  max_workers: 4            # QueueWorker 전용 — queue_worker_enabled: true 일 때만 사용
+  poll_interval_sec: 5      # Redis 큐 폴링 주기 (초)
+  max_runs_per_tick: 5      # Dagster sensor 한 tick당 최대 RunRequest 수
+  queue_worker_enabled: true  # false 시 QueueWorker 비활성화 (Dagster daemon 사용 시)
+
+chunking:
+  strategy: "recursive"   # recursive / semantic
+  chunk_size: 1024
+  chunk_overlap: 128
+  semantic_threshold: 0.8
+
+embedding:
+  provider: "ollama"            # ollama / openai
+  model: "bge-m3"
+  ollama_url: "http://ollama:11434"
+  openai_api_key: ""
+  openai_model: "text-embedding-3-small"
+
+retrieval:
+  mode: "hybrid"
+  top_k: 10
+  alpha: 0.5
+  merge_strategy: "rrf"
+  rerank:
+    enabled: true
+    provider: "jina"
+    api_key: ""
+    model: "jina-reranker-v2-base-multilingual"
+    top_n: 3
+    timeout_sec: 5
+    fallback_on_error: true
+
+mcp:
+  enabled: true
+  transport: stdio   # stdio | sse | streamable-http
+  host: "0.0.0.0"
+  port: 8001
+
+knowledge_bases:
+  - id: "kb-cnap-platform"
+    description: "CNAP 플랫폼 문서"
+  - id: "kb-kubernetes"
+    description: "Kubernetes 운영 가이드"

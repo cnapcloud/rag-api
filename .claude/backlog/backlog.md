@@ -1,0 +1,8 @@
+# Backlog
+
+| ID | Title | Status |
+|----|-------|--------|
+| [US-01](US-01-mcp-server.md) | MCP 서버 | done |
+| [US-02](US-02-concurrency-guard.md) | Delete/Ingest 동시 실행 경쟁 조건 해결 | done |
+| [US-03](todo/US-03-small-to-big-retrieval.md) | Small-to-Big Retrieval (document_aware 계층 검색) | todo |
+| [US-04](todo/US-04-image-handling.md) | 문서 이미지 캡셔닝 (parse_op vision 처리) | todo |
