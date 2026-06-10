@@ -43,7 +43,7 @@ services:
 
   dagster-webserver:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.dagster
     container_name: dagster-webserver
     command:
@@ -89,7 +89,6 @@ services:
         condition: service_healthy
       dagster-rag-api:
         condition: service_started
-
 
   dagster-postgresql:
     image: postgres:15-alpine
