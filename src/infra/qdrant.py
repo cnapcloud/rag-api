@@ -88,7 +88,9 @@ def ensure_collection(
             ),
         },
         sparse_vectors_config={
-            SPARSE_VECTOR_NAME: qmodels.SparseVectorParams(),
+            SPARSE_VECTOR_NAME: qmodels.SparseVectorParams(
+                modifier=qmodels.Modifier.IDF,
+            ),
         },
     )
     logger.info("Qdrant collection created: %s", kb_id)

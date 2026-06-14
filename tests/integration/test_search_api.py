@@ -22,7 +22,7 @@ def _make_result(chunk_id: str) -> SearchResult:
         text="테스트 청크 내용",
         score=0.9,
         rerank_score=None,
-        indexed_at="2025-06-07T00:00:00Z",
+        updated_at="2025-06-07T00:00:00Z",
     )
 
 

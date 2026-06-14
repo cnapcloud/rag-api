@@ -86,6 +86,10 @@ class LogSettings(BaseModel):
     level: str = "INFO"   # DEBUG | INFO | WARNING | ERROR
 
 
+class DagsterSettings(BaseModel):
+    executor: str = "in_process"  # in_process | k8s
+
+
 class McpSettings(BaseModel):
     enabled: bool = True
     transport: str = "stdio"   # stdio | sse | streamable-http
@@ -113,6 +117,7 @@ class Settings(BaseModel):
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    dagster: DagsterSettings = Field(default_factory=DagsterSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     logging: LogSettings = Field(default_factory=LogSettings)
     knowledge_bases: list[KBDefinition] = Field(default_factory=list)

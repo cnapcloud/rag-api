@@ -7,7 +7,7 @@
 ## 규칙 목록
 
 ### 0. 진행 상황 파악 (`conventions/00-progress-tracking.md`)
-세션 시작 시 `backlog/backlog.md`와 `plan/plan.md` 인덱스를 먼저 읽어 현재 상태 파악.
+세션 시작 시 `backlogs/backlog.md`와 `plans/plan.md` 인덱스를 먼저 읽어 현재 상태 파악.
 작업 시작/완료 시 해당 행의 status 즉시 업데이트.
 
 ### 1. 설정 싱글턴 우선 (`01-hard-rules.md`)
@@ -33,7 +33,7 @@
 ## 워크플로우: 새 기능 추가
 
 ```
-0. backlog/backlog.md + plan/plan.md 읽어 진행 상황 파악
+0. backlogs/backlog.md + plans/plan.md 읽어 진행 상황 파악
 1. 해당 backlog 행 status → in-progress로 변경
 2. conventions/ 관련 문서 읽기
 3. 기존 Op 패턴 참조 (pipeline/ops/ 기존 파일)
@@ -47,6 +47,6 @@
 ## 참조
 
 - `conventions/` — 코딩 규칙 상세
-- `backlog/backlog.md` — 백로그 항목 및 완료 현황
-- `plan/plan.md` — 구현 계획 및 완료 현황
+- `backlogs/backlog.md` — 백로그 항목 및 완료 현황
+- `plans/plan.md` — 구현 계획 및 완료 현황
 - `CLAUDE.md` (루트) — 빠른 참조

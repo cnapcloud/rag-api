@@ -34,7 +34,7 @@ def upsert(
     """
     client = qdrant_infra.get_qdrant_client()
     doc_key = qdrant_infra.make_doc_key(kb_id, object_key)
-    indexed_at = datetime.now(timezone.utc).isoformat()
+    updated_at = datetime.now(timezone.utc).isoformat()
 
     # 컬렉션 보장
     qdrant_infra.ensure_collection(kb_id, client)
@@ -62,7 +62,7 @@ def upsert(
             "chunk_strategy": meta.get("chunk_strategy", ""),
             "chunk_size": meta.get("chunk_size", 0),
             "chunk_overlap": meta.get("chunk_overlap", 0),
-            "indexed_at": indexed_at,
+            "updated_at": updated_at,
         }
 
         points.append(

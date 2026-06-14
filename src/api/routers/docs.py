@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Query, UploadFile
 from botocore.exceptions import ClientError
 
-from exceptions import IngestValidationError, NotFoundError
+from exceptions import ConflictError, IngestValidationError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +202,28 @@ async def reindex_doc(
     _trigger_ingest(kb_id, key, s3_etag, 0, force=force)
     logger.info("Reindex doc: kb=%s key=%s force=%s", kb_id, key, force)
     return {"kb_id": kb_id, "queued": 1, "skipped": 0}
+
+
+@router.post("/kb/{kb_id}/docs/{key:path}/recover", status_code=202)
+async def recover_doc(kb_id: str, key: str):
+    """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
+    import json
+
+    from infra.redis import get_doc_status, get_redis_client
+    from pipeline.ops.meta import set_failed  # noqa: PLC0415
+
+    data = get_doc_status(kb_id, key)
+    if not data:
+        raise NotFoundError(f"Document not found: kb={kb_id} key={key}")
+    if data.get("status") != "running":
+        raise ConflictError(
+            f"Document is not in a recoverable state: status={data.get('status')}"
+        )
+    set_failed(kb_id, key, "Manually recovered via API", run_id=data.get("run_id", ""))
+    event = json.dumps({"kb_id": kb_id, "object_key": key, "etag": data.get("etag", ""), "force": True})
+    get_redis_client().lpush("rag:upload:queue", event)
+    logger.info("Manual recover queued: kb=%s key=%s", kb_id, key)
+    return {"kb_id": kb_id, "object_key": key, "queued": True}
 
 
 @router.get("/docs/status")

@@ -26,7 +26,7 @@ def update_meta(
         "status": "indexed",
         "etag": etag,
         "chunk_count": upsert_result.chunk_count,
-        "indexed_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
         "run_id": run_id,
         "file_size": file_size,
         "doc_type": doc_type,
@@ -40,23 +40,23 @@ def update_meta(
 
 
 def set_processing(kb_id: str, object_key: str, etag: str = "", run_id: str = "") -> None:
-    """처리 시작 시 status=processing 설정."""
+    """Set status=running at the start of an ingest operation."""
     redis_infra.set_doc_status(
         kb_id,
         object_key,
-        {"status": "processing", "etag": etag, "run_id": run_id},
+        {"status": "running", "etag": etag, "run_id": run_id, "updated_at": datetime.now(timezone.utc).isoformat()},
     )
 
 
 def is_doc_busy(kb_id: str, object_key: str) -> bool:
-    """Return True if the document has an in-progress operation (processing or deleting)."""
+    """Return True if the document has an in-progress operation (running or deleting)."""
     status = redis_infra.get_doc_status(kb_id, object_key)
-    return bool(status and status.get("status") in ("processing", "deleting"))
+    return bool(status and status.get("status") in ("running", "deleting"))
 
 
 def set_deleting(kb_id: str, object_key: str, run_id: str = "") -> None:
     """Set status=deleting at the start of a delete operation."""
-    redis_infra.set_doc_status(kb_id, object_key, {"status": "deleting", "run_id": run_id})
+    redis_infra.set_doc_status(kb_id, object_key, {"status": "deleting", "run_id": run_id, "updated_at": datetime.now(timezone.utc).isoformat()})
     logger.info("Status set to deleting: kb=%s key=%s", kb_id, object_key)
 
 
@@ -104,6 +104,7 @@ def set_failed(kb_id: str, object_key: str, error: str, run_id: str = "") -> Non
             "status": "failed",
             "error": error[:500],  # Redis 저장 길이 제한
             "run_id": run_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
     logger.error("Pipeline failed: kb=%s key=%s error=%s", kb_id, object_key, error[:200])

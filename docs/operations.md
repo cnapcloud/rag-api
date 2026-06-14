@@ -409,60 +409,6 @@ docker compose run --rm minio-init
 | MinIO 재시작 시 | webhook 타겟은 환경변수로 자동 복구, 버킷 구독은 `minio-init` 재실행 필요 |
 | `dagster-rag-api` settings.yaml | Redis/MinIO 주소가 컨테이너 서비스명(`redis`, `minio`)으로 설정되어야 함 — 외부 IP 사용 시 sensor가 큐를 읽지 못함 |
 
----
-
-## 알려진 경고 메시지
-
-### onnxruntime CPUID warning (Mac + Docker)
-
-```
-dagster-rag-api | onnxruntime cpuid_info warning: Unknown CPU vendor. cpuinfo_vendor value: 0
-```
-
-**원인**
-
-BM25 sparse 임베딩에 사용하는 `fastembed`가 내부적으로 `onnxruntime`으로 `Qdrant/bm25` 모델을 로컬에서 실행한다.
-Docker on Mac은 Apple Hypervisor 위에 Linux VM으로 동작하므로 onnxruntime이 CPUID 명령을 실행해도 VM이 CPU 벤더 정보를 0으로 반환한다.
-결과적으로 Metal / MPS / ANE 가속 없이 CPU 연산으로 폴백하며 이 경고가 출력된다.
-
-**영향 없음** — 기능 동작에는 문제 없다. Linux 네이티브 서버에서는 CPUID가 정상 인식되어 경고가 나오지 않는다.
-
-**fastembed 임베딩 흐름**
-
-```
-embed.py
-  fastembed.SparseTextEmbedding("Qdrant/bm25")  <- onnxruntime이 컨테이너 안에서 실행
-    -> sparse indices + values 계산 (클라이언트 측)
-      -> Qdrant.upsert(sparse_vectors=...)       <- Qdrant는 저장만 담당
-```
-
-`"Qdrant/bm25"`는 Qdrant가 배포한 모델 이름이며, Qdrant 서버가 계산하는 서버 사이드 BM25와는 다르다.
-
----
-
-### fastembed 모델 캐시 경로
-
-fastembed의 기본 캐시 경로는 `tempfile.gettempdir()` 기반으로 결정된다. Docker 컨테이너에서는 `/tmp/fastembed_cache`가 되며, `/tmp`는 컨테이너 재시작마다 초기화되므로 **매번 모델을 재다운로드**한다.
-
-**해결**
-
-`FASTEMBED_CACHE_PATH` 환경변수로 캐시 경로를 `/tmp` 밖으로 지정하고, 이미지 빌드 시 모델을 미리 포함시킨다.
-
-```dockerfile
-ENV FASTEMBED_CACHE_PATH=/opt/fastembed_cache
-
-# 의존성 설치 후, 소스 복사 전에 실행 (레이어 캐시 활용)
-RUN python -c "from fastembed import SparseTextEmbedding; SparseTextEmbedding('Qdrant/bm25')"
-```
-
-`Qdrant/bm25` 모델 크기는 약 104KB로 이미지에 포함시켜도 부담 없다.
-
-캐시 경로 결정 로직 (`fastembed/common/utils.py`):
-```python
-default_cache_dir = os.path.join(tempfile.gettempdir(), "fastembed_cache")
-cache_path = Path(os.getenv("FASTEMBED_CACHE_PATH", default_cache_dir))
-```
-
 
 
 

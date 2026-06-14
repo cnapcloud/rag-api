@@ -53,7 +53,7 @@ def test_get_document_status_indexed(mock_redis):
     with patch("infra.redis.get_redis_client", return_value=mock_redis):
         set_doc_status("kb-a", "doc.pdf", {
             "status": "indexed",
-            "indexed_at": "2026-06-08T00:00:00Z",
+            "updated_at": "2026-06-08T00:00:00Z",
             "size_bytes": "12345",
             "etag": "abc123",
         })
@@ -61,7 +61,7 @@ def test_get_document_status_indexed(mock_redis):
     with patch("mcp_server.tools.docs.get_doc_status") as mock_get:
         mock_get.return_value = {
             "status": "indexed",
-            "indexed_at": "2026-06-08T00:00:00Z",
+            "updated_at": "2026-06-08T00:00:00Z",
             "size_bytes": "12345",
             "etag": "abc123",
         }
@@ -70,22 +70,22 @@ def test_get_document_status_indexed(mock_redis):
     assert result["status"] == "indexed"
     assert result["size_bytes"] == 12345
     assert result["etag"] == "abc123"
-    assert result["indexed_at"] == "2026-06-08T00:00:00Z"
+    assert result["updated_at"] == "2026-06-08T00:00:00Z"
 
 
 def test_get_document_status_not_found():
     with patch("mcp_server.tools.docs.get_doc_status", return_value=None):
         result = get_document_status("kb-a", "missing.pdf")
 
-    assert result == {"status": "not_found", "indexed_at": None, "size_bytes": None, "etag": None}
+    assert result == {"status": "not_found", "updated_at": None, "size_bytes": None, "etag": None}
 
 
 def test_get_document_status_no_size():
     with patch("mcp_server.tools.docs.get_doc_status") as mock_get:
-        mock_get.return_value = {"status": "processing", "indexed_at": None}
+        mock_get.return_value = {"status": "running", "updated_at": None}
         result = get_document_status("kb-a", "doc.pdf")
 
-    assert result["status"] == "processing"
+    assert result["status"] == "running"
     assert result["size_bytes"] is None
 
 
@@ -105,7 +105,7 @@ def _make_result(text="hello", kb_id="kb-a", doc_key="doc.pdf", score=0.9):
         text=text,
         score=score,
         rerank_score=None,
-        indexed_at="2026-06-08T00:00:00Z",
+        updated_at="2026-06-08T00:00:00Z",
     )
 
 

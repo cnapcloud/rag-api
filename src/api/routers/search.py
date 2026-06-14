@@ -45,7 +45,7 @@ class SearchResultItem(BaseModel):
     text: str
     score: float
     rerank_score: float | None
-    indexed_at: str
+    updated_at: str
 
 
 class SearchMeta(BaseModel):
@@ -119,7 +119,7 @@ async def search(req: SearchRequest):
                 text=r.text,
                 score=r.score,
                 rerank_score=r.rerank_score,
-                indexed_at=r.indexed_at,
+                updated_at=r.updated_at,
             )
             for r in final_results
         ],

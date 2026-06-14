@@ -122,7 +122,7 @@ def run_ingest_from_key(
     if not should_process:
         # If dispatch layer (QueueWorker) already set processing, restore to indexed.
         current = redis_infra.get_doc_status(kb_id, object_key)
-        if current and current.get("status") == "processing":
+        if current and current.get("status") == "running":
             from pipeline.ops.meta import restore_indexed
             restore_indexed(kb_id, object_key, etag=etag)
         logger.info("Skipping: kb=%s key=%s", kb_id, object_key)

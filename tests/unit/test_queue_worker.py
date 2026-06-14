@@ -20,7 +20,7 @@ def _make_redis(upload_events=None, delete_events=None, processing_keys=None):
         key = "rag:delete:queue"
         lists.setdefault(key, []).append(json.dumps(e))
     for kb_id, object_key in (processing_keys or []):
-        hashes[f"doc:{kb_id}:{object_key}"] = {"status": "processing"}
+        hashes[f"doc:{kb_id}:{object_key}"] = {"status": "running"}
 
     class FakeRedis:
         def rpop(self, key):

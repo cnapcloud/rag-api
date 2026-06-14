@@ -7,7 +7,7 @@ from dagster import Config, HookContext, OpExecutionContext, Out, Output, failur
 def ingest_failure_hook(context: HookContext) -> None:
     """Mark document as failed in Redis when any ingest op fails."""
     try:
-        op_config = context.run_config.get("ops", {}).get("validate_op", {}).get("config", {})
+        op_config = context.run.run_config.get("ops", {}).get("validate_op", {}).get("config", {})
         kb_id: str = op_config.get("kb_id", "")
         object_key: str = op_config.get("object_key", "")
         if not kb_id or not object_key:
@@ -37,8 +37,39 @@ class IngestConfig(Config):
 @op(out={"valid_config": Out(dagster_type=dict, is_required=False)})
 def validate_op(context: OpExecutionContext, config: IngestConfig):
     """ETag 중복·크기 검증. 중복이면 Output 미발행 → 이후 Op 자동 스킵."""
-    from pipeline.ops.meta import set_processing
+    from infra import redis as redis_infra
+    from pipeline.ops.meta import set_failed, set_processing
     from pipeline.ops.validate import validate
+
+    # Zombie detection: if previous run left status=running but is no longer active, recover.
+    prev = redis_infra.get_doc_status(config.kb_id, config.object_key)
+    if prev and prev.get("status") == "running":
+        prev_run_id = prev.get("run_id", "")
+        if prev_run_id:
+            run = context.instance.get_run_by_id(prev_run_id)
+            if run is None or run.is_finished:
+                set_failed(
+                    config.kb_id,
+                    config.object_key,
+                    f"Recovered: previous run no longer active (run_id={prev_run_id})",
+                    run_id=prev_run_id,
+                )
+                context.log.warning(
+                    "Zombie run recovered: kb=%s key=%s prev_run_id=%s",
+                    config.kb_id, config.object_key, prev_run_id,
+                )
+        else:
+            # run_id absent — recorded by an older version without run_id; recover unconditionally.
+            set_failed(
+                config.kb_id,
+                config.object_key,
+                "Recovered: status=running with no run_id (stale record)",
+            )
+            context.log.warning(
+                "Zombie run recovered (no run_id): kb=%s key=%s", config.kb_id, config.object_key
+            )
+
+    set_processing(config.kb_id, config.object_key, etag=config.etag, run_id=context.run_id)
 
     try:
         should_process = validate(
@@ -49,7 +80,6 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
             force=config.force,
         )
     except Exception as e:
-        from pipeline.ops.meta import set_failed
         set_failed(config.kb_id, config.object_key, str(e), run_id=context.run_id)
         raise
 

@@ -13,24 +13,21 @@ IMAGE = $(IMAGE_ORG)/$(IMAGE_NAME):$(IMAGE_TAG)
 IMAGE_VERSIONED = $(IMAGE_ORG)/$(IMAGE_NAME):$(VERSION)
 
 env:
-	$(PYTHON) -m venv $(VENV)
-	@echo "Created virtualenv at $(VENV)"
+	test -d $(VENV) || $(PYTHON) -m venv $(VENV)
+	@echo "Virtualenv at $(VENV)"
 
 install: env
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	$(PY) -m pip install --upgrade pip
+	$(PY) -m pip install -e ".[dev]"
 
 COMPOSE = docker compose -f docker/docker-compose.yml
 
-docker-build:
-	docker build -t $(IMAGE) -t $(IMAGE_VERSIONED) .
+build:
+	docker buildx build --platform linux/arm64 -t $(IMAGE) -t $(IMAGE_VERSIONED) .
 
-docker-push:
+push:
 	docker push $(IMAGE)
 	docker push $(IMAGE_VERSIONED)
-
-docker-run:
-	docker run --rm -p 8000:8000 --name rag-api $(IMAGE)
 
 test: install
 	PYTHONPATH=src $(PY) -m pytest -q

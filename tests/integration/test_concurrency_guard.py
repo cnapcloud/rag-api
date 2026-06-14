@@ -101,7 +101,7 @@ class TestSensorConcurrencyGuard:
         """AC-1 (sensor): ingest processing 중 delete 요청 → delay 큐, RunRequest 없음."""
         r = FakeRedis()
         r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "object_key": "doc.pdf"}))
-        r.set_doc_status("kb-1", "doc.pdf", "processing")  # ingest 진행 중
+        r.set_doc_status("kb-1", "doc.pdf", "running")  # ingest 진행 중
 
         result = _run_sensor(r)
 
@@ -183,7 +183,7 @@ class TestQueueWorkerConcurrencyGuard:
         """AC-1 (QueueWorker): ingest processing 중 delete 요청 → requeue, _run_delete 없음."""
         r = FakeRedis()
         r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "object_key": "doc.pdf"}))
-        r.set_doc_status("kb-1", "doc.pdf", "processing")
+        r.set_doc_status("kb-1", "doc.pdf", "running")
 
         dispatched, requeued = self._run_poll(r)
 

@@ -21,7 +21,7 @@ def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchR
         text="테스트 텍스트",
         score=score,
         rerank_score=None,
-        indexed_at="2025-06-07T00:00:00Z",
+        updated_at="2025-06-07T00:00:00Z",
     )
 
 

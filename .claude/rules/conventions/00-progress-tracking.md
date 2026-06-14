@@ -4,8 +4,8 @@
 
 | File | Purpose |
 |------|---------|
-| `.claude/backlog/backlog.md` | All user stories — ID, title, status |
-| `.claude/plan/plan.md` | All implementation plans — plan number, title, covered US, status |
+| `.claude/backlogs/backlog.md` | All user stories — ID, title, status |
+| `.claude/plans/plan.md` | All implementation plans — plan number, title, covered US, status |
 
 ## When to Read
 

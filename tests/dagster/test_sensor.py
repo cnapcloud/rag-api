@@ -76,7 +76,7 @@ def _make_redis(
     for e in (delete_events or []):
         r.lpush("rag:delete:queue", json.dumps(e))
     for kb_id, object_key in (processing_keys or []):
-        r.hset(f"doc:{kb_id}:{object_key}", mapping={"status": "processing"})
+        r.hset(f"doc:{kb_id}:{object_key}", mapping={"status": "running"})
     return r
 
 

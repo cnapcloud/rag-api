@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dagster import job
 
+from dagster_pipeline.executor import get_executor_def
 from dagster_pipeline.ops.ingest_ops import (
     chunk_op,
     embed_op,
@@ -19,6 +20,7 @@ from dagster_pipeline.ops.ingest_ops import (
     description="단일 문서 인제스트 파이프라인 (문서 1개 = Run 1개)",
     tags={"pipeline": "ingest"},
     hooks={ingest_failure_hook},
+    executor_def=get_executor_def(),
 )
 def ingest_job():
     valid_config = validate_op()

@@ -22,20 +22,22 @@ class SearchResult:
     text: str
     score: float
     rerank_score: float | None
-    indexed_at: str
+    updated_at: str
 
 
 def _build_vector_store(kb_id: str, qdrant_client=None):
     from llama_index.vector_stores.qdrant import QdrantVectorStore
 
     from infra.qdrant import get_qdrant_client
+    from pipeline.ops.sparse import compute_sparse_tf
 
     client = qdrant_client or get_qdrant_client()
     return QdrantVectorStore(
         client=client,
         collection_name=kb_id,
         enable_hybrid=True,
-        fastembed_sparse_model="Qdrant/bm25",
+        sparse_doc_fn=compute_sparse_tf,
+        sparse_query_fn=compute_sparse_tf,
         dense_vector_name="dense",
         sparse_vector_name="sparse",
     )
@@ -84,7 +86,7 @@ def search_kb(
                 text=node.get_content(),
                 score=float(node.score or 0.0),
                 rerank_score=None,
-                indexed_at=meta.get("indexed_at", ""),
+                updated_at=meta.get("updated_at", ""),
             )
         )
     return results

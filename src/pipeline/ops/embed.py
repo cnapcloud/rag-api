@@ -52,17 +52,6 @@ def build_embed_model():
         raise ConfigError(f"Unknown embedding provider: {cfg.provider}")
 
 
-def build_sparse_model():
-    """FastEmbed BM25 Sparse 모델 반환."""
-    try:
-        from fastembed import SparseTextEmbedding
-
-        return SparseTextEmbedding(model_name="Qdrant/bm25")
-    except ImportError:
-        logger.warning("fastembed not installed, sparse embedding disabled")
-        return None
-
-
 # ──────────────────────────────────────────────
 # 배치 임베딩 (asyncio 병렬)
 # ──────────────────────────────────────────────
@@ -70,25 +59,18 @@ def build_sparse_model():
 async def _embed_batch_async(
     texts: list[str],
     embed_model,
-    sparse_model,
     batch_size: int = 32,
 ) -> list[tuple[list[float], list[int], list[float]]]:
     """Dense + Sparse 벡터를 asyncio.gather로 병렬 생성한다."""
+    from pipeline.ops.sparse import compute_sparse_tf
 
     async def embed_dense_batch(batch: list[str]) -> list[list[float]]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, embed_model.get_text_embedding_batch, batch)
 
     async def embed_sparse_batch(batch: list[str]) -> list[tuple[list[int], list[float]]]:
-        if sparse_model is None:
-            return [([0], [0.0])] * len(batch)
-        loop = asyncio.get_event_loop()
-
-        def _run():
-            results = list(sparse_model.embed(batch))
-            return [(r.indices.tolist(), r.values.tolist()) for r in results]
-
-        return await loop.run_in_executor(None, _run)
+        all_indices, all_values = compute_sparse_tf(batch)
+        return list(zip(all_indices, all_values))
 
     results: list[tuple[list[float], list[int], list[float]]] = []
     for i in range(0, len(texts), batch_size):
@@ -104,22 +86,16 @@ async def _embed_batch_async(
 
 
 def embed(nodes: list[BaseNode], batch_size: int = 32) -> list[EmbeddedNode]:
-    """
-    Node 리스트에 Dense + Sparse 벡터를 주입한다.
-
-    asyncio.gather를 통해 Dense/Sparse 임베딩을 병렬로 수행한다.
-    """
+    """Node 리스트에 Dense + Sparse 벡터를 주입한다."""
     cfg = get_settings().embedding
 
     embed_model = build_embed_model()
-    sparse_model = build_sparse_model()
-
     texts = [node.get_content() for node in nodes]
 
     loop = asyncio.new_event_loop()
     try:
         vector_tuples = loop.run_until_complete(
-            _embed_batch_async(texts, embed_model, sparse_model, batch_size)
+            _embed_batch_async(texts, embed_model, batch_size)
         )
     finally:
         loop.close()

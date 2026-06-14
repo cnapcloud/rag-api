@@ -62,9 +62,9 @@ def test_ingest_job_skips_on_same_etag(ingest_run_config):
     from dagster_pipeline.jobs.ingest_job import ingest_job
 
     with (
-        patch("pipeline.ops.validate.redis_infra.get_doc_status", return_value=None),
+        patch("infra.redis.get_doc_status", return_value=None),  # no zombie state
         patch("pipeline.ops.validate.redis_infra.get_doc_etag", return_value="test-etag-001"),
-        patch("pipeline.ops.meta.redis_infra.set_doc_status"),
+        patch("infra.redis.get_redis_client", return_value=MagicMock()),  # set_processing + restore_indexed
     ):
         result = ingest_job.execute_in_process(run_config=ingest_run_config)
         # validate_op이 Output을 발행하지 않아 후속 Op이 스킵되어도 job은 success

@@ -6,3 +6,4 @@
 | [US-02](US-02-concurrency-guard.md) | Delete/Ingest 동시 실행 경쟁 조건 해결 | done |
 | [US-03](todo/US-03-small-to-big-retrieval.md) | Small-to-Big Retrieval (document_aware 계층 검색) | todo |
 | [US-04](todo/US-04-image-handling.md) | 문서 이미지 캡셔닝 (parse_op vision 처리) | todo |
+| [US-05](US-05-stuck-running-recovery.md) | Stuck Running 자동 복구 (서버 재시작 시 zombie 상태 해소) | done |
