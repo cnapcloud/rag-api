@@ -1,7 +1,7 @@
 s3:
-  endpoint: "http://192.168.0.185:9000"
-  access_key: "minioadmin"
-  secret_key: "minioadmin"
+  endpoint: "http://minio:9000"
+  access_key: "minioadmin"   # matches MINIO_ROOT_USER in .env
+  secret_key: "minioadmin"   # matches MINIO_ROOT_PASSWORD in .env
   rag_bucket: "rag-api"
   dagster_bucket: "dagster-storage"
   region: "us-east-1"
@@ -9,23 +9,23 @@ s3:
   insecure: true
 
 qdrant:
-  host: "192.168.0.184"
+  host: "qdrant"
   port: 6333
   insecure: true
 
 redis:
-  host: "192.168.0.183"
+  host: "redis"
   port: 6379
   password: "redis"
   db: 0
 
 ingestion:
   max_file_size_mb: 200
-  max_workers: 4            # QueueWorker 전용 — queue_worker_enabled: true 일 때만 사용
-  poll_interval_sec: 5      # Redis 큐 폴링 주기 (초)
-  max_runs_per_tick: 5      # Dagster sensor 한 tick당 최대 RunRequest 수
-  processing_delay_sec: 10  # delay queue retry interval (seconds)
-  queue_worker_enabled: true  # true: FastAPI QueueWorker 처리 (Dagster 센서 비활성화), false: Dagster 센서 처리
+  max_workers: 4             # QueueWorker 전용 — queue_worker_enabled: true 일 때만 사용
+  poll_interval_sec: 5        # Redis 큐 폴링 주기 (초)
+  max_runs_per_tick: 5        # Dagster sensor 한 tick당 최대 RunRequest 수
+  processing_delay_sec: 10    # delay queue retry interval (seconds)
+  queue_worker_enabled: true  # QueueWorker 활성화
 
 chunking:
   strategy: "recursive"    # recursive / semantic
@@ -37,14 +37,14 @@ embedding:
   provider: "ollama"            # ollama / openai
   model: "bge-m3"
   vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
-  ollama_url: "http://localhost:11434"
+  ollama_url: "http://192.168.0.75:11434"
   openai_api_key: ""
   openai_model: "text-embedding-3-small"
 
 retrieval:
   mode: "hybrid"
   top_k: 10
-  alpha: 0.5 # alpha=1.0 → dense(벡터 유사도 100%), alpha=0.0 → sparse(키워드 매칭 100%)
+  alpha: 0.5
   merge_strategy: "rrf"
   rerank:
     enabled: false
@@ -62,11 +62,11 @@ knowledge_bases:
     description: "지식베이스 02"
 
 dagster:
-  executor: "in_process"  # in_process | k8s
+  executor: "in_process"  
 
 mcp:
   enabled: true
-  transport: stdio
+  transport: streamable-http
 
 logging:
   level: INFO

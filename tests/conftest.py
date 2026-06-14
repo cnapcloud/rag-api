@@ -23,6 +23,12 @@ def mock_redis():
             if mapping:
                 store[key].update({k: str(v) for k, v in mapping.items()})
 
+        def hsetnx(self, key, field, value):
+            if key not in store:
+                store[key] = {}
+            if field not in store[key]:
+                store[key][field] = str(value)
+
         def hget(self, key, field):
             return store.get(key, {}).get(field)
 

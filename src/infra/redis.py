@@ -107,8 +107,12 @@ def delete_kb_meta(kb_id: str) -> None:
 # ──────────────────────────────────────────────
 
 def set_doc_status(kb_id: str, object_key: str, fields: dict) -> None:
+    from datetime import datetime, timezone
+
     r = get_redis_client()
-    r.hset(f"doc:{kb_id}:{object_key}", mapping={k: str(v) for k, v in fields.items()})
+    key = f"doc:{kb_id}:{object_key}"
+    r.hset(key, mapping={k: str(v) for k, v in fields.items()})
+    r.hsetnx(key, "created_at", datetime.now(timezone.utc).isoformat())
     r.sadd(f"docs:{kb_id}", object_key)
 
 

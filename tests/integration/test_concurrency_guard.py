@@ -42,6 +42,11 @@ class FakeRedis:
             {k: str(v) for k, v in (mapping or {}).items()}
         )
 
+    def hsetnx(self, key, field, value):
+        self._hashes.setdefault(key, {})
+        if field not in self._hashes[key]:
+            self._hashes[key][field] = str(value)
+
     def hgetall(self, key):
         return dict(self._hashes.get(key, {}))
 
@@ -83,12 +88,20 @@ class FakeRedis:
 
 
 def _run_sensor(fake_redis):
-    from dagster import build_sensor_context
+    from unittest.mock import MagicMock
+
+    from dagster import RunRequest, build_sensor_context
     from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
 
+    mock_settings = MagicMock()
+    mock_settings.ingestion.queue_worker_enabled = False
+
     ctx = build_sensor_context()
-    with patch("infra.redis.get_redis_client", return_value=fake_redis):
-        return list(event_queue_sensor(ctx))
+    with (
+        patch("infra.redis.get_redis_client", return_value=fake_redis),
+        patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings),
+    ):
+        return [r for r in event_queue_sensor(ctx) if isinstance(r, RunRequest)]
 
 
 # ─────────────────────────────────────────────────────────────

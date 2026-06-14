@@ -45,6 +45,10 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
     description="Redis 큐(PUT/DELETE)에서 이벤트를 소비해 ingest_job / delete_job을 트리거한다.",
 )
 def event_queue_sensor(context: SensorEvaluationContext):
+    if _get_settings().ingestion.queue_worker_enabled:
+        yield SkipReason("QueueWorker is enabled — Dagster sensor is inactive")
+        return
+
     try:
         from infra.redis import get_redis_client
 

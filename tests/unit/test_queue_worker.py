@@ -33,6 +33,11 @@ def _make_redis(upload_events=None, delete_events=None, processing_keys=None):
         def hset(self, key, mapping=None, **kw):
             hashes.setdefault(key, {}).update({k: str(v) for k, v in (mapping or {}).items()})
 
+        def hsetnx(self, key, field, value):
+            hashes.setdefault(key, {})
+            if field not in hashes[key]:
+                hashes[key][field] = str(value)
+
         def hgetall(self, key):
             return dict(hashes.get(key, {}))
 

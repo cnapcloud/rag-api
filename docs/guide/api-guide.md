@@ -1,0 +1,140 @@
+# API Guide
+
+API 사용자 및 운영자를 위한 엔드포인트 사용 가이드.
+스키마 및 내부 데이터 구조는 [api-spec.md](api-spec.md) 참고.
+
+Base URL: `http://localhost:8000`
+
+---
+
+## 1. 상태 확인
+
+```bash
+# 서버 생존 여부
+curl http://localhost:8000/health
+
+# 인프라 헬스체크 (Qdrant / Redis / S3 / Ollama)
+curl http://localhost:8000/ready
+```
+
+---
+
+## 2. 지식베이스 (KB)
+
+```bash
+# 전체 KB 목록
+curl http://localhost:8000/api/kb
+
+# KB 생성
+curl -X POST http://localhost:8000/api/kb \
+  -H "Content-Type: application/json" \
+  -d '{"kb_id": "kb-01", "description": "테스트 KB"}'
+
+# KB 삭제 (Qdrant + S3 + Redis 모두 삭제)
+curl -X DELETE http://localhost:8000/api/kb/kb-01
+```
+
+---
+
+## 3. 문서 인덱싱
+
+PDF, Word(docx), 텍스트(txt), 마크다운(md), 한글(hwp) 형식을 지원합니다.
+
+```bash
+# 단일 파일 업로드
+curl -X POST http://localhost:8000/api/kb/kb-01/docs/upload \
+  -F "file=@./data/doc.pdf"
+
+# 복수 파일 업로드
+curl -X POST http://localhost:8000/api/kb/kb-01/docs/upload/batch \
+  -F "files=@./data/a.pdf" \
+  -F "files=@./data/b.pdf"
+
+# KB 전체 문서 목록
+curl http://localhost:8000/api/kb/kb-01/docs
+
+# 상태별 필터 (pending / running / indexed / failed)
+curl "http://localhost:8000/api/kb/kb-01/docs?status=failed"
+
+# 단일 문서 인덱싱 상태 확인
+curl http://localhost:8000/api/kb/kb-01/docs/doc.pdf/status
+
+# 문서 삭제 (벡터 + 메타데이터 + S3 파일)
+curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/doc.pdf
+
+# 전체 KB 문서 현황 일괄 조회
+curl http://localhost:8000/api/docs/status
+```
+
+---
+
+## 4. 재인덱싱 / 복구
+
+ETag가 동일하면 재인덱싱을 건너뜁니다. `force=true`로 강제 재처리합니다.
+
+```bash
+# KB 전체 재인덱싱 (변경된 파일만)
+curl -X POST http://localhost:8000/api/kb/kb-01/reindex
+
+# KB 전체 강제 재인덱싱
+curl -X POST "http://localhost:8000/api/kb/kb-01/reindex?force=true"
+
+# 단일 문서 재인덱싱
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?key=doc.pdf"
+
+# 단일 문서 강제 재인덱싱 (failed 상태 등)
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?key=doc.pdf&force=true"
+
+# stuck 문서 복구 — status=running 인 경우에만 사용
+curl -X POST http://localhost:8000/api/kb/kb-01/docs/doc.pdf/recover
+```
+
+---
+
+## 5. 검색
+
+```bash
+curl -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "검색어",
+    "kb_ids": ["kb-01", "kb-02"]
+  }'
+```
+
+옵션을 지정할 경우:
+
+```bash
+curl -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "검색어",
+    "kb_ids": ["kb-01"],
+    "options": {
+      "top_k": 10,
+      "alpha": 0.5
+    }
+  }'
+```
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `top_k` | 10 | 반환할 최대 청크 수 |
+| `alpha` | 0.5 | 1.0 = Dense 100%, 0.0 = Sparse(키워드) 100% |
+
+---
+
+## 6. MCP 연결
+
+Claude Desktop `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "rag-api": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
