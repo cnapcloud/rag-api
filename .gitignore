@@ -31,8 +31,6 @@ $DAGSTER_HOME/
 dagster_home/
 .dagster/
 
-# Settings with secrets (use settings.example.yaml as template)
-settings.yaml
 
 # Data / uploads
 data/

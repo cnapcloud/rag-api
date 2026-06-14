@@ -1,7 +1,7 @@
 s3:
-  endpoint: "http://<minio-host>:9000"
-  access_key: "<access-key>"
-  secret_key: "<secret-key>"
+  endpoint: "http://192.168.0.185:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
   rag_bucket: "rag-api"
   dagster_bucket: "dagster-storage"
   region: "us-east-1"
@@ -9,14 +9,14 @@ s3:
   insecure: true
 
 qdrant:
-  host: "<qdrant-host>"
+  host: "192.168.0.184"
   port: 6333
   insecure: true
 
 redis:
-  host: "<redis-host>"
+  host: "192.168.0.183"
   port: 6379
-  password: "<password>"
+  password: "redis"
   db: 0
 
 ingestion:
@@ -37,7 +37,7 @@ embedding:
   provider: "ollama"            # ollama / openai
   model: "bge-m3"
   vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
-  ollama_url: "http://<ollama-host>:11434"
+  ollama_url: "http://localhost:11434"
   openai_api_key: ""
   openai_model: "text-embedding-3-small"
 

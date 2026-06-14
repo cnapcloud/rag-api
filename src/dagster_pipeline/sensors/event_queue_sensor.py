@@ -7,7 +7,7 @@ import logging
 import time
 from uuid import uuid4
 
-from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, sensor
+from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, SkipReason, sensor
 
 from dagster_pipeline.jobs.delete_job import delete_job
 from dagster_pipeline.jobs.ingest_job import ingest_job
@@ -156,6 +156,8 @@ def event_queue_sensor(context: SensorEvaluationContext):
 
     if count:
         logger.info("event_queue_sensor: %d RunRequest(s) created", count)
+    else:
+        yield SkipReason("No events in Redis queue — no jobs to trigger")
 
 
 def enqueue_upload_event(
