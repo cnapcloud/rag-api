@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 class FakeRedis:
@@ -85,8 +85,9 @@ def _make_redis(
     return r
 
 
-def _run_sensor(fake_redis):
-    from unittest.mock import MagicMock
+def _run_sensor(fake_redis, get_run_by_id=None, set_failed_calls=None):
+    from contextlib import ExitStack
+    from unittest.mock import MagicMock, PropertyMock, patch
 
     from dagster import RunRequest, build_sensor_context
     from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
@@ -95,10 +96,17 @@ def _run_sensor(fake_redis):
     mock_settings.ingestion.queue_worker_enabled = False
 
     ctx = build_sensor_context()
-    with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings),
-    ):
+    with ExitStack() as stack:
+        stack.enter_context(patch("infra.redis.get_redis_client", return_value=fake_redis))
+        stack.enter_context(patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings))
+        if get_run_by_id is not None:
+            mock_instance = MagicMock()
+            mock_instance.get_run_by_id.side_effect = get_run_by_id
+            stack.enter_context(patch.object(type(ctx), "instance", new_callable=PropertyMock, return_value=mock_instance))
+        if set_failed_calls is not None:
+            stack.enter_context(
+                patch("pipeline.ops.meta.set_failed", side_effect=lambda kb, key, err, run_id="": set_failed_calls.append((kb, key, run_id)))
+            )
         return [r for r in event_queue_sensor(ctx) if isinstance(r, RunRequest)]
 
 
@@ -181,15 +189,65 @@ def test_upload_sensor_force_flag_propagated():
 
 
 def test_sensor_upload_skips_processing_doc():
-    """Upload event: doc is processing → delayed, no RunRequest."""
+    """Upload event: doc is actively running (Dagster run alive) → delayed, no RunRequest."""
+    active_run = MagicMock()
+    active_run.is_finished = False
+
     fake_redis = _make_redis(
         put_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}],
-        processing_keys=[("kb-test", "doc.pdf")],
     )
-    result = _run_sensor(fake_redis)
+    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "running", "run_id": "run-active"})
+
+    result = _run_sensor(fake_redis, get_run_by_id=lambda _: active_run)
 
     assert result == []
     assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 1
+
+
+def test_sensor_upload_zombie_run_dispatches():
+    """Upload event: doc has status=running but Dagster run is finished → zombie recovered, dispatched."""
+    dead_run = MagicMock()
+    dead_run.is_finished = True
+
+    fake_redis = _make_redis(
+        put_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}],
+    )
+    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "running", "run_id": "run-dead"})
+
+    calls = []
+    result = _run_sensor(fake_redis, get_run_by_id=lambda _: dead_run, set_failed_calls=calls)
+
+    assert len(result) == 1
+    assert result[0].job_name == "ingest_job"
+    assert len(calls) == 1
+    assert calls[0][2] == "run-dead"
+
+
+def test_sensor_upload_run_not_found_dispatches():
+    """Upload event: doc has run_id but Dagster returns None → zombie recovered, dispatched."""
+    fake_redis = _make_redis(
+        put_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}],
+    )
+    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "running", "run_id": "run-ghost"})
+
+    calls = []
+    result = _run_sensor(fake_redis, get_run_by_id=lambda _: None, set_failed_calls=calls)
+
+    assert len(result) == 1
+    assert len(calls) == 1
+    assert calls[0][2] == "run-ghost"
+
+
+def test_sensor_upload_dispatch_lock_remnant_dispatches():
+    """Upload event: status=running with no run_id (dispatch lock remnant) → dispatch immediately."""
+    fake_redis = _make_redis(
+        put_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}],
+        processing_keys=[("kb-test", "doc.pdf")],  # sets status=running, run_id absent
+    )
+    result = _run_sensor(fake_redis)
+
+    assert len(result) == 1
+    assert result[0].job_name == "ingest_job"
 
 
 def test_sensor_upload_skips_deleting_doc():

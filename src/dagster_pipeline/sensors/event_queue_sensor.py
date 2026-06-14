@@ -82,17 +82,33 @@ def event_queue_sensor(context: SensorEvaluationContext):
         file_size = event.get("file_size", 0)
         force = event.get("force", False)
 
-        from pipeline.ops.meta import try_set_processing
+        from infra import redis as redis_infra
+        from pipeline.ops.meta import set_failed, set_processing
 
-        if not try_set_processing(kb_id, object_key, etag=etag):
-            ready_at = time.time() + delay_sec
-            r.zadd(UPLOAD_DELAY_KEY, {raw: ready_at})
-            logger.info(
-                "Upload event delayed (processing): kb=%s key=%s delay=%ss",
-                kb_id, object_key, delay_sec,
-            )
-            continue
+        prev = redis_infra.get_doc_status(kb_id, object_key)
+        if prev:
+            s = prev.get("status", "")
+            if s == "deleting":
+                r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+                logger.info("Upload event delayed (deleting): kb=%s key=%s delay=%ss", kb_id, object_key, delay_sec)
+                continue
+            elif s == "running":
+                prev_run_id = prev.get("run_id", "")
+                if prev_run_id:
+                    run = context.instance.get_run_by_id(prev_run_id)
+                    if run is not None and not run.is_finished:
+                        r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+                        logger.info("Upload event delayed (running): kb=%s key=%s delay=%ss", kb_id, object_key, delay_sec)
+                        continue
+                    set_failed(
+                        kb_id, object_key,
+                        f"Recovered: previous run no longer active (run_id={prev_run_id})",
+                        run_id=prev_run_id,
+                    )
+                    logger.warning("Zombie run recovered: kb=%s key=%s prev_run_id=%s", kb_id, object_key, prev_run_id)
+                # run_id="" → dispatch lock remnant (job not yet started), fall through to dispatch
 
+        set_processing(kb_id, object_key, etag=etag)
         logger.info("Dispatching ingest_job from queue: kb=%s key=%s", kb_id, object_key)
         yield RunRequest(
             run_key=str(uuid4()),
