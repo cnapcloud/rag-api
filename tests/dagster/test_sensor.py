@@ -250,40 +250,99 @@ def test_sensor_upload_dispatch_lock_remnant_dispatches():
     assert result[0].job_name == "ingest_job"
 
 
-def test_sensor_upload_skips_deleting_doc():
-    """Upload event: doc is deleting → delayed, no RunRequest."""
+def test_sensor_upload_deleting_with_active_run_delayed():
+    """Upload event: doc is deleting with an active run → delayed, no RunRequest."""
+    active_run = MagicMock()
+    active_run.is_finished = False
+
     fake_redis = _make_redis(
         put_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}],
     )
-    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "deleting"})
-    result = _run_sensor(fake_redis)
+    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "deleting", "run_id": "run-del-active"})
+
+    result = _run_sensor(fake_redis, get_run_by_id=lambda _: active_run)
 
     assert result == []
     assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 1
 
 
-def test_sensor_delete_skips_processing_doc():
-    """Delete event: doc is processing → delayed, no RunRequest."""
+def test_sensor_upload_deleting_no_run_id_dispatches():
+    """Upload event: doc is deleting but run_id is empty (orphaned status) → dispatch immediately.
+
+    Reproduces the production bug where a daemon restart left docs stuck in
+    status=deleting with no run_id, causing upload events to loop in the delay queue.
+    """
     fake_redis = _make_redis(
-        delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}],
-        processing_keys=[("kb-test", "doc.pdf")],
+        put_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}],
     )
+    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "deleting", "run_id": ""})
+
     result = _run_sensor(fake_redis)
 
-    assert result == []
-    assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 1
+    assert len(result) == 1
+    assert result[0].job_name == "ingest_job"
+    assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 0
 
 
-def test_sensor_delete_skips_deleting_doc():
-    """Delete event: doc is already deleting → delayed, no RunRequest."""
+def test_sensor_upload_deleting_zombie_run_dispatches():
+    """Upload event: doc is deleting but the delete run has finished → zombie recovered, dispatched."""
+    dead_run = MagicMock()
+    dead_run.is_finished = True
+
     fake_redis = _make_redis(
-        delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}],
+        put_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}],
     )
-    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "deleting"})
-    result = _run_sensor(fake_redis)
+    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "deleting", "run_id": "run-del-dead"})
 
-    assert result == []
-    assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 1
+    calls = []
+    result = _run_sensor(fake_redis, get_run_by_id=lambda _: dead_run, set_failed_calls=calls)
+
+    assert len(result) == 1
+    assert result[0].job_name == "ingest_job"
+    assert calls[0][2] == "run-del-dead"
+
+
+def test_sensor_delete_blocked_by_active_run_delayed():
+    """Delete event: doc has an active run (running or deleting) → delayed, no RunRequest."""
+    active_run = MagicMock()
+    active_run.is_finished = False
+
+    for status in ("running", "deleting"):
+        fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+        fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": status, "run_id": "run-active"})
+
+        result = _run_sensor(fake_redis, get_run_by_id=lambda _: active_run)
+
+        assert result == [], f"Expected delay for status={status}"
+        assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 1, f"Expected delay queue entry for status={status}"
+
+
+def test_sensor_delete_zombie_run_dispatches():
+    """Delete event: doc is running/deleting but run has finished → zombie recovered, delete dispatched."""
+    dead_run = MagicMock()
+    dead_run.is_finished = True
+
+    fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+    fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": "running", "run_id": "run-dead"})
+
+    calls = []
+    result = _run_sensor(fake_redis, get_run_by_id=lambda _: dead_run, set_failed_calls=calls)
+
+    assert len(result) == 1
+    assert result[0].job_name == "delete_job"
+    assert calls[0][2] == "run-dead"
+
+
+def test_sensor_delete_no_run_id_dispatches():
+    """Delete event: doc is running/deleting but run_id is empty → dispatch immediately."""
+    for status in ("running", "deleting"):
+        fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+        fake_redis.hset("doc:kb-test:doc.pdf", mapping={"status": status, "run_id": ""})
+
+        result = _run_sensor(fake_redis)
+
+        assert len(result) == 1, f"Expected dispatch for status={status}"
+        assert result[0].job_name == "delete_job"
 
 
 def test_sensor_drain_delay_queue():

@@ -25,7 +25,7 @@ COMPOSE = docker compose -f docker/docker-compose.yml
 build:
 	docker buildx build --platform linux/arm64 -t $(IMAGE) -t $(IMAGE_VERSIONED) .
 
-push:
+push: build
 	docker push $(IMAGE)
 	docker push $(IMAGE_VERSIONED)
 

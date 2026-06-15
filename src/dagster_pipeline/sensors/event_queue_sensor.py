@@ -38,6 +38,44 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
     logger.debug("Drained %d item(s) from %s to %s", len(items), delay_key, main_key)
 
 
+def _is_blocked_by_active_run(
+    context: SensorEvaluationContext,
+    r,
+    doc: dict,
+    delay_key: str,
+    delay_sec: float,
+    raw: str,
+    kb_id: str,
+    object_key: str,
+) -> bool:
+    """Return True and enqueue delay if an active Dagster run is blocking this event.
+
+    Handles zombie recovery: if the recorded run_id is no longer active, marks the
+    doc as failed and returns False so the caller can proceed with dispatch.
+    """
+    from pipeline.ops.meta import set_failed
+
+    s = doc.get("status", "")
+    if s not in ("running", "deleting"):
+        return False
+
+    prev_run_id = doc.get("run_id", "")
+    if prev_run_id:
+        run = context.instance.get_run_by_id(prev_run_id)
+        if run is not None and not run.is_finished:
+            r.zadd(delay_key, {raw: time.time() + delay_sec})
+            logger.info("Event delayed (%s): kb=%s key=%s delay=%ss", s, kb_id, object_key, delay_sec)
+            return True
+        set_failed(
+            kb_id, object_key,
+            f"Recovered: previous run no longer active (run_id={prev_run_id})",
+            run_id=prev_run_id,
+        )
+        logger.warning("Zombie run recovered: kb=%s key=%s prev_run_id=%s", kb_id, object_key, prev_run_id)
+
+    return False
+
+
 @sensor(
     jobs=[ingest_job, delete_job],
     minimum_interval_seconds=_poll_interval_sec,
@@ -83,30 +121,11 @@ def event_queue_sensor(context: SensorEvaluationContext):
         force = event.get("force", False)
 
         from infra import redis as redis_infra
-        from pipeline.ops.meta import set_failed, set_processing
+        from pipeline.ops.meta import set_processing
 
         doc = redis_infra.get_doc_status(kb_id, object_key)
-        if doc:
-            s = doc.get("status", "")
-            if s == "deleting":
-                r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
-                logger.info("Upload event delayed (deleting): kb=%s key=%s delay=%ss", kb_id, object_key, delay_sec)
-                continue
-            elif s == "running":
-                prev_run_id = doc.get("run_id", "")
-                if prev_run_id:
-                    run = context.instance.get_run_by_id(prev_run_id)
-                    if run is not None and not run.is_finished:
-                        r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
-                        logger.info("Upload event delayed (running): kb=%s key=%s delay=%ss", kb_id, object_key, delay_sec)
-                        continue
-                    set_failed(
-                        kb_id, object_key,
-                        f"Recovered: previous run no longer active (run_id={prev_run_id})",
-                        run_id=prev_run_id,
-                    )
-                    logger.warning("Zombie run recovered: kb=%s key=%s prev_run_id=%s", kb_id, object_key, prev_run_id)
-                # run_id="" → dispatch lock remnant (job not yet started), fall through to dispatch
+        if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, kb_id, object_key):
+            continue
 
         set_processing(kb_id, object_key, etag=etag)
         logger.info("Dispatching ingest_job from queue: kb=%s key=%s", kb_id, object_key)
@@ -149,12 +168,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
         from pipeline.ops.meta import set_deleting
 
         doc = redis_infra.get_doc_status(kb_id, object_key)
-        if doc and doc.get("status") in ("running", "deleting"):
-            r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
-            logger.info(
-                "Delete event delayed (busy): kb=%s key=%s delay=%ss",
-                kb_id, object_key, delay_sec,
-            )
+        if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, kb_id, object_key):
             continue
 
         set_deleting(kb_id, object_key)

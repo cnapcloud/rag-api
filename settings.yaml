@@ -23,7 +23,7 @@ ingestion:
   max_file_size_mb: 10
 
 queue_worker:
-  enabled: true   # dgster는 비활성화됨
+  enabled: false   # dgster는 비활성화됨
   max_workers: 5
 
 queue_poll:
