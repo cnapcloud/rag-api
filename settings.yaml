@@ -20,12 +20,16 @@ redis:
   db: 0
 
 ingestion:
-  max_file_size_mb: 200
-  max_workers: 4            # QueueWorker 전용 — queue_worker_enabled: true 일 때만 사용
-  poll_interval_sec: 5      # Redis 큐 폴링 주기 (초)
-  max_runs_per_tick: 5      # Dagster sensor 한 tick당 최대 RunRequest 수
-  processing_delay_sec: 10  # delay queue retry interval (seconds)
-  queue_worker_enabled: true  # true: FastAPI QueueWorker 처리 (Dagster 센서 비활성화), false: Dagster 센서 처리
+  max_file_size_mb: 10
+
+queue_worker:
+  enabled: true   # dgster는 비활성화됨
+  max_workers: 5
+
+queue_poll:
+  poll_interval_sec: 5
+  max_per_poll: 5
+  retry_interval_sec: 10 # 동일 문서 재시도 간격
 
 chunking:
   strategy: "recursive"    # recursive / semantic
@@ -60,9 +64,6 @@ knowledge_bases:
     description: "지식베이스 01"
   - id: "kb-02"
     description: "지식베이스 02"
-
-dagster:
-  executor: "in_process"  # in_process | k8s
 
 mcp:
   enabled: true

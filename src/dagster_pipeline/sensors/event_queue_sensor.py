@@ -22,8 +22,8 @@ DELETE_DELAY_KEY = "rag:delete:delay"
 
 from config.settings import get_settings as _get_settings
 
-_poll_interval_sec = _get_settings().ingestion.poll_interval_sec
-_max_runs_per_tick = _get_settings().ingestion.max_runs_per_tick
+_poll_interval_sec = _get_settings().queue_poll.poll_interval_sec
+_max_per_poll = _get_settings().queue_poll.max_per_poll
 
 
 def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
@@ -45,7 +45,7 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
     description="Redis 큐(PUT/DELETE)에서 이벤트를 소비해 ingest_job / delete_job을 트리거한다.",
 )
 def event_queue_sensor(context: SensorEvaluationContext):
-    if _get_settings().ingestion.queue_worker_enabled:
+    if _get_settings().queue_worker.enabled:
         yield SkipReason("QueueWorker is enabled — Dagster sensor is inactive")
         return
 
@@ -57,7 +57,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
         logger.warning("Redis connection failed (event_queue_sensor): %s", e)
         return
 
-    delay_sec = _get_settings().ingestion.processing_delay_sec
+    delay_sec = _get_settings().queue_poll.retry_interval_sec
 
     # Drain delay queues first — move ready items back to main queues
     _drain_delay_queue(r, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY)
@@ -65,7 +65,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
 
     # PUT queue → ingest_job
     count = 0
-    while count < _max_runs_per_tick:
+    while count < _max_per_poll:
         raw = r.rpop(UPLOAD_QUEUE_KEY)
         if raw is None:
             break
@@ -85,15 +85,15 @@ def event_queue_sensor(context: SensorEvaluationContext):
         from infra import redis as redis_infra
         from pipeline.ops.meta import set_failed, set_processing
 
-        prev = redis_infra.get_doc_status(kb_id, object_key)
-        if prev:
-            s = prev.get("status", "")
+        doc = redis_infra.get_doc_status(kb_id, object_key)
+        if doc:
+            s = doc.get("status", "")
             if s == "deleting":
                 r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
                 logger.info("Upload event delayed (deleting): kb=%s key=%s delay=%ss", kb_id, object_key, delay_sec)
                 continue
             elif s == "running":
-                prev_run_id = prev.get("run_id", "")
+                prev_run_id = doc.get("run_id", "")
                 if prev_run_id:
                     run = context.instance.get_run_by_id(prev_run_id)
                     if run is not None and not run.is_finished:
@@ -131,7 +131,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
         count += 1
 
     # DELETE queue → delete_job
-    while count < _max_runs_per_tick:
+    while count < _max_per_poll:
         raw = r.rpop(DELETE_QUEUE_KEY)
         if raw is None:
             break
@@ -145,16 +145,19 @@ def event_queue_sensor(context: SensorEvaluationContext):
         kb_id = event.get("kb_id", "")
         object_key = event.get("object_key", "")
 
-        from pipeline.ops.meta import try_set_deleting
+        from infra import redis as redis_infra
+        from pipeline.ops.meta import set_deleting
 
-        if not try_set_deleting(kb_id, object_key):
-            ready_at = time.time() + delay_sec
-            r.zadd(DELETE_DELAY_KEY, {raw: ready_at})
+        doc = redis_infra.get_doc_status(kb_id, object_key)
+        if doc and doc.get("status") in ("running", "deleting"):
+            r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
             logger.info(
                 "Delete event delayed (busy): kb=%s key=%s delay=%ss",
                 kb_id, object_key, delay_sec,
             )
             continue
+
+        set_deleting(kb_id, object_key)
 
         logger.info("Dispatching delete_job from queue: kb=%s key=%s", kb_id, object_key)
         yield RunRequest(

@@ -18,9 +18,10 @@ UPLOAD_QUEUE_KEY = "rag:upload:queue"
 DELETE_QUEUE_KEY = "rag:delete:queue"
 
 class QueueWorker:
-    def __init__(self, max_workers: int = 4, poll_interval_sec: int = 5) -> None:
+    def __init__(self, max_workers: int = 4, poll_interval_sec: int = 5, max_per_poll: int = 5) -> None:
         self._poll_interval_sec = poll_interval_sec
         self._max_workers = max_workers
+        self._max_per_poll = max_per_poll
         self._semaphore: asyncio.Semaphore | None = None
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="queue_worker")
         self._running = False
@@ -28,24 +29,27 @@ class QueueWorker:
     async def start(self) -> None:
         self._semaphore = asyncio.Semaphore(self._max_workers)
         self._running = True
-        logger.info("QueueWorker started: max_workers=%d", self._max_workers)
+        logger.info("QueueWorker started: max_workers=%d max_per_poll=%d", self._max_workers, self._max_per_poll)
         while self._running:
-            await self._poll()
-            await asyncio.sleep(self._poll_interval_sec)
+            more_work = await self._poll()
+            if not more_work:
+                await asyncio.sleep(self._poll_interval_sec)
 
     def stop(self) -> None:
         self._running = False
         self._executor.shutdown(wait=False)
 
-    async def _poll(self) -> None:
+    async def _poll(self) -> bool:
+        """Return True if either queue hit max_per_poll (more items may remain)."""
         try:
             from infra.redis import get_redis_client
             r = get_redis_client()
         except Exception as e:
             logger.warning("Redis connection failed (queue_worker): %s", e)
-            return
+            return False
 
-        while True:
+        upload_count = 0
+        while upload_count < self._max_per_poll:
             raw = r.rpop(UPLOAD_QUEUE_KEY)
             if raw is None:
                 break
@@ -59,21 +63,31 @@ class QueueWorker:
             object_key = event.get("object_key", "")
             etag = event.get("etag", "")
 
-            from pipeline.ops.meta import try_set_processing
+            from infra import redis as redis_infra
+            from pipeline.ops.meta import set_processing
 
-            if not try_set_processing(kb_id, object_key, etag=etag):
-                logger.info(
-                    "Upload event delayed (processing): kb=%s key=%s", kb_id, object_key
-                )
-                asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw))
-                continue
+            doc = redis_infra.get_doc_status(kb_id, object_key)
+            if doc:
+                s = doc.get("status", "")
+                if s == "deleting":
+                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw))
+                    logger.info("Upload event delayed (deleting): kb=%s key=%s", kb_id, object_key)
+                    continue
+                elif s == "running" and doc.get("run_id", ""):
+                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw))
+                    logger.info("Upload event delayed (running): kb=%s key=%s", kb_id, object_key)
+                    continue
+                # run_id="" → dispatch lock remnant, fall through
 
+            set_processing(kb_id, object_key, etag=etag)
             logger.info(
                 "Dequeued upload event, scheduling ingest: kb=%s key=%s", kb_id, object_key
             )
             asyncio.create_task(self._run_ingest(event))
+            upload_count += 1
 
-        while True:
+        delete_count = 0
+        while delete_count < self._max_per_poll:
             raw = r.rpop(DELETE_QUEUE_KEY)
             if raw is None:
                 break
@@ -86,25 +100,30 @@ class QueueWorker:
             kb_id = event.get("kb_id", "")
             object_key = event.get("object_key", "")
 
-            from pipeline.ops.meta import try_set_deleting
+            from infra import redis as redis_infra
+            from pipeline.ops.meta import set_deleting
 
-            if not try_set_deleting(kb_id, object_key):
-                logger.info(
-                    "Delete event delayed (busy): kb=%s key=%s", kb_id, object_key
-                )
+            doc = redis_infra.get_doc_status(kb_id, object_key)
+            if doc and doc.get("status") in ("running", "deleting"):
                 asyncio.create_task(self._requeue_after_delay(DELETE_QUEUE_KEY, raw))
+                logger.info("Delete event delayed (busy): kb=%s key=%s", kb_id, object_key)
                 continue
+
+            set_deleting(kb_id, object_key)
 
             logger.info(
                 "Dequeued delete event, scheduling delete: kb=%s key=%s", kb_id, object_key
             )
             asyncio.create_task(self._run_delete(event))
+            delete_count += 1
+
+        return upload_count >= self._max_per_poll or delete_count >= self._max_per_poll
 
     async def _requeue_after_delay(self, queue_key: str, raw: str) -> None:
         from config.settings import get_settings
         from infra.redis import get_redis_client
 
-        delay = get_settings().ingestion.processing_delay_sec
+        delay = get_settings().queue_poll.retry_interval_sec
         await asyncio.sleep(delay)
         get_redis_client().lpush(queue_key, raw)
         logger.debug("Re-queued delayed event to %s", queue_key)
@@ -114,13 +133,13 @@ class QueueWorker:
         kb_id = event.get("kb_id", "")
         object_key = event.get("object_key", "")
         async with self._semaphore:
-            from pipeline.ops.runner import run_ingest_from_key
+            from pipeline.ops.runner import run_ingest_pipeline
             loop = asyncio.get_running_loop()
             logger.info("ingest_job started: kb=%s key=%s", kb_id, object_key)
             try:
                 chunk_count = await loop.run_in_executor(
                     self._executor,
-                    lambda: run_ingest_from_key(
+                    lambda: run_ingest_pipeline(
                         kb_id=kb_id,
                         object_key=object_key,
                         etag=event.get("etag", ""),

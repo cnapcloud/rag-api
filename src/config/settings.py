@@ -41,11 +41,17 @@ class QdrantSettings(BaseModel):
 
 class IngestionSettings(BaseModel):
     max_file_size_mb: int = 200
-    max_workers: int = 4           # background mode concurrency limit
-    poll_interval_sec: int = 5     # Redis queue poll interval (shared by both modes)
-    max_runs_per_tick: int = 5     # max RunRequests per sensor tick (Dagster mode)
-    processing_delay_sec: int = 10  # delay queue retry interval when doc is processing
-    queue_worker_enabled: bool = True  # set false to disable QueueWorker
+
+
+class QueueWorkerSettings(BaseModel):
+    enabled: bool = True
+    max_workers: int = 4
+
+
+class QueuePollSettings(BaseModel):
+    poll_interval_sec: int = 5
+    max_per_poll: int = 5
+    retry_interval_sec: int = 10
 
 
 class ChunkingSettings(BaseModel):
@@ -86,10 +92,6 @@ class LogSettings(BaseModel):
     level: str = "INFO"   # DEBUG | INFO | WARNING | ERROR
 
 
-class DagsterSettings(BaseModel):
-    executor: str = "in_process"  # in_process | k8s
-
-
 class McpSettings(BaseModel):
     enabled: bool = True
     transport: str = "stdio"   # stdio | sse | streamable-http
@@ -114,10 +116,11 @@ class Settings(BaseModel):
     redis: RedisSettings = Field(default_factory=RedisSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
+    queue_worker: QueueWorkerSettings = Field(default_factory=QueueWorkerSettings)
+    queue_poll: QueuePollSettings = Field(default_factory=QueuePollSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
-    dagster: DagsterSettings = Field(default_factory=DagsterSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     logging: LogSettings = Field(default_factory=LogSettings)
     knowledge_bases: list[KBDefinition] = Field(default_factory=list)

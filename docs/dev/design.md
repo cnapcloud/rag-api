@@ -129,7 +129,7 @@ ZRANGEBYSCORE rag:upload:delay 0 <now>
   → LPUSH rag:upload:queue (메인 큐로 복귀)
 ```
 
-메인 큐 소비 중 해당 문서가 이미 처리 중(`try_set_processing` 실패)이면:
+메인 큐 소비 중 해당 문서가 이미 처리 중(`status=running/deleting`)이면:
 
 ```
 ready_at = now + processing_delay_sec
@@ -164,3 +164,53 @@ Dagster는 기본적으로 이 로거를 감시하지 않으므로 Dagster UI에
 | `context.log.info()` | 항상 | Dagster op 래퍼 (`dagster_pipeline/ops/`) |
 | `logging.getLogger(__name__)` 기본 | X | 순수 함수 (`pipeline/ops/`) |
 | `logging.getLogger(__name__)` + `managed_python_loggers` | O | 순수 함수, 설정 후 |
+
+---
+
+## 9. Sensor vs validate_op 역할 분리
+
+sensor는 큐 레벨에서 "언제 실행할지"를 결정하고, validate_op는 job 레벨에서 "파일 자체가 유효한지"를 검증한다.
+
+### sensor (`event_queue_sensor.py`)
+
+dispatch 결정 + dispatch lock 설정 + zombie 복구
+
+```
+Redis 큐에서 이벤트 pop
+  └─ status=deleting          → delay queue로 밀기
+  └─ status=running, run_id != ""
+      ├─ Dagster run 살아있음  → delay queue로 밀기
+      └─ Dagster run 죽었음   → set_failed() (zombie 복구) → dispatch 진행
+  └─ status=running, run_id=""
+      → dispatch lock 잔류로 간주, dispatch 진행
+
+set_processing(kb_id, key, etag=etag)   # run_id="" 로 dispatch lock 기록
+yield RunRequest(ingest_job)
+```
+
+### validate_op (`ingest_ops.py`)
+
+run_id 등록 + 비즈니스 검증
+
+```
+set_processing(kb_id, key, etag=etag, run_id=context.run_id)
+  # sensor가 ""로 남긴 run_id를 실제 Dagster run_id로 갱신
+
+validate()
+  ├─ ETag 중복 체크 (force=False이면 스킵)
+  └─ 파일 크기 제한 체크
+
+검증 통과  → Output 발행 → parse_op → chunk_op → ...
+ETag 동일  → restore_indexed() (status=indexed 복원) → 이후 op 스킵
+검증 실패  → set_failed() + 예외 raise
+```
+
+### 역할 경계 요약
+
+| | sensor | validate_op |
+|---|---|---|
+| 책임 | dispatch 가부 결정 | 인제스트 가부 결정 |
+| zombie 복구 | O (run_id 있는 경우만) | X |
+| dispatch lock | `set_processing(run_id="")` | `set_processing(run_id=<실제값>)` 으로 갱신 |
+| ETag 중복 체크 | X | O |
+| 파일 크기 체크 | X | O |

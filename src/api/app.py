@@ -119,17 +119,21 @@ def _register_exception_handlers(app: FastAPI) -> None:
 def _start_queue_worker(app: FastAPI) -> None:
     from config.settings import get_settings
     cfg = get_settings()
-    if not cfg.ingestion.queue_worker_enabled:
+    if not cfg.queue_worker.enabled:
         return
     from pipeline.queue_worker import QueueWorker
     import asyncio
     worker = QueueWorker(
-        max_workers=cfg.ingestion.max_workers,
-        poll_interval_sec=cfg.ingestion.poll_interval_sec,
+        max_workers=cfg.queue_worker.max_workers,
+        poll_interval_sec=cfg.queue_poll.poll_interval_sec,
+        max_per_poll=cfg.queue_poll.max_per_poll,
     )
     task = asyncio.create_task(worker.start())
     app.state.queue_worker_task = task
-    logger.info("QueueWorker started: max_workers=%d poll_interval=%ds", cfg.ingestion.max_workers, cfg.ingestion.poll_interval_sec)
+    logger.info(
+        "QueueWorker started: max_workers=%d poll_interval=%ds max_per_poll=%d",
+        cfg.queue_worker.max_workers, cfg.queue_poll.poll_interval_sec, cfg.queue_poll.max_per_poll,
+    )
 
 
 async def _init_infrastructure() -> None:

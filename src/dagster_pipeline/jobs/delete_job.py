@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dagster import job
+from dagster import in_process_executor, job
 
-from dagster_pipeline.executor import get_executor_def
 from dagster_pipeline.ops.delete_ops import delete_chunks_op, delete_failure_hook, delete_meta_op
 
 
@@ -12,7 +11,7 @@ from dagster_pipeline.ops.delete_ops import delete_chunks_op, delete_failure_hoo
     description="단일 문서 삭제 파이프라인 (문서 1개 = Run 1개)",
     tags={"pipeline": "delete"},
     hooks={delete_failure_hook},
-    executor_def=get_executor_def(),
+    executor_def=in_process_executor,
 )
 def delete_job():
     result = delete_chunks_op()

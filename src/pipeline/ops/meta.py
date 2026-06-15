@@ -48,40 +48,12 @@ def set_processing(kb_id: str, object_key: str, etag: str = "", run_id: str = ""
     )
 
 
-def is_doc_busy(kb_id: str, object_key: str) -> bool:
-    """Return True if the document has an in-progress operation (running or deleting)."""
-    status = redis_infra.get_doc_status(kb_id, object_key)
-    return bool(status and status.get("status") in ("running", "deleting"))
-
-
 def set_deleting(kb_id: str, object_key: str, run_id: str = "") -> None:
     """Set status=deleting at the start of a delete operation."""
     redis_infra.set_doc_status(kb_id, object_key, {"status": "deleting", "run_id": run_id, "updated_at": datetime.now(timezone.utc).isoformat()})
     logger.info("Status set to deleting: kb=%s key=%s", kb_id, object_key)
 
 
-def try_set_processing(kb_id: str, object_key: str, etag: str = "", run_id: str = "") -> bool:
-    """Check-and-set guard for upload dispatch (sensor / queue_worker).
-
-    Returns False if the doc is busy (processing or deleting) — caller should delay.
-    Returns True and sets processing if the doc is idle.
-    """
-    if is_doc_busy(kb_id, object_key):
-        return False
-    set_processing(kb_id, object_key, etag=etag, run_id=run_id)
-    return True
-
-
-def try_set_deleting(kb_id: str, object_key: str, run_id: str = "") -> bool:
-    """Check-and-set guard for delete dispatch (sensor / queue_worker).
-
-    Returns False if the doc is busy (processing or deleting) — caller should delay.
-    Returns True and sets deleting if the doc is idle.
-    """
-    if is_doc_busy(kb_id, object_key):
-        return False
-    set_deleting(kb_id, object_key, run_id=run_id)
-    return True
 
 
 def restore_indexed(kb_id: str, object_key: str, etag: str = "") -> None:

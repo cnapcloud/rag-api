@@ -49,8 +49,12 @@ class S3PickleIOManager(IOManager):
 
         try:
             client.head_bucket(Bucket=self._bucket)
-        except ClientError:
-            client.create_bucket(Bucket=self._bucket)
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("NoSuchBucket", "404"):
+                client.create_bucket(Bucket=self._bucket)
+            else:
+                raise
 
     def handle_output(self, context, obj) -> None:
         client = self._s3.get_client()

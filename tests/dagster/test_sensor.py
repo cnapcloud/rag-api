@@ -93,7 +93,7 @@ def _run_sensor(fake_redis, get_run_by_id=None, set_failed_calls=None):
     from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
 
     mock_settings = MagicMock()
-    mock_settings.ingestion.queue_worker_enabled = False
+    mock_settings.queue_worker.enabled = False
 
     ctx = build_sensor_context()
     with ExitStack() as stack:
