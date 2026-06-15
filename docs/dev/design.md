@@ -6,6 +6,25 @@ API 사용법(curl 예시)은 [guide/api-guide.md](../guide/api-guide.md) 참고
 
 ---
 
+## 목차
+
+1. [문서 상태 (status)](#1-문서-상태-status)
+2. [Redis 키 구조](#2-redis-키-구조)
+3. [Qdrant Payload 스키마](#3-qdrant-payload-스키마)
+4. [검색 흐름](#4-검색-흐름)
+5. [HTTP 에러 코드](#5-http-에러-코드)
+6. [Delay 큐 동작 원리](#6-delay-큐-동작-원리)
+7. [Dagster sensor default_status 동작 원리](#7-dagster-sensor-default_status-동작-원리)
+8. [Dagster 로깅 동작 원리](#8-dagster-로깅-동작-원리)
+9. [Sensor vs validate_op 역할 분리](#9-sensor-vs-validate_op-역할-분리)
+10. [문서 버전 관리 / ETag 처리](#10-문서-버전-관리--etag-처리)
+11. [KB 삭제 데이터 정리 순서](#11-kb-삭제-데이터-정리-순서)
+12. [LlamaIndex 활용 범위](#12-llamaindex-활용-범위)
+13. [Dagster 정의 구조](#13-dagster-정의-구조)
+14. [로컬 실행 구조](#14-로컬-실행-구조)
+
+---
+
 ## 1. 문서 상태 (status)
 
 | 값 | 의미 |
@@ -214,3 +233,280 @@ ETag 동일  → restore_indexed() (status=indexed 복원) → 이후 op 스킵
 | dispatch lock | `set_processing(run_id="")` | `set_processing(run_id=<실제값>)` 으로 갱신 |
 | ETag 중복 체크 | X | O |
 | 파일 크기 체크 | X | O |
+
+---
+
+## 10. 문서 버전 관리 / ETag 처리
+
+```
+validate_op
+    │
+    ├─ Redis에서 기존 ETag 조회
+    │       ├─ ETag 동일 → Output 미발행 → restore_indexed() → 파이프라인 종료
+    │       └─ ETag 다름 또는 신규 → Output 발행 → 다음 Op 진행
+    │
+upsert_op
+    ├─ Qdrant: 기존 청크 전체 삭제 (doc_key + kb_id 필터)
+    └─ Qdrant: 신규 청크 배치 삽입
+```
+
+---
+
+## 11. KB 삭제 데이터 정리 순서
+
+```
+DELETE /api/kb/{kb_id}
+    │
+    ├─ 1. Redis: kb:{kb_id} hash → status = "deleting"  (진행 중 표시)
+    ├─ 2. Qdrant: Collection {kb_id} drop
+    ├─ 3. S3(MinIO): {bucket}/{kb_id}/ prefix 전체 삭제
+    └─ 4. Redis: doc:{kb_id}:* + docs:{kb_id} + kb:{kb_id} + kbs 전체 삭제
+```
+
+---
+
+## 12. LlamaIndex 활용 범위
+
+### 파싱 — SimpleDirectoryReader
+
+```python
+from llama_index.core import SimpleDirectoryReader
+from llama_index.readers.file import PDFReader, MarkdownReader, DocxReader
+
+reader = SimpleDirectoryReader(
+    input_files=[local_path],
+    file_extractor={
+        ".pdf":  PDFReader(),
+        ".md":   MarkdownReader(),
+        ".docx": DocxReader(),
+    }
+)
+documents = reader.load_data()
+```
+
+### 청킹 — NodeParser
+
+```python
+from llama_index.core.node_parser import (
+    SentenceSplitter,            # recursive 전략
+    SemanticSplitterNodeParser,  # semantic 전략
+)
+
+parsers = {
+    "recursive": SentenceSplitter(chunk_size=1024, chunk_overlap=128),
+    "semantic":  SemanticSplitterNodeParser(buffer_size=1, breakpoint_percentile_threshold=80),
+}
+```
+
+### 임베딩 — LlamaIndex Embedding
+
+```python
+from llama_index.embeddings.ollama import OllamaEmbedding
+from llama_index.embeddings.openai import OpenAIEmbedding
+
+embeddings = {
+    "ollama": OllamaEmbedding(model_name="bge-m3", base_url="http://ollama:11434"),
+    "openai": OpenAIEmbedding(model="text-embedding-3-small", api_key=...),
+}
+```
+
+### 검색 — VectorStoreIndex + QdrantVectorStore
+
+```python
+from llama_index.core import VectorStoreIndex
+from llama_index.vector_stores.qdrant import QdrantVectorStore
+from pipeline.ops.sparse import compute_sparse_tf
+
+vector_store = QdrantVectorStore(
+    client=qdrant_client,
+    collection_name=kb_id,
+    enable_hybrid=True,
+    sparse_doc_fn=compute_sparse_tf,   # 인덱싱 시 TF sparse 벡터 생성
+    sparse_query_fn=compute_sparse_tf, # 쿼리 시 TF sparse 벡터 생성
+    dense_vector_name="dense",
+    sparse_vector_name="sparse",
+)
+index = VectorStoreIndex.from_vector_store(vector_store, embed_model=embed_model)
+retriever = index.as_retriever(
+    similarity_top_k=settings.retrieval.top_k,
+    vector_store_query_mode="hybrid",
+    alpha=settings.retrieval.alpha,
+)
+```
+
+### Sparse 벡터 — 자체 TF 인코더 (pipeline/ops/sparse.py)
+
+FastEmbed BM25를 직접 사용하지 않고, 순수 Python으로 구현한 TF 인코더(`compute_sparse_tf`)를 사용한다.
+클라이언트는 TF만 계산하고, IDF는 Qdrant 서버가 코퍼스 기반으로 자동 관리한다(`Modifier.IDF`).
+`sparse_doc_fn` / `sparse_query_fn`으로 LlamaIndex에 주입하여 인덱싱·검색 양쪽에서 동일하게 동작한다.
+
+---
+
+## 13. Dagster 정의 구조
+
+### definitions.py
+
+```python
+# src/dagster_pipeline/definitions.py
+from dagster import Definitions
+from dagster_pipeline.jobs.ingest_job import ingest_job
+from dagster_pipeline.jobs.delete_job import delete_job
+from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
+from dagster_pipeline.resources.resources import build_resources_from_settings
+
+defs = Definitions(
+    jobs=[ingest_job, delete_job],
+    sensors=[event_queue_sensor],
+    resources=build_resources_from_settings(),  # S3PickleIOManager
+)
+```
+
+### ingest_ops.py (핵심 Op 구조)
+
+```python
+class IngestConfig(Config):
+    kb_id: str
+    object_key: str
+    etag: str
+    file_size: int = 0
+    force: bool = False
+
+@op(out={"valid_config": Out(dagster_type=dict, is_required=False)})
+def validate_op(context: OpExecutionContext, config: IngestConfig):
+    set_processing(config.kb_id, config.object_key, etag=config.etag, run_id=context.run_id)
+    should_process = validate(kb_id, object_key, etag, file_size, force)
+    if should_process:
+        yield Output({"kb_id": ..., "object_key": ..., "run_id": context.run_id}, "valid_config")
+    else:
+        restore_indexed(config.kb_id, config.object_key, etag=config.etag)
+
+@op
+def parse_op(context, valid_config: dict): ...
+
+@op
+def chunk_op(context, documents): ...
+
+@op
+def embed_op(context, nodes): ...
+
+@op
+def upsert_op(context, valid_config: dict, embedded_nodes): ...
+
+@op
+def meta_op(context, valid_config: dict, upsert_result): ...
+```
+
+### event_queue_sensor.py (핵심 구조)
+
+```python
+@sensor(jobs=[ingest_job, delete_job], minimum_interval_seconds=poll_interval_sec)
+def event_queue_sensor(context: SensorEvaluationContext):
+    # 1. delay 큐에서 준비된 항목을 main 큐로 복원
+    _drain_delay_queue(r, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY)
+    _drain_delay_queue(r, DELETE_DELAY_KEY, DELETE_QUEUE_KEY)
+
+    count = 0
+    # 2. PUT 큐 처리 → ingest_job
+    while count < max_per_poll:
+        raw = r.rpop(UPLOAD_QUEUE_KEY)
+        if raw is None:
+            break
+        # 활성 run이 있으면 delay, zombie면 recover 후 dispatch
+        if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, ...):
+            continue
+        set_processing(kb_id, object_key, etag=etag)
+        yield RunRequest(run_key=str(uuid4()), job_name="ingest_job", ...)
+        count += 1
+
+    # 3. DELETE 큐 처리 → delete_job
+    while count < max_per_poll:
+        raw = r.rpop(DELETE_QUEUE_KEY)
+        if raw is None:
+            break
+        if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, ...):
+            continue
+        set_deleting(kb_id, object_key)
+        yield RunRequest(run_key=str(uuid4()), job_name="delete_job", ...)
+        count += 1
+```
+
+### Dagster 설정 (docker/dagster.yaml)
+
+```yaml
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 8          # 동시 처리 문서 수
+```
+
+---
+
+## 14. 로컬 실행 구조
+
+### 실행 방법
+
+```bash
+# 단일 파일 S3 업로드 후 ingest 큐 enqueue
+PYTHONPATH=src python -m main ingest \
+  --kb-id kb-01 \
+  --file ./data/ATD00002_2605.pdf
+
+# KB 생성 (Redis + Qdrant)
+PYTHONPATH=src python -m main kb create --kb-id kb-01 --description "CNAP 플랫폼 문서"
+
+# 검색 테스트
+PYTHONPATH=src python -m main search \
+  --kb-ids kb-01 \
+  --query "Keycloak 설정 방법"
+
+# FastAPI 서버 실행
+PYTHONPATH=src python -m main serve
+
+# Dagster UI 로컬 실행
+dagster dev -f src/dagster_pipeline/definitions.py
+# → http://localhost:3000
+```
+
+### main.py 구조
+
+```python
+# src/main.py (Typer CLI)
+app = typer.Typer()
+kb_app = typer.Typer()
+app.add_typer(kb_app, name="kb")
+
+@app.command()
+def ingest(kb_id: str, file: Path, force: bool = False):
+    # S3 업로드 후 Redis 큐 enqueue (Dagster sensor가 소비)
+    etag = upload_object(kb_id=kb_id, object_key=file.name, data=content)
+    enqueue_upload_event(kb_id=kb_id, object_key=file.name, etag=etag, ...)
+
+@app.command()
+def serve(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+    uvicorn.run("api.app:create_app", host=host, port=port, factory=True)
+
+@app.command()
+def search(kb_ids: list[str], query: str, top_k: int = 10):
+    results = asyncio.run(hybrid_search(query=query, kb_ids=kb_ids, top_k=top_k))
+    ...
+```
+
+### pipeline/runner.py — 직접 파이프라인 실행 (Dagster 없이)
+
+```python
+def run_ingest_pipeline(
+    kb_id: str, object_key: str, etag: str = "",
+    file_size: int = 0, force: bool = False, run_id: str = "direct",
+) -> int:
+    should_process = validate(kb_id, object_key, etag, file_size, force=force)
+    if not should_process:
+        return 0                          # ETag 동일 → skip
+
+    documents = parse(kb_id, object_key) # S3에서 다운로드 후 파싱
+    nodes     = chunk(documents)
+    embedded  = embed(nodes)
+    result    = upsert(kb_id, object_key, embedded)
+    update_meta(kb_id, object_key, result, etag=etag, run_id=run_id)
+    return result.chunk_count
+```
