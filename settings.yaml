@@ -67,7 +67,14 @@ knowledge_bases:
 
 mcp:
   enabled: true
-  transport: stdio
+  transport: streamable-http
+
+tracing:
+  enabled: true
+  langfuse_baseurl: "http://langfuse-web.llm.svc.cluster.local:3000"
+  langfuse_public_key: "pk-lf-0142e4e5-b7e2-446f-8471-40be8d9c7009"
+  langfuse_secret_key: "sk-lf-ad5e55e4-5a84-4442-ad6f-59170dff7900"
+  service_name: "rag-api"
 
 logging:
   level: INFO

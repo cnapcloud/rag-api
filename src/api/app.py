@@ -6,10 +6,10 @@ import logging
 from contextlib import asynccontextmanager
 
 import redis as redis_lib
+from botocore.exceptions import ClientError
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from botocore.exceptions import ClientError
 from starlette.requests import Request
 
 from api.routers import docs, health, internal, kb, search
@@ -20,16 +20,22 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    mcp_sub_app = getattr(app.state, "mcp_sub_app", None)
-    if mcp_sub_app is not None:
-        async with mcp_sub_app.router.lifespan_context(mcp_sub_app):
+    from tracing.setup import init_tracing, shutdown_tracing
+
+    init_tracing()
+    try:
+        mcp_sub_app = getattr(app.state, "mcp_sub_app", None)
+        if mcp_sub_app is not None:
+            async with mcp_sub_app.router.lifespan_context(mcp_sub_app):
+                await _init_infrastructure()
+                _start_queue_worker(app)
+                yield
+        else:
             await _init_infrastructure()
             _start_queue_worker(app)
             yield
-    else:
-        await _init_infrastructure()
-        _start_queue_worker(app)
-        yield
+    finally:
+        shutdown_tracing()
 
 
 def create_app() -> FastAPI:
@@ -56,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(internal.router)
 
     _mount_mcp(app)
+    _instrument_tracing(app)
 
     return app
 
@@ -83,6 +90,17 @@ def _mount_mcp(app: FastAPI) -> None:
     elif cfg.transport == "sse":
         app.mount("/mcp", mcp_server.sse_app("/mcp"))
         logger.info("MCP server mounted: transport=sse path=/mcp")
+
+
+def _instrument_tracing(app: FastAPI) -> None:
+    from config.settings import get_settings
+
+    if not get_settings().tracing.enabled:
+        return
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="/mcp$")
+    logger.info("FastAPI tracing instrumentation enabled (excluded: /mcp)")
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -121,8 +139,9 @@ def _start_queue_worker(app: FastAPI) -> None:
     cfg = get_settings()
     if not cfg.queue_worker.enabled:
         return
-    from pipeline.queue_worker import QueueWorker
     import asyncio
+
+    from pipeline.queue_worker import QueueWorker
     worker = QueueWorker(
         max_workers=cfg.queue_worker.max_workers,
         poll_interval_sec=cfg.queue_poll.poll_interval_sec,
@@ -143,9 +162,9 @@ async def _init_infrastructure() -> None:
     2. Auto-create knowledge_bases defined in settings.yaml
     """
     from config.settings import get_settings
-    from infra.s3 import ensure_bucket
     from infra.qdrant import ensure_collection
     from infra.redis import list_kb_ids, register_kb
+    from infra.s3 import ensure_bucket
 
     cfg = get_settings()
 

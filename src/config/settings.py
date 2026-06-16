@@ -8,8 +8,6 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # ──────────────────────────────────────────────
 # 하위 모델
@@ -99,6 +97,14 @@ class McpSettings(BaseModel):
     port: int = 8001
 
 
+class TracingSettings(BaseModel):
+    enabled: bool = False
+    langfuse_baseurl: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    service_name: str = "rag-api"
+
+
 class KBDefinition(BaseModel):
     id: str
     description: str = ""
@@ -122,11 +128,12 @@ class Settings(BaseModel):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
+    tracing: TracingSettings = Field(default_factory=TracingSettings)
     logging: LogSettings = Field(default_factory=LogSettings)
     knowledge_bases: list[KBDefinition] = Field(default_factory=list)
 
     @classmethod
-    def from_yaml(cls, path: Path = _SETTINGS_PATH) -> "Settings":
+    def from_yaml(cls, path: Path = _SETTINGS_PATH) -> Settings:
         if path.exists():
             with open(path) as f:
                 data: dict[str, Any] = yaml.safe_load(f) or {}

@@ -21,12 +21,24 @@ import typer
 
 def _configure_logging() -> None:
     from config.settings import get_settings
-    level = getattr(logging, get_settings().logging.level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+
+    cfg = get_settings()
+    level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
+
+    if cfg.tracing.enabled:
+        from tracing.setup import OtelContextFilter
+
+        fmt = "%(asctime)s %(levelname)s [%(trace_id)s:%(span_id)s] %(name)s: %(message)s"
+        logging.basicConfig(level=level, format=fmt, datefmt="%Y-%m-%d %H:%M:%S")
+        otel_filter = OtelContextFilter()
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(otel_filter)
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
 _configure_logging()
 

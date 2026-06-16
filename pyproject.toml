@@ -43,6 +43,12 @@ dependencies = [
 
     # MCP
     "mcp>=1.0",
+
+    # OpenTelemetry
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+    "opentelemetry-instrumentation-fastapi>=0.46b0",
 ]
 
 [project.optional-dependencies]
