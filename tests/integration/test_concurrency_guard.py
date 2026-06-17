@@ -87,8 +87,9 @@ class FakeRedis:
         return len(self._zsets.get("rag:delete:delay", {}))
 
 
-def _run_sensor(fake_redis):
-    from unittest.mock import MagicMock
+def _run_sensor(fake_redis, get_run_by_id=None):
+    from contextlib import ExitStack
+    from unittest.mock import MagicMock, PropertyMock
 
     from dagster import RunRequest, build_sensor_context
     from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
@@ -97,10 +98,13 @@ def _run_sensor(fake_redis):
     mock_settings.queue_worker.enabled = False
 
     ctx = build_sensor_context()
-    with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings),
-    ):
+    with ExitStack() as stack:
+        stack.enter_context(patch("infra.redis.get_redis_client", return_value=fake_redis))
+        stack.enter_context(patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings))
+        if get_run_by_id is not None:
+            mock_instance = MagicMock()
+            mock_instance.get_run_by_id.side_effect = get_run_by_id
+            stack.enter_context(patch.object(type(ctx), "instance", new_callable=PropertyMock, return_value=mock_instance))
         return [r for r in event_queue_sensor(ctx) if isinstance(r, RunRequest)]
 
 
@@ -112,11 +116,14 @@ class TestSensorConcurrencyGuard:
 
     def test_ac1_delete_delayed_while_ingest_processing(self):
         """AC-1 (sensor): ingest processing 중 delete 요청 → delay 큐, RunRequest 없음."""
+        active_run = MagicMock()
+        active_run.is_finished = False
+
         r = FakeRedis()
         r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "object_key": "doc.pdf"}))
-        r.set_doc_status("kb-1", "doc.pdf", "running")  # ingest 진행 중
+        r._hashes["doc:kb-1:doc.pdf"] = {"status": "running", "run_id": "run-ingest-active"}
 
-        result = _run_sensor(r)
+        result = _run_sensor(r, get_run_by_id=lambda _: active_run)
 
         assert result == [], "delete RunRequest should not be emitted while ingest is running"
         assert r.delete_delay_size() == 1, "delete event should be in delay queue"
@@ -124,13 +131,16 @@ class TestSensorConcurrencyGuard:
 
     def test_ac2_ingest_delayed_while_delete_running(self):
         """AC-2 (sensor): delete 진행 중 ingest 요청 → delay 큐, RunRequest 없음."""
+        active_run = MagicMock()
+        active_run.is_finished = False
+
         r = FakeRedis()
         r.lpush("rag:upload:queue", json.dumps(
             {"kb_id": "kb-1", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
         ))
-        r.set_doc_status("kb-1", "doc.pdf", "deleting")  # delete 진행 중
+        r._hashes["doc:kb-1:doc.pdf"] = {"status": "deleting", "run_id": "run-delete-active"}
 
-        result = _run_sensor(r)
+        result = _run_sensor(r, get_run_by_id=lambda _: active_run)
 
         assert result == [], "ingest RunRequest should not be emitted while delete is running"
         assert r.upload_delay_size() == 1, "upload event should be in delay queue"
