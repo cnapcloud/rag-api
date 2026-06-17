@@ -7,7 +7,7 @@ from dagster import Config, HookContext, OpExecutionContext, failure_hook, op
 def delete_failure_hook(context: HookContext) -> None:
     """Mark document as delete_failed in Redis when any delete op fails."""
     try:
-        op_config = context.run.run_config.get("ops", {}).get("delete_chunks_op", {}).get("config", {})
+        op_config = context.op_config or {}
         kb_id: str = op_config.get("kb_id", "")
         object_key: str = op_config.get("object_key", "")
         if not kb_id or not object_key:

@@ -1,9 +1,9 @@
 s3:
   endpoint: "http://192.168.0.185:9000"
-  access_key: "minioadmin"
-  secret_key: "minioadmin"
+  access_key: "admin"
+  secret_key: "password"
   rag_bucket: "rag-api"
-  dagster_bucket: "dagster-storage"
+  dagster_bucket: "dagster"
   region: "us-east-1"
   insecure: true
 

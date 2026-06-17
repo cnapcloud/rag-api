@@ -7,7 +7,7 @@ from dagster import Config, HookContext, OpExecutionContext, Out, Output, failur
 def ingest_failure_hook(context: HookContext) -> None:
     """Mark document as failed in Redis when any ingest op fails."""
     try:
-        op_config = context.run.run_config.get("ops", {}).get("validate_op", {}).get("config", {})
+        op_config = context.op_config or {}
         kb_id: str = op_config.get("kb_id", "")
         object_key: str = op_config.get("object_key", "")
         if not kb_id or not object_key:
