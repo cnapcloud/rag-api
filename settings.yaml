@@ -5,7 +5,6 @@ s3:
   rag_bucket: "rag-api"
   dagster_bucket: "dagster-storage"
   region: "us-east-1"
-  poll_interval_sec: 10
   insecure: true
 
 qdrant:
@@ -47,9 +46,12 @@ embedding:
 
 retrieval:
   mode: "hybrid"
-  top_k: 10
-  alpha: 0.5 # alpha=1.0 → dense(벡터 유사도 100%), alpha=0.0 → sparse(키워드 매칭 100%)
-  merge_strategy: "rrf"
+  top_k: 5
+  hybrid:
+    alpha: 0.5 # alpha=1.0 → dense only, alpha=0.0 → sparse only
+    merge_strategy: "rrf"
+  similarity:
+    min_score: 0.0 # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
   rerank:
     enabled: false
     provider: "jina"

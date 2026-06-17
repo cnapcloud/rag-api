@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -20,7 +20,6 @@ class S3Settings(BaseModel):
     rag_bucket: str = "rag-api"
     dagster_bucket: str = "dagster-storage"
     region: str = "us-east-1"
-    poll_interval_sec: int = 10
     insecure: bool = False
 
 
@@ -78,11 +77,20 @@ class RerankerSettings(BaseModel):
     fallback_on_error: bool = True
 
 
-class RetrievalSettings(BaseModel):
-    mode: str = "hybrid"
-    top_k: int = 10
+class HybridSearchSettings(BaseModel):
     alpha: float = 0.5
     merge_strategy: str = "rrf"
+
+
+class SimilaritySearchSettings(BaseModel):
+    min_score: float = 0.0
+
+
+class RetrievalSettings(BaseModel):
+    mode: Literal["hybrid", "similarity"] = "hybrid"
+    top_k: int = 10
+    hybrid: HybridSearchSettings = Field(default_factory=HybridSearchSettings)
+    similarity: SimilaritySearchSettings = Field(default_factory=SimilaritySearchSettings)
     rerank: RerankerSettings = Field(default_factory=RerankerSettings)
 
 

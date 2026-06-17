@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -22,10 +22,20 @@ class RerankOptions(BaseModel):
     top_n: int = 3
 
 
-class SearchOptions(BaseModel):
-    mode: str = "hybrid"
-    top_k: int = 10
+class HybridOptions(BaseModel):
     alpha: float = 0.5
+    merge_strategy: str = "rrf"
+
+
+class SimilarityOptions(BaseModel):
+    min_score: float | None = None   # None → settings 기본값 사용
+
+
+class SearchOptions(BaseModel):
+    mode: Literal["hybrid", "similarity"] = "hybrid"
+    top_k: int = 10
+    hybrid: HybridOptions = Field(default_factory=HybridOptions)
+    similarity: SimilarityOptions = Field(default_factory=SimilarityOptions)
     rerank: RerankOptions = Field(default_factory=RerankOptions)
 
 
@@ -52,6 +62,7 @@ class SearchMeta(BaseModel):
     total_candidates: int
     returned: int
     search_mode: str
+    score_threshold: float
     reranked: bool
     rerank_provider: str
     rerank_fallback: bool
@@ -79,14 +90,22 @@ async def search(req: SearchRequest):
     if not req.kb_ids:
         raise IngestValidationError("kb_ids must contain at least one entry.")
 
+    _min_score = (
+        req.options.similarity.min_score
+        if req.options.similarity.min_score is not None
+        else cfg.similarity.min_score
+    )
+
     start = time.monotonic()
 
-    # 1. Hybrid Search (복수 KB 병렬 + RRF 머지)
+    # 1. Search (hybrid or similarity)
     candidates = await hybrid_search(
         query=req.query,
         kb_ids=req.kb_ids,
         top_k=req.options.top_k,
-        alpha=req.options.alpha,
+        alpha=req.options.hybrid.alpha,
+        mode=req.options.mode,
+        min_score=_min_score,
     )
     total_candidates = len(candidates)
 
@@ -127,6 +146,7 @@ async def search(req: SearchRequest):
             total_candidates=total_candidates,
             returned=len(final_results),
             search_mode=req.options.mode,
+            score_threshold=_min_score,
             reranked=rerank_enabled and not fallback_used,
             rerank_provider=rerank_provider,
             rerank_fallback=fallback_used,

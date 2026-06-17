@@ -1,4 +1,4 @@
-"""retriever.py — LlamaIndex VectorStoreIndex + Qdrant Hybrid Search."""
+"""retriever.py — LlamaIndex VectorStoreIndex + Qdrant Hybrid / Similarity Search."""
 
 from __future__ import annotations
 
@@ -53,16 +53,16 @@ def _build_index(kb_id: str, embed_model=None):
     return VectorStoreIndex.from_vector_store(vector_store, embed_model=em)
 
 
-def search_kb(
+def search_hybrid_kb(
     kb_id: str,
     query: str,
     top_k: int | None = None,
     alpha: float | None = None,
 ) -> list[SearchResult]:
-    """단일 KB Hybrid Search."""
+    """Single KB hybrid search (dense+sparse, RRF score)."""
     cfg = get_settings().retrieval
     _top_k = top_k or cfg.top_k
-    _alpha = alpha if alpha is not None else cfg.alpha
+    _alpha = alpha if alpha is not None else cfg.hybrid.alpha
 
     index = _build_index(kb_id)
     retriever = index.as_retriever(
@@ -92,11 +92,58 @@ def search_kb(
     return results
 
 
-async def _search_kb_async(
+def search_similarity_kb(
+    kb_id: str,
+    query: str,
+    top_k: int | None = None,
+    min_score: float = 0.0,
+) -> list[SearchResult]:
+    """Single KB dense-only search (cosine similarity score, 0.0~1.0)."""
+    cfg = get_settings().retrieval
+    _top_k = top_k or cfg.top_k
+
+    index = _build_index(kb_id)
+    retriever = index.as_retriever(
+        similarity_top_k=_top_k,
+        vector_store_query_mode="default",
+    )
+
+    nodes = retriever.retrieve(query)
+    results: list[SearchResult] = []
+    for node in nodes:
+        score = float(node.score or 0.0)
+        if score < min_score:
+            continue
+        meta = node.metadata
+        results.append(
+            SearchResult(
+                chunk_id=node.node_id,
+                kb_id=kb_id,
+                doc_key=meta.get("doc_key", ""),
+                doc_type=meta.get("doc_type", ""),
+                chunk_index=int(meta.get("chunk_index", 0)),
+                page_num=meta.get("page_num") or meta.get("page_label"),
+                text=node.get_content(),
+                score=score,
+                rerank_score=None,
+                updated_at=meta.get("updated_at", ""),
+            )
+        )
+    return results
+
+
+async def _search_hybrid_kb_async(
     kb_id: str, query: str, top_k: int, alpha: float
 ) -> list[SearchResult]:
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, search_kb, kb_id, query, top_k, alpha)
+    return await loop.run_in_executor(None, search_hybrid_kb, kb_id, query, top_k, alpha)
+
+
+async def _search_similarity_kb_async(
+    kb_id: str, query: str, top_k: int, min_score: float
+) -> list[SearchResult]:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, search_similarity_kb, kb_id, query, top_k, min_score)
 
 
 async def hybrid_search(
@@ -104,13 +151,31 @@ async def hybrid_search(
     kb_ids: list[str],
     top_k: int | None = None,
     alpha: float | None = None,
+    mode: str = "hybrid",
+    min_score: float = 0.0,
 ) -> list[SearchResult]:
-    """복수 KB를 병렬로 검색하고 RRF로 머지한다. Reranker는 rag/reranker.py에서 별도 처리."""
+    """Search across multiple KBs in parallel and merge with RRF.
+
+    mode='hybrid': dense+sparse search, RRF score (alpha applies)
+    mode='similarity': dense-only search, cosine score (alpha ignored, min_score applies)
+    """
     cfg = get_settings().retrieval
     _top_k = top_k or cfg.top_k
-    _alpha = alpha if alpha is not None else cfg.alpha
+    _alpha = alpha if alpha is not None else cfg.hybrid.alpha
 
-    tasks = [_search_kb_async(kb_id, query, _top_k, _alpha) for kb_id in kb_ids]
+    if mode == "similarity":
+        if alpha is not None:
+            logger.warning("alpha parameter is ignored in similarity mode")
+        tasks = [
+            _search_similarity_kb_async(kb_id, query, _top_k, min_score)
+            for kb_id in kb_ids
+        ]
+    else:
+        tasks = [
+            _search_hybrid_kb_async(kb_id, query, _top_k, _alpha)
+            for kb_id in kb_ids
+        ]
+
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_results: list[list[SearchResult]] = []
@@ -124,5 +189,10 @@ async def hybrid_search(
     from rag.merger import rrf_merge
 
     merged = rrf_merge(all_results)
-    logger.info("Hybrid search done: kbs=%d candidates=%d", len(kb_ids), len(merged))
+    logger.info(
+        "Search done: mode=%s kbs=%d candidates=%d",
+        mode,
+        len(kb_ids),
+        len(merged),
+    )
     return merged

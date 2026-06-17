@@ -46,10 +46,13 @@ embedding:
   openai_model: "text-embedding-3-small"
 
 retrieval:
-  mode: "hybrid"
+  mode: "hybrid"           # hybrid | similarity
   top_k: 10
-  alpha: 0.5 # alpha=1.0 → dense(벡터 유사도 100%), alpha=0.0 → sparse(키워드 매칭 100%)
-  merge_strategy: "rrf"
+  hybrid:
+    alpha: 0.5             # alpha=1.0 → dense only, alpha=0.0 → sparse only
+    merge_strategy: "rrf"
+  similarity:
+    min_score: 0.0         # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
   rerank:
     enabled: false
     provider: "jina"

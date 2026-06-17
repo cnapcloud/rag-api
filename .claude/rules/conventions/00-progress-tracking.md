@@ -26,3 +26,12 @@ Read both index files at the **start of any session** that involves implementing
 - Change status to `done` when implementation is complete and tests pass.
 - Add a new row whenever a new backlog item (US-XX) or plan file is created.
 - Never leave status stale — if the row says `todo` but work is done, fix the row before ending the session.
+
+## Plan File Naming
+
+Plan numbers MUST match the backlog US number they implement:
+- US-08 → `08-<slug>.md` (not `06-`, not a sequential counter)
+- If a plan covers multiple US items, use the primary US number.
+
+After creating a plan file, always add a row to `plans/plan.md` in the same session.
+Skipping this step is a common omission — treat it as mandatory, not optional.
