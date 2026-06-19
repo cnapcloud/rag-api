@@ -40,6 +40,7 @@ def test_search_returns_results(client):
 
     # Override settings so reranking is enabled (settings.yaml may have it disabled)
     mock_settings = MagicMock()
+    mock_settings.retrieval.mode = "hybrid"
     mock_settings.retrieval.rerank.enabled = True
     mock_settings.retrieval.similarity.min_score = 0.0
 
@@ -80,6 +81,7 @@ def test_search_similarity_mode_with_min_score(client):
     mock_results = [_make_result(f"chunk-{i}") for i in range(2)]
 
     mock_settings = MagicMock()
+    mock_settings.retrieval.mode = "similarity"
     mock_settings.retrieval.rerank.enabled = False
     mock_settings.retrieval.similarity.min_score = 0.0
 

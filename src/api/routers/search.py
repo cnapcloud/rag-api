@@ -32,7 +32,7 @@ class SimilarityOptions(BaseModel):
 
 
 class SearchOptions(BaseModel):
-    mode: Literal["hybrid", "similarity"] = "hybrid"
+    mode: Literal["hybrid", "similarity"] | None = None   # None → settings 값 사용
     top_k: int | None = None   # None → settings 값 사용
     hybrid: HybridOptions = Field(default_factory=HybridOptions)
     similarity: SimilarityOptions = Field(default_factory=SimilarityOptions)
@@ -91,6 +91,7 @@ async def search(req: SearchRequest):
         raise IngestValidationError("kb_ids must contain at least one entry.")
 
     # Priority: request option → settings → settings default
+    _mode = req.options.mode if req.options.mode is not None else cfg.mode
     _top_k = req.options.top_k if req.options.top_k is not None else cfg.top_k
     _alpha = req.options.hybrid.alpha if req.options.hybrid.alpha is not None else cfg.hybrid.alpha
     _top_n = req.options.rerank.top_n if req.options.rerank.top_n is not None else cfg.rerank.top_n
@@ -108,7 +109,7 @@ async def search(req: SearchRequest):
         kb_ids=req.kb_ids,
         top_k=_top_k,
         alpha=_alpha,
-        mode=req.options.mode,
+        mode=_mode,
         min_score=_min_score,
     )
     total_candidates = len(candidates)
@@ -150,7 +151,7 @@ async def search(req: SearchRequest):
         meta=SearchMeta(
             total_candidates=total_candidates,
             returned=len(final_results),
-            search_mode=req.options.mode,
+            search_mode=_mode,
             score_threshold=_min_score,
             reranked=rerank_enabled and not fallback_used,
             rerank_provider=rerank_provider,

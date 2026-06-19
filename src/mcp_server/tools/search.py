@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import Context
 from opentelemetry import trace
@@ -19,13 +19,19 @@ async def search(
     query: str,
     kb_ids: list[str] | None = None,
     top_k: int | None = None,
+    mode: Literal["hybrid", "similarity"] | None = None,
+    min_score: float | None = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Search knowledge bases using hybrid semantic + keyword search.
+    """Search knowledge bases and return relevant text chunks.
 
-    If kb_ids is not specified, searches across all available knowledge bases.
-    Returns ranked text chunks with source attribution (kb_id, doc_key, page_num).
-    top_k controls the number of results returned (defaults to settings.retrieval.top_k).
+    kb_ids: knowledge base IDs to search. Omit to search all available KBs.
+    top_k: maximum number of results to return. Defaults to server setting.
+    mode: 'hybrid' for keyword+semantic search (better for specific terms),
+          'similarity' for semantic-only search (better for conceptual queries).
+          Defaults to server setting.
+    min_score: minimum similarity score threshold (0.0~1.0), applies only in
+               'similarity' mode. Omit to use server default.
     """
     span = trace.get_current_span()
     span.set_attribute("rag.query", query)
@@ -38,9 +44,13 @@ async def search(
     if kb_ids:
         span.set_attribute("rag.kb_ids", ",".join(kb_ids))
 
+    _mode = mode if mode is not None else cfg.retrieval.mode
+    _min_score = min_score if min_score is not None else cfg.retrieval.similarity.min_score
     start = time.monotonic()
 
-    candidates = await hybrid_search(query=query, kb_ids=resolved_kb_ids, top_k=top_k)
+    candidates = await hybrid_search(
+        query=query, kb_ids=resolved_kb_ids, top_k=top_k, mode=_mode, min_score=_min_score
+    )
 
     if candidates:
         final_results, _, _ = await rerank_async(query=query, results=candidates)

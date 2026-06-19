@@ -111,16 +111,30 @@ curl -X POST http://localhost:8000/api/search \
     "query": "검색어",
     "kb_ids": ["kb-01"],
     "options": {
+      "mode": "hybrid",
       "top_k": 10,
-      "alpha": 0.5
+      "hybrid": {
+        "alpha": 0.5
+      },
+      "similarity": {
+        "min_score": 0.7
+      },
+      "rerank": {
+        "enabled": true,
+        "top_n": 5
+      }
     }
   }'
 ```
 
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
-| `top_k` | 10 | 반환할 최대 청크 수 |
-| `alpha` | 0.5 | 1.0 = Dense 100%, 0.0 = Sparse(키워드) 100% |
+| `mode` | settings | `"hybrid"` (dense+sparse) 또는 `"similarity"` (dense-only). 생략 시 settings.retrieval.mode 사용 |
+| `top_k` | settings | 반환할 최대 청크 수 |
+| `hybrid.alpha` | settings | 1.0 = Dense 100%, 0.0 = Sparse(키워드) 100%. hybrid 모드에서만 적용 |
+| `similarity.min_score` | settings | similarity 모드에서 반환할 최소 코사인 유사도 (0.0~1.0) |
+| `rerank.enabled` | true | 리랭킹 활성화 여부 |
+| `rerank.top_n` | settings | 리랭킹 후 반환할 결과 수 |
 
 ---
 
