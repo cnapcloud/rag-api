@@ -37,8 +37,8 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     Single document upload: store in S3.
     Ingest is triggered by S3 event webhook (POST /internal/s3-event).
     """
+    from infra.postgres import list_kb_ids
     from infra.s3 import upload_object
-    from infra.redis import list_kb_ids
 
     if kb_id not in list_kb_ids():
         raise NotFoundError(f"KB not found: {kb_id}")
@@ -70,8 +70,8 @@ async def upload_docs_batch(
     Batch upload: store files in S3.
     Ingest is triggered by S3 event webhook (POST /internal/s3-event).
     """
+    from infra.postgres import list_kb_ids
     from infra.s3 import upload_object
-    from infra.redis import list_kb_ids
 
     if kb_id not in list_kb_ids():
         raise NotFoundError(f"KB not found: {kb_id}")
@@ -106,19 +106,19 @@ async def list_docs(
     kb_id: str,
     status: str | None = Query(default=None),
 ):
-    from infra.redis import list_docs as redis_list_docs
-    from infra.redis import list_docs_by_status
+    from infra.postgres import list_docs as pg_list_docs
+    from infra.postgres import list_docs_by_status
 
     if status:
         docs = list_docs_by_status(kb_id, status)
     else:
-        docs = redis_list_docs(kb_id)
+        docs = pg_list_docs(kb_id)
     return {"kb_id": kb_id, "docs": docs, "total": len(docs)}
 
 
 @router.get("/kb/{kb_id}/docs/{key:path}/status")
 async def get_doc_status(kb_id: str, key: str):
-    from infra.redis import get_doc_status
+    from infra.postgres import get_doc_status
 
     data = get_doc_status(kb_id, key)
     if not data:
@@ -128,14 +128,14 @@ async def get_doc_status(kb_id: str, key: str):
 
 @router.delete("/kb/{kb_id}/docs/{key:path}", status_code=200)
 async def delete_doc(kb_id: str, key: str):
-    from infra.s3 import delete_object
+    from infra.postgres import delete_doc_meta
     from infra.qdrant import delete_chunks_by_doc
-    from infra.redis import delete_doc_meta
+    from infra.s3 import delete_object
 
     delete_chunks_by_doc(kb_id, key)
     delete_doc_meta(kb_id, key)
 
-    # S3 delete is best-effort: Qdrant/Redis cleanup already succeeded.
+    # S3 delete is best-effort: Qdrant/Postgres cleanup already succeeded.
     try:
         delete_object(kb_id, key)
     except ClientError as e:
@@ -151,27 +151,39 @@ async def reindex_kb(
 ):
     """
     Re-index all documents in a KB.
-    Compares S3 ETag vs Redis ETag and queues changed documents.
+    Compares S3 ETag vs Postgres ETag and queues changed documents.
     With force=true, skips ETag comparison and re-indexes everything.
+    Documents are enqueued oldest-first (doc_created_at from Postgres, fallback to S3 LastModified).
     Returns: { queued: N, skipped: M }
     """
+    from infra.postgres import get_doc_etag
+    from infra.postgres import list_docs as pg_list_docs
     from infra.s3 import list_kb_objects
-    from infra.redis import get_doc_etag
 
     objects = list_kb_objects(kb_id)
-    queued = 0
+
+    # Pre-fetch all Postgres doc metadata for sorting (one pass)
+    pg_docs = {d["object_key"]: d for d in pg_list_docs(kb_id)}
+
+    # Determine which objects to queue, then sort oldest-first
+    to_queue: list[tuple[str, str, str]] = []  # (object_key, s3_etag, sort_key)
     skipped = 0
 
-    for object_key, s3_etag in objects:
+    for object_key, s3_etag, s3_last_modified in objects:
         if not force:
-            redis_etag = get_doc_etag(kb_id, object_key)
-            if redis_etag == s3_etag:
+            pg_etag = get_doc_etag(kb_id, object_key)
+            if pg_etag == s3_etag:
                 skipped += 1
                 continue
+        sort_date = pg_docs.get(object_key, {}).get("doc_created_at") or s3_last_modified
+        to_queue.append((object_key, s3_etag, sort_date))
 
+    to_queue.sort(key=lambda x: x[2])
+
+    for object_key, s3_etag, _ in to_queue:
         _trigger_ingest(kb_id, object_key, s3_etag, 0, force=force)
-        queued += 1
 
+    queued = len(to_queue)
     logger.info("Reindex KB: kb=%s queued=%d skipped=%d force=%s", kb_id, queued, skipped, force)
     return {"kb_id": kb_id, "queued": queued, "skipped": skipped}
 
@@ -184,19 +196,19 @@ async def reindex_doc(
 ):
     """
     Re-index a single document.
-    Compares S3 ETag vs Redis ETag; skips if unchanged unless force=true.
+    Compares S3 ETag vs Postgres ETag; skips if unchanged unless force=true.
     Returns: { queued: N, skipped: M }
     """
+    from infra.postgres import get_doc_etag
     from infra.s3 import get_object_etag
-    from infra.redis import get_doc_etag
 
     s3_etag = get_object_etag(kb_id, key)
     if s3_etag is None:
         raise NotFoundError(f"Document not found in S3: kb={kb_id} key={key}")
 
     if not force:
-        redis_etag = get_doc_etag(kb_id, key)
-        if redis_etag == s3_etag:
+        pg_etag = get_doc_etag(kb_id, key)
+        if pg_etag == s3_etag:
             return {"kb_id": kb_id, "queued": 0, "skipped": 1}
 
     _trigger_ingest(kb_id, key, s3_etag, 0, force=force)
@@ -209,8 +221,9 @@ async def recover_doc(kb_id: str, key: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
     import json
 
-    from infra.redis import get_doc_status, get_redis_client
-    from pipeline.ops.meta import set_failed  # noqa: PLC0415
+    from infra.postgres import get_doc_status
+    from infra.redis import get_redis_client
+    from pipeline.ops.meta import set_failed
 
     data = get_doc_status(kb_id, key)
     if not data:
@@ -228,11 +241,11 @@ async def recover_doc(kb_id: str, key: str):
 
 @router.get("/docs/status")
 async def all_docs_status():
-    from infra.redis import list_docs as redis_list_docs
-    from infra.redis import list_kb_ids
+    from infra.postgres import list_docs as pg_list_docs
+    from infra.postgres import list_kb_ids
 
     kb_ids = list_kb_ids()
     all_docs = {}
     for kb_id in kb_ids:
-        all_docs[kb_id] = redis_list_docs(kb_id)
+        all_docs[kb_id] = pg_list_docs(kb_id)
     return {"knowledge_bases": all_docs}

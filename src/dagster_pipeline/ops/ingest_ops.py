@@ -40,7 +40,7 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
     from pipeline.ops.meta import set_failed, set_processing
     from pipeline.ops.validate import validate
 
-    set_processing(config.kb_id, config.object_key, etag=config.etag, run_id=context.run_id)
+    set_processing(config.kb_id, config.object_key, run_id=context.run_id)
 
     try:
         should_process = validate(
@@ -132,6 +132,7 @@ def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
         file_size=valid_config.get("file_size", 0),
         doc_type=valid_config["object_key"].rsplit(".", 1)[-1],
         embedding_model=cfg.model,
+        doc_created_at=upsert_result.doc_created_at,
     )
     context.log.info(
         "ingest_job completed: kb=%s key=%s chunks=%d",

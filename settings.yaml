@@ -7,6 +7,15 @@ s3:
   region: "us-east-1"
   insecure: true
 
+postgres:
+  host: "postgresql"
+  port: 5432
+  dbname: "rag-api"
+  user: "rag-api"
+  password: "password"
+  pool_size: 5
+  connect_timeout: 30
+
 qdrant:
   host: "192.168.0.184"
   port: 6333
@@ -22,7 +31,7 @@ ingestion:
   max_file_size_mb: 10
 
 queue_worker:
-  enabled: false   # dgster는 비활성화됨
+  enabled: true   # dgster는 비활성화됨
   max_workers: 5
 
 queue_poll:
@@ -63,9 +72,11 @@ retrieval:
 
 knowledge_bases:
   - id: "kb-01"
-    description: "지식베이스 01"
+    name: "지식베이스 01"
+    description: "첫 번째 지식베이스입니다."
   - id: "kb-02"
-    description: "지식베이스 02"
+    name: "지식베이스 02"
+    description: "두 번째 지식베이스입니다."
 
 mcp:
   enabled: true

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from urllib.parse import unquote
+from urllib.parse import unquote_plus
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -55,7 +55,7 @@ async def handle_storage_event(payload: S3WebhookPayload):
 
     for record in payload.Records:
         event_name = record.eventName
-        obj_path = unquote(record.s3.object.key)
+        obj_path = unquote_plus(record.s3.object.key)
         parts = obj_path.split("/", 1)
         if len(parts) < 2:
             logger.warning("Unexpected object path (no KB prefix): %s", obj_path)

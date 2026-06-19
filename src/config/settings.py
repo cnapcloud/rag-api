@@ -30,6 +30,16 @@ class RedisSettings(BaseModel):
     db: int = 0
 
 
+class PostgresSettings(BaseModel):
+    host: str = "localhost"
+    port: int = 5432
+    dbname: str = "rag-api"
+    user: str = "dagster"
+    password: str = "dagster"
+    pool_size: int = 5
+    connect_timeout: int = 30
+
+
 class QdrantSettings(BaseModel):
     host: str = "qdrant"
     port: int = 6333
@@ -115,7 +125,9 @@ class TracingSettings(BaseModel):
 
 class KBDefinition(BaseModel):
     id: str
-    description: str = ""
+    name: str = ""
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 # ──────────────────────────────────────────────
@@ -128,6 +140,7 @@ _SETTINGS_PATH = Path(__file__).parents[2] / "settings.yaml"
 class Settings(BaseModel):
     s3: S3Settings = Field(default_factory=S3Settings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
+    postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
     queue_worker: QueueWorkerSettings = Field(default_factory=QueueWorkerSettings)

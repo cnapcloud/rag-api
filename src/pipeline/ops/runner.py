@@ -1,4 +1,4 @@
-"""pipeline/runner.py — Dagster 없이 단일 문서 파이프라인을 직접 실행."""
+"""pipeline/runner.py — Run a single-document pipeline without Dagster."""
 
 from __future__ import annotations
 
@@ -19,10 +19,10 @@ def run_ingest_pipeline(
 ) -> int:
     """Run ingest pipeline from an S3 object key (downloads from S3 internally)."""
     from exceptions import IngestValidationError
-    from infra import redis as redis_infra
+    from infra import postgres as postgres_infra
     from pipeline.ops.chunk import chunk
     from pipeline.ops.embed import embed
-    from pipeline.ops.meta import set_failed, set_processing, update_meta
+    from pipeline.ops.meta import restore_indexed, set_failed, set_processing, update_meta
     from pipeline.ops.parse import parse
     from pipeline.ops.upsert import upsert
     from pipeline.ops.validate import validate
@@ -35,15 +35,13 @@ def run_ingest_pipeline(
         raise
 
     if not should_process:
-        # If dispatch layer (QueueWorker) already set processing, restore to indexed.
-        current = redis_infra.get_doc_status(kb_id, object_key)
+        current = postgres_infra.get_doc_status(kb_id, object_key)
         if current and current.get("status") == "running":
-            from pipeline.ops.meta import restore_indexed
             restore_indexed(kb_id, object_key, etag=etag)
         logger.info("Skipping: kb=%s key=%s", kb_id, object_key)
         return 0
 
-    set_processing(kb_id, object_key, etag=etag, run_id=run_id)
+    set_processing(kb_id, object_key, run_id=run_id)
 
     try:
         documents = parse(kb_id=kb_id, object_key=object_key)
@@ -61,6 +59,7 @@ def run_ingest_pipeline(
             file_size=file_size,
             doc_type=object_key.rsplit(".", 1)[-1],
             embedding_model=cfg.model,
+            doc_created_at=upsert_result.doc_created_at,
         )
         logger.info("Ingest done: kb=%s key=%s chunks=%d", kb_id, object_key, upsert_result.chunk_count)
         return upsert_result.chunk_count
@@ -72,15 +71,15 @@ def run_ingest_pipeline(
 
 
 def run_delete_pipeline(kb_id: str, object_key: str) -> None:
-    """단일 문서 삭제 파이프라인 직접 실행."""
+    """Delete a single document from Qdrant and Postgres."""
+    from infra import postgres as postgres_infra
     from infra import qdrant as qdrant_infra
-    from infra import redis as redis_infra
     from pipeline.ops.meta import set_deleting, set_failed
 
     set_deleting(kb_id, object_key, run_id="direct")
     try:
         qdrant_infra.delete_chunks_by_doc(kb_id, object_key)
-        redis_infra.delete_doc_meta(kb_id, object_key)
+        postgres_infra.delete_doc_meta(kb_id, object_key)
         logger.info("Delete done: kb=%s key=%s", kb_id, object_key)
     except Exception as e:
         set_failed(kb_id, object_key, f"delete_pipeline failed: {e}")

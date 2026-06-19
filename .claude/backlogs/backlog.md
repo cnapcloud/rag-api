@@ -10,3 +10,5 @@
 | [US-06](US-06-sensor-dispatch-lock-false-zombie.md) | Sensor dispatch lock이 zombie로 오탐되는 버그 | todo |
 | [US-07](US-07-mcp-otel-tracing.md) | OpenTelemetry 트레이싱 — MCP _meta.traceparent → Langfuse | done |
 | [US-08](US-08-min-score-filter.md) | 검색 모드 분리 및 유사도 기반 필터 (min_score threshold) | done |
+| [US-10](US-10-doc-created-at.md) | 문서 생성일자 메타데이터 저장 및 reindex 큐 정렬 | done |
+| [US-11](US-11-postgres-schema-migration.md) | Postgres 스키마 설계 및 Redis 메타데이터 이전 | done |

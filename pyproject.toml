@@ -22,7 +22,9 @@ dependencies = [
 
     # 인프라 클라이언트
     "boto3>=1.34.0",
-    "qdrant-client>=1.9.0",
+    "psycopg[binary]>=3.1",
+    "psycopg-pool>=3.1",
+    "qdrant-client>=1.18.0,<1.19",
     "redis>=5.0.0",
     "fastembed>=0.3.0",
 

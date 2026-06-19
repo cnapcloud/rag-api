@@ -97,10 +97,15 @@ def _run_sensor(fake_redis, get_run_by_id=None):
     mock_settings = MagicMock()
     mock_settings.queue_worker.enabled = False
 
+    def _pg_get_doc_status(kb_id, object_key):
+        return fake_redis._hashes.get(f"doc:{kb_id}:{object_key}") or None
+
     ctx = build_sensor_context()
     with ExitStack() as stack:
         stack.enter_context(patch("infra.redis.get_redis_client", return_value=fake_redis))
         stack.enter_context(patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings))
+        stack.enter_context(patch("infra.postgres.get_doc_status", side_effect=_pg_get_doc_status))
+        stack.enter_context(patch("infra.postgres.set_doc_status"))
         if get_run_by_id is not None:
             mock_instance = MagicMock()
             mock_instance.get_run_by_id.side_effect = get_run_by_id
@@ -196,9 +201,16 @@ class TestQueueWorkerConcurrencyGuard:
             coro.close()
             return MagicMock()
 
-        with patch("infra.redis.get_redis_client", return_value=fake_redis):
-            with patch("asyncio.create_task", side_effect=fake_create_task):
-                asyncio.run(worker._poll())
+        def _pg_get_doc_status(kb_id, object_key):
+            return fake_redis._hashes.get(f"doc:{kb_id}:{object_key}") or None
+
+        with (
+            patch("infra.redis.get_redis_client", return_value=fake_redis),
+            patch("infra.postgres.get_doc_status", side_effect=_pg_get_doc_status),
+            patch("infra.postgres.set_doc_status"),
+            patch("asyncio.create_task", side_effect=fake_create_task),
+        ):
+            asyncio.run(worker._poll())
 
         return dispatched, requeued
 

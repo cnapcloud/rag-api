@@ -7,7 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 from opentelemetry import trace
 
-from infra.redis import get_doc_status
+from infra.postgres import get_doc_status
 from tracing.span import traced_tool
 
 

@@ -63,10 +63,10 @@ class QueueWorker:
             object_key = event.get("object_key", "")
             etag = event.get("etag", "")
 
-            from infra import redis as redis_infra
+            from infra import postgres as postgres_infra
             from pipeline.ops.meta import set_processing
 
-            doc = redis_infra.get_doc_status(kb_id, object_key)
+            doc = postgres_infra.get_doc_status(kb_id, object_key)
             if doc:
                 s = doc.get("status", "")
                 if s == "deleting":
@@ -79,7 +79,7 @@ class QueueWorker:
                     continue
                 # run_id="" → dispatch lock remnant, fall through
 
-            set_processing(kb_id, object_key, etag=etag)
+            set_processing(kb_id, object_key)
             logger.info(
                 "Dequeued upload event, scheduling ingest: kb=%s key=%s", kb_id, object_key
             )
@@ -100,10 +100,10 @@ class QueueWorker:
             kb_id = event.get("kb_id", "")
             object_key = event.get("object_key", "")
 
-            from infra import redis as redis_infra
+            from infra import postgres as postgres_infra
             from pipeline.ops.meta import set_deleting
 
-            doc = redis_infra.get_doc_status(kb_id, object_key)
+            doc = postgres_infra.get_doc_status(kb_id, object_key)
             if doc and doc.get("status") in ("running", "deleting"):
                 asyncio.create_task(self._requeue_after_delay(DELETE_QUEUE_KEY, raw))
                 logger.info("Delete event delayed (busy): kb=%s key=%s", kb_id, object_key)

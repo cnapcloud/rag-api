@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
+import psycopg
 import redis as redis_lib
 from botocore.exceptions import ClientError
 from fastapi import FastAPI
@@ -41,7 +42,7 @@ async def _lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="RAG API",
-        description="LlamaIndex + Dagster 기반 RAG 파이프라인 API",
+        description="LlamaIndex + Dagster RAG pipeline API",
         version="0.1.0",
         lifespan=_lifespan,
     )
@@ -116,6 +117,11 @@ def _register_exception_handlers(app: FastAPI) -> None:
         logger.error("Redis error: %s", exc)
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
+    @app.exception_handler(psycopg.Error)
+    async def postgres_error_handler(_request: Request, exc: psycopg.Error) -> JSONResponse:
+        logger.error("Postgres error: %s", exc)
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
     @app.exception_handler(ConfigError)
     async def config_error_handler(_request: Request, exc: ConfigError) -> JSONResponse:
         logger.error("Config error: %s", exc)
@@ -158,15 +164,18 @@ def _start_queue_worker(app: FastAPI) -> None:
 async def _init_infrastructure() -> None:
     """
     On startup:
-    1. Ensure S3 bucket exists
-    2. Auto-create knowledge_bases defined in settings.yaml
+    1. Run Postgres migrations
+    2. Ensure S3 bucket exists
+    3. Auto-create knowledge_bases defined in settings.yaml
     """
     from config.settings import get_settings
+    from infra.postgres import list_kb_ids, register_kb, run_migrations
     from infra.qdrant import ensure_collection
-    from infra.redis import list_kb_ids, register_kb
     from infra.s3 import ensure_bucket
 
     cfg = get_settings()
+
+    run_migrations()
 
     try:
         ensure_bucket()
@@ -176,13 +185,13 @@ async def _init_infrastructure() -> None:
     try:
         existing_kb_ids = set(list_kb_ids())
     except Exception as e:
-        logger.warning("Redis unavailable, skipping KB auto-creation: %s", e)
+        logger.warning("Postgres unavailable, skipping KB auto-creation: %s", e)
         return
 
     for kb_def in cfg.knowledge_bases:
         try:
             if kb_def.id not in existing_kb_ids:
-                register_kb(kb_def.id, kb_def.description)
+                register_kb(kb_def.id, kb_def.name, kb_def.description, kb_def.tags)
                 ensure_collection(kb_def.id)
                 logger.info("KB auto-created: %s", kb_def.id)
         except Exception as e:

@@ -120,14 +120,14 @@ def event_queue_sensor(context: SensorEvaluationContext):
         file_size = event.get("file_size", 0)
         force = event.get("force", False)
 
-        from infra import redis as redis_infra
+        from infra import postgres as postgres_infra
         from pipeline.ops.meta import set_processing
 
-        doc = redis_infra.get_doc_status(kb_id, object_key)
+        doc = postgres_infra.get_doc_status(kb_id, object_key)
         if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, kb_id, object_key):
             continue
 
-        set_processing(kb_id, object_key, etag=etag)
+        set_processing(kb_id, object_key)
         logger.info("Dispatching ingest_job from queue: kb=%s key=%s", kb_id, object_key)
         yield RunRequest(
             run_key=str(uuid4()),
@@ -164,10 +164,10 @@ def event_queue_sensor(context: SensorEvaluationContext):
         kb_id = event.get("kb_id", "")
         object_key = event.get("object_key", "")
 
-        from infra import redis as redis_infra
+        from infra import postgres as postgres_infra
         from pipeline.ops.meta import set_deleting
 
-        doc = redis_infra.get_doc_status(kb_id, object_key)
+        doc = postgres_infra.get_doc_status(kb_id, object_key)
         if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, kb_id, object_key):
             continue
 

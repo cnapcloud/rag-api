@@ -21,6 +21,7 @@ class UpsertResult:
     object_key: str
     chunk_count: int
     doc_key: str
+    doc_created_at: str = ""
 
 
 def upsert(
@@ -41,6 +42,8 @@ def upsert(
 
     # 기존 청크 삭제
     qdrant_infra.delete_chunks_by_doc(kb_id, object_key, client)
+
+    doc_created_at = embedded_nodes[0].node.metadata.get("doc_created_at", "") if embedded_nodes else ""
 
     # Qdrant PointStruct 변환
     points: list[qmodels.PointStruct] = []
@@ -63,6 +66,7 @@ def upsert(
             "chunk_size": meta.get("chunk_size", 0),
             "chunk_overlap": meta.get("chunk_overlap", 0),
             "updated_at": updated_at,
+            "doc_created_at": doc_created_at,
         }
 
         points.append(
@@ -87,4 +91,5 @@ def upsert(
         object_key=object_key,
         chunk_count=len(points),
         doc_key=doc_key,
+        doc_created_at=doc_created_at,
     )

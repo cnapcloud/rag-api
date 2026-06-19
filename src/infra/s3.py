@@ -200,14 +200,35 @@ def get_object_etag(kb_id: str, object_key: str) -> str | None:
         return None
 
 
-def list_kb_objects(kb_id: str) -> list[tuple[str, str]]:
-    """Return (object_key, etag) pairs for all objects under a KB prefix."""
+def get_object_last_modified(kb_id: str, object_key: str) -> str:
+    """Return the LastModified timestamp for an object as an ISO 8601 UTC string.
+
+    Returns empty string if the object does not exist or the call fails.
+    """
+    from botocore.exceptions import ClientError
+
+    cfg = get_settings().s3
+    client = get_s3_client()
+    full_key = f"{kb_id}/{object_key}"
+    try:
+        response = client.head_object(Bucket=cfg.rag_bucket, Key=full_key)
+        last_modified = response.get("LastModified")
+        return last_modified.isoformat() if last_modified else ""
+    except ClientError:
+        return ""
+
+
+def list_kb_objects(kb_id: str) -> list[tuple[str, str, str]]:
+    """Return (object_key, etag, last_modified_iso) triples for all objects under a KB prefix.
+
+    last_modified_iso is an ISO 8601 UTC string (e.g. '2024-03-15T09:00:00+00:00').
+    """
     from botocore.exceptions import ClientError
 
     cfg = get_settings().s3
     client = get_s3_client()
     prefix = f"{kb_id}/"
-    results: list[tuple[str, str]] = []
+    results: list[tuple[str, str, str]] = []
     try:
         paginator = client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=cfg.rag_bucket, Prefix=prefix):
@@ -216,7 +237,9 @@ def list_kb_objects(kb_id: str) -> list[tuple[str, str]]:
                 if not key:
                     continue
                 etag = obj.get("ETag", "").strip('"')
-                results.append((key, etag))
+                last_modified = obj.get("LastModified")
+                last_modified_iso = last_modified.isoformat() if last_modified else ""
+                results.append((key, etag, last_modified_iso))
     except ClientError as e:
         logger.error("S3 list_kb_objects failed: kb=%s err=%s", kb_id, e)
     return results

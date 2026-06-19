@@ -36,7 +36,7 @@ def delete_chunks_op(context: OpExecutionContext, config: DeleteConfig):
 @op
 def delete_meta_op(context: OpExecutionContext, delete_result: dict):
     """Redis 문서 메타데이터 삭제."""
-    from infra import redis as redis_infra
+    from infra import postgres as postgres_infra
 
-    redis_infra.delete_doc_meta(delete_result["kb_id"], delete_result["object_key"])
-    context.log.info("Redis meta deleted: %s/%s", delete_result["kb_id"], delete_result["object_key"])
+    postgres_infra.delete_doc_meta(delete_result["kb_id"], delete_result["object_key"])
+    context.log.info("Postgres meta deleted: %s/%s", delete_result["kb_id"], delete_result["object_key"])

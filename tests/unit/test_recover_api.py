@@ -32,7 +32,7 @@ def _patch_redis_queue():
 class TestRecoverDocEndpoint:
 
     def test_running_doc_returns_202_and_requeues(self, client):
-        """status=running doc → 202, set_failed called, event pushed to upload queue."""
+        """status=running doc -> 202, set_failed called, event pushed to upload queue."""
         fake_redis, queued = _patch_redis_queue()
         set_failed_calls = []
 
@@ -40,7 +40,7 @@ class TestRecoverDocEndpoint:
             set_failed_calls.append({"kb_id": kb_id, "key": key})
 
         with (
-            patch("infra.redis.get_doc_status", return_value={"status": "running", "run_id": "r1", "etag": "e1"}),
+            patch("infra.postgres.get_doc_status", return_value={"status": "running", "run_id": "r1", "etag": "e1"}),
             patch("pipeline.ops.meta.set_failed", side_effect=fake_set_failed),
             patch("infra.redis.get_redis_client", return_value=fake_redis),
         ):
@@ -64,22 +64,22 @@ class TestRecoverDocEndpoint:
         assert event["force"] is True
 
     def test_indexed_doc_returns_409(self, client):
-        """status=indexed doc → 409 ConflictError."""
-        with patch("infra.redis.get_doc_status", return_value={"status": "indexed"}):
+        """status=indexed doc -> 409 ConflictError."""
+        with patch("infra.postgres.get_doc_status", return_value={"status": "indexed"}):
             resp = client.post("/api/kb/kb-test/docs/doc.pdf/recover")
 
         assert resp.status_code == 409
 
     def test_missing_doc_returns_404(self, client):
-        """Non-existent doc → 404 NotFoundError."""
-        with patch("infra.redis.get_doc_status", return_value=None):
+        """Non-existent doc -> 404 NotFoundError."""
+        with patch("infra.postgres.get_doc_status", return_value=None):
             resp = client.post("/api/kb/kb-test/docs/missing.pdf/recover")
 
         assert resp.status_code == 404
 
     def test_failed_doc_returns_409(self, client):
-        """status=failed doc → 409 (not recoverable via this endpoint)."""
-        with patch("infra.redis.get_doc_status", return_value={"status": "failed", "error": "oops"}):
+        """status=failed doc -> 409 (not recoverable via this endpoint)."""
+        with patch("infra.postgres.get_doc_status", return_value={"status": "failed", "error": "oops"}):
             resp = client.post("/api/kb/kb-test/docs/doc.pdf/recover")
 
         assert resp.status_code == 409

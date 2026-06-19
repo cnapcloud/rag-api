@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from llama_index.core import Document, SimpleDirectoryReader
@@ -14,6 +15,47 @@ from infra.s3 import download_object
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".pdf", ".md", ".docx", ".txt", ".hwp"}
+
+
+def _extract_doc_created_at(file_path: Path, suffix: str, kb_id: str, object_key: str) -> str:
+    """Extract document creation date from file metadata.
+
+    Priority: PDF CreationDate / DOCX core_properties.created → S3 LastModified fallback.
+    Returns an ISO 8601 UTC string, or empty string if all sources fail.
+    """
+    dt: datetime | None = None
+
+    try:
+        if suffix == ".pdf":
+            import pypdf
+
+            reader = pypdf.PdfReader(str(file_path))
+            if reader.metadata and reader.metadata.creation_date:
+                raw = reader.metadata.creation_date
+                dt = raw if isinstance(raw, datetime) else None
+        elif suffix == ".docx":
+            import docx
+
+            doc = docx.Document(str(file_path))
+            created = doc.core_properties.created
+            if created:
+                dt = created if isinstance(created, datetime) else None
+    except Exception as e:
+        logger.debug("doc_created_at extraction failed (will fallback): file=%s err=%s", file_path.name, e)
+
+    if dt is not None:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
+
+    # Fallback: S3 LastModified
+    try:
+        from infra.s3 import get_object_last_modified
+
+        return get_object_last_modified(kb_id, object_key)
+    except Exception as e:
+        logger.debug("S3 LastModified fallback failed: kb=%s key=%s err=%s", kb_id, object_key, e)
+        return ""
 
 
 def _get_file_extractor() -> dict:
@@ -65,6 +107,8 @@ def parse(kb_id: str, object_key: str, local_path: Path | None = None) -> list[D
         )
         documents = reader.load_data()
 
+        doc_created_at = _extract_doc_created_at(file_path, suffix, kb_id, object_key)
+
         # 문서 메타데이터 보강
         for doc in documents:
             doc.metadata.update(
@@ -73,10 +117,14 @@ def parse(kb_id: str, object_key: str, local_path: Path | None = None) -> list[D
                     "doc_key": f"{kb_id}/{object_key}",
                     "object_key": object_key,
                     "doc_type": suffix.lstrip("."),
+                    "doc_created_at": doc_created_at,
                 }
             )
 
-        logger.info("Parsed: kb=%s key=%s documents=%d", kb_id, object_key, len(documents))
+        logger.info(
+            "Parsed: kb=%s key=%s documents=%d doc_created_at=%s",
+            kb_id, object_key, len(documents), doc_created_at or "n/a",
+        )
         return documents
 
 
