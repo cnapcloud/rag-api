@@ -186,9 +186,16 @@ async def hybrid_search(
         else:
             all_results.append(res)  # type: ignore[arg-type]
 
-    from rag.merger import rrf_merge
+    if mode == "similarity":
+        merged = sorted(
+            [r for results in all_results for r in results],
+            key=lambda r: r.score,
+            reverse=True,
+        )
+    else:
+        from rag.merger import rrf_merge
+        merged = rrf_merge(all_results)
 
-    merged = rrf_merge(all_results)
     logger.info(
         "Search done: mode=%s kbs=%d candidates=%d",
         mode,

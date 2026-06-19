@@ -173,14 +173,9 @@ def delete_kb_prefix(kb_id: str) -> int:
 
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=cfg.rag_bucket, Prefix=prefix):
-        objects = page.get("Contents", [])
-        if objects:
-            delete_keys = [{"Key": obj["Key"]} for obj in objects]
-            client.delete_objects(
-                Bucket=cfg.rag_bucket,
-                Delete={"Objects": delete_keys},
-            )
-            count += len(delete_keys)
+        for obj in page.get("Contents", []):
+            client.delete_object(Bucket=cfg.rag_bucket, Key=obj["Key"])
+            count += 1
 
     logger.info("S3 KB prefix deleted: %s count=%d", prefix, count)
     return count

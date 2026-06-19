@@ -46,10 +46,15 @@ Filter(must=[FieldCondition(key="doc_key", match=MatchValue(value=doc_key))])
 ```
 knowledge_bases
 ├── kb_id        TEXT PRIMARY KEY
-├── description  TEXT NOT NULL DEFAULT ''
+├── kb_name      TEXT NOT NULL DEFAULT ''
+├── tags         TEXT[] NOT NULL DEFAULT '{}'
+├── description  TEXT DEFAULT NULL
 ├── status       TEXT NOT NULL DEFAULT 'active'   -- active | deleting
 └── created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
+
+Indexes:
+- `idx_kb_tags` on `tags` using GIN
 
 ### `documents` table
 

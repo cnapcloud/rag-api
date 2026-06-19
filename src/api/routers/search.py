@@ -19,21 +19,21 @@ router = APIRouter()
 
 class RerankOptions(BaseModel):
     enabled: bool = True
-    top_n: int = 3
+    top_n: int | None = None   # None → settings 값 사용
 
 
 class HybridOptions(BaseModel):
-    alpha: float = 0.5
+    alpha: float | None = None   # None → settings 값 사용
     merge_strategy: str = "rrf"
 
 
 class SimilarityOptions(BaseModel):
-    min_score: float | None = None   # None → settings 기본값 사용
+    min_score: float | None = None   # None → settings 값 사용
 
 
 class SearchOptions(BaseModel):
     mode: Literal["hybrid", "similarity"] = "hybrid"
-    top_k: int = 10
+    top_k: int | None = None   # None → settings 값 사용
     hybrid: HybridOptions = Field(default_factory=HybridOptions)
     similarity: SimilarityOptions = Field(default_factory=SimilarityOptions)
     rerank: RerankOptions = Field(default_factory=RerankOptions)
@@ -90,6 +90,10 @@ async def search(req: SearchRequest):
     if not req.kb_ids:
         raise IngestValidationError("kb_ids must contain at least one entry.")
 
+    # Priority: request option → settings → settings default
+    _top_k = req.options.top_k if req.options.top_k is not None else cfg.top_k
+    _alpha = req.options.hybrid.alpha if req.options.hybrid.alpha is not None else cfg.hybrid.alpha
+    _top_n = req.options.rerank.top_n if req.options.rerank.top_n is not None else cfg.rerank.top_n
     _min_score = (
         req.options.similarity.min_score
         if req.options.similarity.min_score is not None
@@ -102,8 +106,8 @@ async def search(req: SearchRequest):
     candidates = await hybrid_search(
         query=req.query,
         kb_ids=req.kb_ids,
-        top_k=req.options.top_k,
-        alpha=req.options.hybrid.alpha,
+        top_k=_top_k,
+        alpha=_alpha,
         mode=req.options.mode,
         min_score=_min_score,
     )
@@ -115,13 +119,14 @@ async def search(req: SearchRequest):
     fallback_used = False
 
     if rerank_enabled and candidates:
+        _top_n = min(_top_n, len(candidates))
         final_results, rerank_provider, fallback_used = await rerank_async(
             query=req.query,
             results=candidates,
-            top_n=req.options.rerank.top_n,
+            top_n=_top_n,
         )
     else:
-        final_results = candidates[: req.options.rerank.top_n]
+        final_results = candidates[:_top_k]
 
     latency_ms = int((time.monotonic() - start) * 1000)
 
