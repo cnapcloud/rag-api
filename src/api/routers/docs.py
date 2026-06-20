@@ -91,13 +91,13 @@ async def upload_docs_batch(
             )
             results.append(
                 {
-                    "filename": doc_source,
+                    "doc_source": doc_source,
                     "status_url": f"/api/kb/{kb_id}/docs/{doc_source}/status",
                     "etag": etag,
                 }
             )
         except (IngestValidationError, ClientError) as e:
-            results.append({"filename": file.filename, "error": str(e), "status": "error"})
+            results.append({"doc_source": file.filename, "error": str(e), "status": "error"})
 
     return {"results": results}
 

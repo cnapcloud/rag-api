@@ -89,6 +89,7 @@ def _make_result(text="hello", kb_id="kb-a", doc_key="doc.pdf", score=0.9):
         chunk_id="chunk-1",
         kb_id=kb_id,
         doc_key=doc_key,
+        doc_source="doc.pdf",
         doc_type="pdf",
         chunk_index=0,
         page_num=1,

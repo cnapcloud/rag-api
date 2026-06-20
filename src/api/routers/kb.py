@@ -34,8 +34,20 @@ async def list_kbs():
             "kb_name": meta.get("kb_name", "") if meta else "",
             "description": meta.get("description") if meta else None,
             "tags": meta.get("tags", []) if meta else [],
+            "status": meta.get("status", "active") if meta else "active",
+            "created_at": meta.get("created_at", "") if meta else "",
         })
     return {"knowledge_bases": result}
+
+
+@router.get("/kb/{kb_id}")
+async def get_kb(kb_id: str):
+    from infra.postgres import get_kb_meta
+
+    meta = get_kb_meta(kb_id)
+    if meta is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+    return meta
 
 
 @router.post("/kb", status_code=201)
