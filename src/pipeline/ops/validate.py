@@ -1,4 +1,4 @@
-"""validate Op — ETag 중복 체크 및 파일 크기 제한."""
+"""validate Op — ETag duplicate check and file size guard."""
 
 from __future__ import annotations
 
@@ -6,16 +6,16 @@ import logging
 
 from config.settings import get_settings
 from exceptions import IngestValidationError
-from infra import redis as redis_infra
+from infra import postgres as postgres_infra
 
 logger = logging.getLogger(__name__)
 
 
-def validate(kb_id: str, object_key: str, etag: str, file_size: int = 0, force: bool = False) -> bool:
+def validate(kb_id: str, doc_source: str, etag: str, file_size: int = 0, force: bool = False) -> bool:
     """
     Returns:
-        True  → proceed
-        False → skip (ETag unchanged or already processing)
+        True  -> proceed
+        False -> skip (ETag unchanged)
 
     Raises:
         IngestValidationError: file too large
@@ -29,10 +29,10 @@ def validate(kb_id: str, object_key: str, etag: str, file_size: int = 0, force: 
         )
 
     if not force:
-        stored_etag = redis_infra.get_doc_etag(kb_id, object_key)
+        stored_etag = postgres_infra.get_doc_etag(kb_id, doc_source)
         if stored_etag and stored_etag == etag:
-            logger.info("ETag unchanged, skipping: kb=%s key=%s etag=%s", kb_id, object_key, etag)
+            logger.info("ETag unchanged, skipping: kb=%s key=%s etag=%s", kb_id, doc_source, etag)
             return False
 
-    logger.info("Validation passed: kb=%s key=%s etag=%s force=%s", kb_id, object_key, etag, force)
+    logger.info("Validation passed: kb=%s key=%s etag=%s force=%s", kb_id, doc_source, etag, force)
     return True

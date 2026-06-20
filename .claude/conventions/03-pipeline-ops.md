@@ -9,8 +9,8 @@
 ## 파이프라인 계약
 
 ```python
-validate(kb_id, object_key, etag, file_size=0) → bool
-parse(kb_id, object_key)                        → list[Document]
+validate(kb_id, doc_source, etag, file_size=0) → bool
+parse(kb_id, doc_source)                        → list[Document]
 chunk(documents, strategy, chunk_size, ...)     → list[BaseNode]
 embed(nodes)                                    → list[BaseNode]  # embedding 주입됨
 upsert(kb_id, doc_key, nodes)                  → UpsertResult

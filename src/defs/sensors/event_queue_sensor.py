@@ -9,13 +9,13 @@ from uuid import uuid4
 
 from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, SkipReason, sensor
 
-from dagster_pipeline.jobs.delete_job import delete_job
-from dagster_pipeline.jobs.ingest_job import ingest_job
+from defs.jobs.delete_job import delete_job
+from defs.jobs.ingest_job import ingest_job
+
+from pipeline.enqueue import DELETE_QUEUE_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_QUEUE_KEY = "rag:upload:queue"
-DELETE_QUEUE_KEY = "rag:delete:queue"
 UPLOAD_DELAY_KEY = "rag:upload:delay"
 DELETE_DELAY_KEY = "rag:delete:delay"
 
@@ -34,6 +34,20 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
         return
     r.zrem(delay_key, *items)
     for item in items:
+        try:
+            event = json.loads(item)
+        except json.JSONDecodeError:
+            r.lpush(main_key, item)
+            continue
+        kb_id = event.get("kb_id", "")
+        doc_source = event.get("doc_source", "")
+        if kb_id and doc_source:
+            from infra import postgres as pg
+            from pipeline.ops.meta import set_pending
+            doc = pg.get_doc_status(kb_id, doc_source)
+            current = doc.get("status", "") if doc else ""
+            if current not in ("running", "deleting"):
+                set_pending(kb_id, doc_source)
         r.lpush(main_key, item)
     logger.debug("Drained %d item(s) from %s to %s", len(items), delay_key, main_key)
 
@@ -46,7 +60,7 @@ def _is_blocked_by_active_run(
     delay_sec: float,
     raw: str,
     kb_id: str,
-    object_key: str,
+    doc_source: str,
 ) -> bool:
     """Return True and enqueue delay if an active Dagster run is blocking this event.
 
@@ -64,14 +78,14 @@ def _is_blocked_by_active_run(
         run = context.instance.get_run_by_id(prev_run_id)
         if run is not None and not run.is_finished:
             r.zadd(delay_key, {raw: time.time() + delay_sec})
-            logger.info("Event delayed (%s): kb=%s key=%s delay=%ss", s, kb_id, object_key, delay_sec)
+            logger.info("Event delayed (%s): kb=%s key=%s delay=%ss", s, kb_id, doc_source, delay_sec)
             return True
         set_failed(
-            kb_id, object_key,
+            kb_id, doc_source,
             f"Recovered: previous run no longer active (run_id={prev_run_id})",
             run_id=prev_run_id,
         )
-        logger.warning("Zombie run recovered: kb=%s key=%s prev_run_id=%s", kb_id, object_key, prev_run_id)
+        logger.warning("Zombie run recovered: kb=%s key=%s prev_run_id=%s", kb_id, doc_source, prev_run_id)
 
     return False
 
@@ -115,20 +129,20 @@ def event_queue_sensor(context: SensorEvaluationContext):
             continue
 
         kb_id = event.get("kb_id", "")
-        object_key = event.get("object_key", "")
+        doc_source = event.get("doc_source", "")
         etag = event.get("etag", "")
         file_size = event.get("file_size", 0)
         force = event.get("force", False)
 
-        from infra import redis as redis_infra
+        from infra import postgres as postgres_infra
         from pipeline.ops.meta import set_processing
 
-        doc = redis_infra.get_doc_status(kb_id, object_key)
-        if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, kb_id, object_key):
+        doc = postgres_infra.get_doc_status(kb_id, doc_source)
+        if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, kb_id, doc_source):
             continue
 
-        set_processing(kb_id, object_key, etag=etag)
-        logger.info("Dispatching ingest_job from queue: kb=%s key=%s", kb_id, object_key)
+        set_processing(kb_id, doc_source)
+        logger.info("Dispatching ingest_job from queue: kb=%s key=%s", kb_id, doc_source)
         yield RunRequest(
             run_key=str(uuid4()),
             job_name=ingest_job.name,
@@ -137,7 +151,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
                     "validate_op": {
                         "config": {
                             "kb_id": kb_id,
-                            "object_key": object_key,
+                            "doc_source": doc_source,
                             "etag": etag,
                             "file_size": file_size,
                             "force": force,
@@ -162,18 +176,18 @@ def event_queue_sensor(context: SensorEvaluationContext):
             continue
 
         kb_id = event.get("kb_id", "")
-        object_key = event.get("object_key", "")
+        doc_source = event.get("doc_source", "")
 
-        from infra import redis as redis_infra
+        from infra import postgres as postgres_infra
         from pipeline.ops.meta import set_deleting
 
-        doc = redis_infra.get_doc_status(kb_id, object_key)
-        if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, kb_id, object_key):
+        doc = postgres_infra.get_doc_status(kb_id, doc_source)
+        if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, kb_id, doc_source):
             continue
 
-        set_deleting(kb_id, object_key)
+        set_deleting(kb_id, doc_source)
 
-        logger.info("Dispatching delete_job from queue: kb=%s key=%s", kb_id, object_key)
+        logger.info("Dispatching delete_job from queue: kb=%s key=%s", kb_id, doc_source)
         yield RunRequest(
             run_key=str(uuid4()),
             job_name=delete_job.name,
@@ -182,7 +196,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
                     "delete_chunks_op": {
                         "config": {
                             "kb_id": kb_id,
-                            "object_key": object_key,
+                            "doc_source": doc_source,
                         }
                     }
                 }
@@ -197,27 +211,4 @@ def event_queue_sensor(context: SensorEvaluationContext):
         yield SkipReason("No events in Redis queue — no jobs to trigger")
 
 
-def enqueue_upload_event(
-    kb_id: str,
-    object_key: str,
-    etag: str,
-    file_size: int = 0,
-    force: bool = False,
-) -> None:
-    """Push a PUT event to the Redis upload queue."""
-    from infra.redis import get_redis_client
-
-    r = get_redis_client()
-    payload = json.dumps(
-        {"kb_id": kb_id, "object_key": object_key, "etag": etag, "file_size": file_size, "force": force}
-    )
-    r.lpush(UPLOAD_QUEUE_KEY, payload)
-
-
-def enqueue_delete_event(kb_id: str, object_key: str) -> None:
-    """Push a DELETE event to the Redis delete queue."""
-    from infra.redis import get_redis_client
-
-    r = get_redis_client()
-    payload = json.dumps({"kb_id": kb_id, "object_key": object_key})
-    r.lpush(DELETE_QUEUE_KEY, payload)
+# enqueue_upload_event and enqueue_delete_event have been moved to pipeline.enqueue

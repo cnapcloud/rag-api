@@ -17,31 +17,31 @@ Status: done
 ## 공통 로직 (meta.py)
 
 ```python
-def is_doc_busy(kb_id, object_key) -> bool:
+def is_doc_busy(kb_id, doc_source) -> bool:
     """Returns True if document has an in-progress operation (processing or deleting)."""
-    status = redis_infra.get_doc_status(kb_id, object_key)
+    status = redis_infra.get_doc_status(kb_id, doc_source)
     return bool(status and status.get("status") in ("processing", "deleting"))
 
-def set_deleting(kb_id, object_key, run_id="") -> None:
-    redis_infra.set_doc_status(kb_id, object_key, {"status": "deleting", "run_id": run_id})
+def set_deleting(kb_id, doc_source, run_id="") -> None:
+    redis_infra.set_doc_status(kb_id, doc_source, {"status": "deleting", "run_id": run_id})
 
-def try_set_processing(kb_id, object_key, etag="", run_id="") -> bool:
-    if is_doc_busy(kb_id, object_key):
+def try_set_processing(kb_id, doc_source, etag="", run_id="") -> bool:
+    if is_doc_busy(kb_id, doc_source):
         return False
-    set_processing(kb_id, object_key, etag=etag, run_id=run_id)
+    set_processing(kb_id, doc_source, etag=etag, run_id=run_id)
     return True
 
-def try_set_deleting(kb_id, object_key, run_id="") -> bool:
-    if is_doc_busy(kb_id, object_key):
+def try_set_deleting(kb_id, doc_source, run_id="") -> bool:
+    if is_doc_busy(kb_id, doc_source):
         return False
-    set_deleting(kb_id, object_key, run_id=run_id)
+    set_deleting(kb_id, doc_source, run_id=run_id)
     return True
 
-def restore_indexed(kb_id, object_key, etag="") -> None:
+def restore_indexed(kb_id, doc_source, etag="") -> None:
     """ETag-skip 경로에서 processing → indexed 복원."""
-    redis_infra.set_doc_status(kb_id, object_key, {"status": "indexed"})
+    redis_infra.set_doc_status(kb_id, doc_source, {"status": "indexed"})
     if etag:
-        redis_infra.set_doc_etag(kb_id, object_key, etag)
+        redis_infra.set_doc_etag(kb_id, doc_source, etag)
 ```
 
 ## 상태 전환

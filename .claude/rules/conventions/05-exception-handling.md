@@ -89,7 +89,7 @@ All other failures propagate.
 ## Message Rules
 
 - All exception messages in English.
-- Include relevant context (`kb_id`, `object_key`) where available.
+- Include relevant context (`kb_id`, `doc_source`) where available.
 - `from e` chaining is mandatory — never `raise DomainError(...) from None`.
 - No silent swallowing outside the explicit silent-fail policy above.
 

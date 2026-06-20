@@ -5,8 +5,16 @@ s3:
   rag_bucket: "rag-api"
   dagster_bucket: "dagster-storage"
   region: "us-east-1"
-  poll_interval_sec: 10
   insecure: true
+
+postgres:
+  host: "postgresql"
+  port: 5432
+  dbname: "rag-api"
+  user: "rag-api"
+  password: "password"
+  pool_size: 5
+  connect_timeout: 30
 
 qdrant:
   host: "qdrant"
@@ -21,11 +29,15 @@ redis:
 
 ingestion:
   max_file_size_mb: 200
-  max_workers: 4             # QueueWorker 전용 — queue_worker_enabled: true 일 때만 사용
-  poll_interval_sec: 5        # Redis 큐 폴링 주기 (초)
-  max_runs_per_tick: 5        # Dagster sensor 한 tick당 최대 RunRequest 수
-  processing_delay_sec: 10    # delay queue retry interval (seconds)
-  queue_worker_enabled: true  # QueueWorker 활성화
+
+queue_worker:
+  enabled: false # true이면 dagster가 비활성화됨
+  max_workers: 4
+
+queue_poll:
+  poll_interval_sec: 5
+  max_per_poll: 5
+  retry_interval_sec: 10
 
 chunking:
   strategy: "recursive"    # recursive / semantic
@@ -44,8 +56,11 @@ embedding:
 retrieval:
   mode: "hybrid"
   top_k: 10
-  alpha: 0.5
-  merge_strategy: "rrf"
+  hybrid:
+    alpha: 0.5                  # alpha=1.0 -> dense only, alpha=0.0 -> sparse only
+    merge_strategy: "rrf"
+  similarity:
+    min_score: 0.0              # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
   rerank:
     enabled: false
     provider: "jina"
@@ -57,16 +72,24 @@ retrieval:
 
 knowledge_bases:
   - id: "kb-01"
+    name: "지식베이스 01"
     description: "지식베이스 01"
   - id: "kb-02"
+    name: "지식베이스 02"
     description: "지식베이스 02"
-
-dagster:
-  executor: "in_process"  
 
 mcp:
   enabled: true
   transport: streamable-http
+  host: "0.0.0.0"
+  port: 8001
+
+tracing:
+  enabled: false
+  langfuse_baseurl: ""
+  langfuse_public_key: ""
+  langfuse_secret_key: ""
+  service_name: "rag-api"
 
 logging:
   level: INFO

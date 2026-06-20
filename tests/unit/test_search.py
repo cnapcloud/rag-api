@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rag.merger import rrf_merge
-from rag.retriever import SearchResult
+from rag.retriever import SearchResult, search_similarity_kb
 
 
 def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchResult:
@@ -55,3 +55,89 @@ class TestRRFMerge:
         kb2 = [_make_result(f"k2-{i}", 1.0 - i * 0.1, "kb2") for i in range(3)]
         merged = rrf_merge([kb1, kb2])
         assert len(merged) == 6
+
+
+class TestSearchSimilarityKb:
+    def _make_node(self, node_id: str, score: float, metadata: dict | None = None):
+        node = MagicMock()
+        node.node_id = node_id
+        node.score = score
+        node.metadata = metadata or {
+            "doc_key": "kb-test/doc.pdf",
+            "doc_type": "pdf",
+            "chunk_index": 0,
+            "updated_at": "2025-06-07T00:00:00Z",
+        }
+        node.get_content.return_value = "text content"
+        return node
+
+    def _make_settings(self, top_k: int = 10):
+        s = MagicMock()
+        s.retrieval.top_k = top_k
+        return s
+
+    def test_uses_dense_only_mode(self):
+        mock_index = MagicMock()
+        mock_retriever = MagicMock()
+        mock_index.as_retriever.return_value = mock_retriever
+        mock_retriever.retrieve.return_value = []
+
+        with (
+            patch("rag.retriever._build_index", return_value=mock_index),
+            patch("config.settings.get_settings", return_value=self._make_settings()),
+        ):
+            search_similarity_kb("kb-test", "query")
+
+        call_kwargs = mock_index.as_retriever.call_args.kwargs
+        assert call_kwargs["vector_store_query_mode"] == "default"
+
+    def test_min_score_filters_low_results(self):
+        nodes = [
+            self._make_node("chunk-high", 0.8),
+            self._make_node("chunk-low", 0.3),
+            self._make_node("chunk-mid", 0.5),
+        ]
+        mock_index = MagicMock()
+        mock_retriever = MagicMock()
+        mock_index.as_retriever.return_value = mock_retriever
+        mock_retriever.retrieve.return_value = nodes
+
+        with (
+            patch("rag.retriever._build_index", return_value=mock_index),
+            patch("config.settings.get_settings", return_value=self._make_settings()),
+        ):
+            results = search_similarity_kb("kb-test", "query", min_score=0.4)
+
+        assert len(results) == 2
+        assert all(r.score >= 0.4 for r in results)
+        assert not any(r.chunk_id == "chunk-low" for r in results)
+
+    def test_min_score_zero_returns_all(self):
+        nodes = [self._make_node(f"chunk-{i}", 0.1 * i) for i in range(5)]
+        mock_index = MagicMock()
+        mock_retriever = MagicMock()
+        mock_index.as_retriever.return_value = mock_retriever
+        mock_retriever.retrieve.return_value = nodes
+
+        with (
+            patch("rag.retriever._build_index", return_value=mock_index),
+            patch("config.settings.get_settings", return_value=self._make_settings()),
+        ):
+            results = search_similarity_kb("kb-test", "query", min_score=0.0)
+
+        assert len(results) == 5
+
+    def test_all_below_threshold_returns_empty(self):
+        nodes = [self._make_node("chunk-0", 0.1), self._make_node("chunk-1", 0.2)]
+        mock_index = MagicMock()
+        mock_retriever = MagicMock()
+        mock_index.as_retriever.return_value = mock_retriever
+        mock_retriever.retrieve.return_value = nodes
+
+        with (
+            patch("rag.retriever._build_index", return_value=mock_index),
+            patch("config.settings.get_settings", return_value=self._make_settings()),
+        ):
+            results = search_similarity_kb("kb-test", "query", min_score=0.5)
+
+        assert results == []

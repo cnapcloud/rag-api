@@ -47,17 +47,7 @@ def test_list_knowledge_bases_empty():
 # get_document_status
 # ──────────────────────────────────────────────
 
-def test_get_document_status_indexed(mock_redis):
-    from infra.redis import set_doc_status
-
-    with patch("infra.redis.get_redis_client", return_value=mock_redis):
-        set_doc_status("kb-a", "doc.pdf", {
-            "status": "indexed",
-            "updated_at": "2026-06-08T00:00:00Z",
-            "size_bytes": "12345",
-            "etag": "abc123",
-        })
-
+def test_get_document_status_indexed():
     with patch("mcp_server.tools.docs.get_doc_status") as mock_get:
         mock_get.return_value = {
             "status": "indexed",

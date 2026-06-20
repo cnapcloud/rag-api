@@ -40,7 +40,9 @@ def test_search_returns_results(client):
 
     # Override settings so reranking is enabled (settings.yaml may have it disabled)
     mock_settings = MagicMock()
+    mock_settings.retrieval.mode = "hybrid"
     mock_settings.retrieval.rerank.enabled = True
+    mock_settings.retrieval.similarity.min_score = 0.0
 
     with (
         patch("rag.retriever.hybrid_search", return_value=mock_results),
@@ -62,12 +64,59 @@ def test_search_returns_results(client):
     assert len(data["results"]) == 2
     assert data["meta"]["reranked"] is True
     assert data["meta"]["rerank_provider"] == "jina"
+    assert data["meta"]["score_threshold"] == 0.0
 
 
 def test_search_empty_kb_ids(client):
     resp = client.post(
         "/api/search",
         json={"query": "테스트", "kb_ids": []},
+    )
+    assert resp.status_code == 422
+
+
+def test_search_similarity_mode_with_min_score(client):
+    from unittest.mock import MagicMock
+
+    mock_results = [_make_result(f"chunk-{i}") for i in range(2)]
+
+    mock_settings = MagicMock()
+    mock_settings.retrieval.mode = "similarity"
+    mock_settings.retrieval.rerank.enabled = False
+    mock_settings.retrieval.similarity.min_score = 0.0
+
+    with (
+        patch("rag.retriever.hybrid_search", return_value=mock_results),
+        patch("config.settings.get_settings", return_value=mock_settings),
+    ):
+        resp = client.post(
+            "/api/search",
+            json={
+                "query": "test query",
+                "kb_ids": ["kb-test"],
+                "options": {
+                    "mode": "similarity",
+                    "top_k": 5,
+                    "similarity": {"min_score": 0.4},
+                    "rerank": {"enabled": False, "top_n": 5},
+                },
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["meta"]["search_mode"] == "similarity"
+    assert data["meta"]["score_threshold"] == 0.4
+
+
+def test_search_invalid_mode_returns_422(client):
+    resp = client.post(
+        "/api/search",
+        json={
+            "query": "test",
+            "kb_ids": ["kb-test"],
+            "options": {"mode": "invalid"},
+        },
     )
     assert resp.status_code == 422
 

@@ -21,12 +21,24 @@ import typer
 
 def _configure_logging() -> None:
     from config.settings import get_settings
-    level = getattr(logging, get_settings().logging.level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+
+    cfg = get_settings()
+    level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
+
+    if cfg.tracing.enabled:
+        from tracing.setup import OtelContextFilter
+
+        fmt = "%(asctime)s %(levelname)s [%(trace_id)s:%(span_id)s] %(name)s: %(message)s"
+        logging.basicConfig(level=level, format=fmt, datefmt="%Y-%m-%d %H:%M:%S")
+        otel_filter = OtelContextFilter()
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(otel_filter)
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
 _configure_logging()
 
@@ -57,13 +69,16 @@ def ingest(
     content_type = mimetypes.guess_type(str(file))[0] or "application/octet-stream"
 
     typer.echo(f"Uploading to S3: kb={kb_id} key={file.name}")
-    etag = upload_object(kb_id=kb_id, object_key=file.name, data=content, content_type=content_type)
+    etag = upload_object(kb_id=kb_id, doc_source=file.name, data=content, content_type=content_type)
     typer.echo(f"Uploaded: etag={etag}")
 
-    from dagster_pipeline.sensors.event_queue_sensor import enqueue_upload_event
+    if force:
+        from pipeline.enqueue import enqueue_upload_event
 
-    enqueue_upload_event(kb_id=kb_id, object_key=file.name, etag=etag, file_size=len(content), force=force)
-    typer.echo(f"Queued for ingest: kb={kb_id} key={file.name}")
+        enqueue_upload_event(kb_id=kb_id, doc_source=file.name, etag=etag, file_size=len(content), force=True)
+        typer.echo(f"Force-queued for ingest: kb={kb_id} key={file.name}")
+    else:
+        typer.echo(f"Ingest will be triggered by S3 webhook: kb={kb_id} key={file.name}")
 
 
 # ──────────────────────────────────────────────
@@ -101,6 +116,15 @@ def serve_mcp(
     server = create_mcp_server(port=_port if uses_http else None)
 
     server.run(transport=_transport)
+
+
+@app.command()
+def migrate():
+    """Apply pending Postgres schema migrations."""
+    from infra.postgres import run_migrations
+
+    run_migrations()
+    typer.echo("Migrations applied.")
 
 
 @app.command()
@@ -161,25 +185,27 @@ def search(
 @kb_app.command("create")
 def kb_create(
     kb_id: str = typer.Option(..., "--kb-id"),
-    description: str = typer.Option("", "--description"),
+    kb_name: str = typer.Option("", "--kb-name"),
+    description: str | None = typer.Option(None, "--description"),
+    tags: list[str] = typer.Option([], "--tag"),
 ):
-    """KB 생성 (Redis + Qdrant)."""
+    """KB 생성 (Postgres + Qdrant)."""
+    from infra.postgres import register_kb
     from infra.qdrant import ensure_collection
-    from infra.redis import register_kb
 
-    register_kb(kb_id, description)
+    register_kb(kb_id, kb_name, description, tags)
     ensure_collection(kb_id)
-    typer.echo(f"KB 생성 완료: {kb_id}")
+    typer.echo(f"KB created: {kb_id}")
 
 
 @kb_app.command("list")
 def kb_list():
     """KB 목록 조회."""
-    from infra.redis import list_kb_ids
+    from infra.postgres import list_kb_ids
 
     ids = list_kb_ids()
     if not ids:
-        typer.echo("KB가 없습니다.")
+        typer.echo("No knowledge bases found.")
         return
     for kb_id in sorted(ids):
         typer.echo(f"  - {kb_id}")
@@ -187,15 +213,15 @@ def kb_list():
 
 @kb_app.command("delete")
 def kb_delete(kb_id: str = typer.Option(..., "--kb-id")):
-    """KB 삭제 (Qdrant + S3 + Redis)."""
-    from infra.s3 import delete_kb_prefix
+    """KB 삭제 (Qdrant + S3 + Postgres)."""
+    from infra.postgres import delete_kb_meta
     from infra.qdrant import drop_collection
-    from infra.redis import delete_kb_meta
+    from infra.s3 import delete_kb_prefix
 
     drop_collection(kb_id)
     delete_kb_prefix(kb_id)
     delete_kb_meta(kb_id)
-    typer.echo(f"KB 삭제 완료: {kb_id}")
+    typer.echo(f"KB deleted: {kb_id}")
 
 
 

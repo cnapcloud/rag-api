@@ -16,9 +16,10 @@ async def liveness():
 @router.get("/ready")
 async def readiness():
     from config.settings import get_settings
-    from infra.s3 import get_s3_client
+    from infra.postgres import ping as postgres_ping
     from infra.qdrant import ping as qdrant_ping
     from infra.redis import ping as redis_ping
+    from infra.s3 import get_s3_client
 
     cfg = get_settings()
     checks: dict[str, bool] = {}
@@ -26,8 +27,11 @@ async def readiness():
     # Qdrant
     checks["qdrant"] = qdrant_ping()
 
-    # Redis
+    # Redis (queue only)
     checks["redis"] = redis_ping()
+
+    # Postgres
+    checks["postgres"] = postgres_ping()
 
     # S3
     try:
@@ -37,7 +41,7 @@ async def readiness():
     except Exception:
         checks["s3"] = False
 
-    # Ollama (provider=ollama 인 경우만)
+    # Ollama (provider=ollama only)
     if cfg.embedding.provider == "ollama":
         try:
             import httpx

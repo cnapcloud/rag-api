@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -19,13 +19,23 @@ router = APIRouter()
 
 class RerankOptions(BaseModel):
     enabled: bool = True
-    top_n: int = 3
+    top_n: int | None = None   # None → settings 값 사용
+
+
+class HybridOptions(BaseModel):
+    alpha: float | None = None   # None → settings 값 사용
+    merge_strategy: str = "rrf"
+
+
+class SimilarityOptions(BaseModel):
+    min_score: float | None = None   # None → settings 값 사용
 
 
 class SearchOptions(BaseModel):
-    mode: str = "hybrid"
-    top_k: int = 10
-    alpha: float = 0.5
+    mode: Literal["hybrid", "similarity"] | None = None   # None → settings 값 사용
+    top_k: int | None = None   # None → settings 값 사용
+    hybrid: HybridOptions = Field(default_factory=HybridOptions)
+    similarity: SimilarityOptions = Field(default_factory=SimilarityOptions)
     rerank: RerankOptions = Field(default_factory=RerankOptions)
 
 
@@ -52,6 +62,7 @@ class SearchMeta(BaseModel):
     total_candidates: int
     returned: int
     search_mode: str
+    score_threshold: float
     reranked: bool
     rerank_provider: str
     rerank_fallback: bool
@@ -79,14 +90,27 @@ async def search(req: SearchRequest):
     if not req.kb_ids:
         raise IngestValidationError("kb_ids must contain at least one entry.")
 
+    # Priority: request option → settings → settings default
+    _mode = req.options.mode if req.options.mode is not None else cfg.mode
+    _top_k = req.options.top_k if req.options.top_k is not None else cfg.top_k
+    _alpha = req.options.hybrid.alpha if req.options.hybrid.alpha is not None else cfg.hybrid.alpha
+    _top_n = req.options.rerank.top_n if req.options.rerank.top_n is not None else cfg.rerank.top_n
+    _min_score = (
+        req.options.similarity.min_score
+        if req.options.similarity.min_score is not None
+        else cfg.similarity.min_score
+    )
+
     start = time.monotonic()
 
-    # 1. Hybrid Search (복수 KB 병렬 + RRF 머지)
+    # 1. Search (hybrid or similarity)
     candidates = await hybrid_search(
         query=req.query,
         kb_ids=req.kb_ids,
-        top_k=req.options.top_k,
-        alpha=req.options.alpha,
+        top_k=_top_k,
+        alpha=_alpha,
+        mode=_mode,
+        min_score=_min_score,
     )
     total_candidates = len(candidates)
 
@@ -96,13 +120,14 @@ async def search(req: SearchRequest):
     fallback_used = False
 
     if rerank_enabled and candidates:
+        _top_n = min(_top_n, len(candidates))
         final_results, rerank_provider, fallback_used = await rerank_async(
             query=req.query,
             results=candidates,
-            top_n=req.options.rerank.top_n,
+            top_n=_top_n,
         )
     else:
-        final_results = candidates[: req.options.rerank.top_n]
+        final_results = candidates[:_top_k]
 
     latency_ms = int((time.monotonic() - start) * 1000)
 
@@ -126,7 +151,8 @@ async def search(req: SearchRequest):
         meta=SearchMeta(
             total_candidates=total_candidates,
             returned=len(final_results),
-            search_mode=req.options.mode,
+            search_mode=_mode,
+            score_threshold=_min_score,
             reranked=rerank_enabled and not fallback_used,
             rerank_provider=rerank_provider,
             rerank_fallback=fallback_used,

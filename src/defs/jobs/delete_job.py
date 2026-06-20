@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dagster import in_process_executor, job
 
-from dagster_pipeline.ops.delete_ops import delete_chunks_op, delete_failure_hook, delete_meta_op
+from defs.ops.delete_ops import delete_chunks_op, delete_failure_hook, delete_meta_op
 
 
 @job(

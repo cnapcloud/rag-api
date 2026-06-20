@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dagster import in_process_executor, job
 
-from dagster_pipeline.ops.ingest_ops import (
+from defs.ops.ingest_ops import (
     chunk_op,
     embed_op,
     ingest_failure_hook,

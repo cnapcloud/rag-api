@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from dagster import Definitions
 
-from dagster_pipeline.jobs.delete_job import delete_job
-from dagster_pipeline.jobs.ingest_job import ingest_job
-from dagster_pipeline.resources.resources import build_resources_from_settings
-from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
+from defs.jobs.delete_job import delete_job
+from defs.jobs.ingest_job import ingest_job
+from defs.resources.resources import build_resources_from_settings
+from defs.sensors.event_queue_sensor import event_queue_sensor
 
 defs = Definitions(
     jobs=[ingest_job, delete_job],

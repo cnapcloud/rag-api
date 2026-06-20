@@ -48,12 +48,10 @@ class S3PickleIOManager(IOManager):
         from botocore.exceptions import ClientError
 
         try:
-            client.head_bucket(Bucket=self._bucket)
+            client.create_bucket(Bucket=self._bucket)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in ("NoSuchBucket", "404"):
-                client.create_bucket(Bucket=self._bucket)
-            else:
+            if error_code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
                 raise
 
     def handle_output(self, context, obj) -> None:

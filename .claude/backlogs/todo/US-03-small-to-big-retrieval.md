@@ -43,9 +43,9 @@ Qdrant 포인트 (벡터 O)           Qdrant 포인트 (벡터 없음, payload�
   payload:                           text: "...큰 문맥..."
     parent_node_id: <uuid>  <-----   doc_key: "kb-id::object-key"
     text: "...작은 청크..."            kb_id: "kb-id"
-    doc_key: "kb-id::object-key"     object_key: "doc.pdf"
+    doc_key: "kb-id::object-key"     doc_source: "doc.pdf"
     kb_id: "kb-id"
-    object_key: "doc.pdf"
+    doc_source: "doc.pdf"
 ```
 
 ### Retrieval 구조
@@ -75,7 +75,7 @@ client.retrieve(ids=parent_ids)  ← ID 직접 조회 (벡터 연산 없음)
 ### Delete 구조
 
 ```
-delete_chunks_by_doc(kb_id, object_key)
+delete_chunks_by_doc(kb_id, doc_source)
     |
     v
 Qdrant 필터: doc_key = "kb-id::object-key"

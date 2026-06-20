@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # ──────────────────────────────────────────────
 # 하위 모델
@@ -22,7 +20,6 @@ class S3Settings(BaseModel):
     rag_bucket: str = "rag-api"
     dagster_bucket: str = "dagster-storage"
     region: str = "us-east-1"
-    poll_interval_sec: int = 10
     insecure: bool = False
 
 
@@ -31,6 +28,16 @@ class RedisSettings(BaseModel):
     port: int = 6379
     password: str = ""
     db: int = 0
+
+
+class PostgresSettings(BaseModel):
+    host: str = "localhost"
+    port: int = 5432
+    dbname: str = "rag-api"
+    user: str = "dagster"
+    password: str = "dagster"
+    pool_size: int = 5
+    connect_timeout: int = 30
 
 
 class QdrantSettings(BaseModel):
@@ -80,11 +87,20 @@ class RerankerSettings(BaseModel):
     fallback_on_error: bool = True
 
 
-class RetrievalSettings(BaseModel):
-    mode: str = "hybrid"
-    top_k: int = 10
+class HybridSearchSettings(BaseModel):
     alpha: float = 0.5
     merge_strategy: str = "rrf"
+
+
+class SimilaritySearchSettings(BaseModel):
+    min_score: float = 0.0
+
+
+class RetrievalSettings(BaseModel):
+    mode: Literal["hybrid", "similarity"] = "hybrid"
+    top_k: int = 10
+    hybrid: HybridSearchSettings = Field(default_factory=HybridSearchSettings)
+    similarity: SimilaritySearchSettings = Field(default_factory=SimilaritySearchSettings)
     rerank: RerankerSettings = Field(default_factory=RerankerSettings)
 
 
@@ -99,9 +115,19 @@ class McpSettings(BaseModel):
     port: int = 8001
 
 
+class TracingSettings(BaseModel):
+    enabled: bool = False
+    langfuse_baseurl: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    service_name: str = "rag-api"
+
+
 class KBDefinition(BaseModel):
     id: str
-    description: str = ""
+    name: str = ""
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 # ──────────────────────────────────────────────
@@ -114,6 +140,7 @@ _SETTINGS_PATH = Path(__file__).parents[2] / "settings.yaml"
 class Settings(BaseModel):
     s3: S3Settings = Field(default_factory=S3Settings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
+    postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
     queue_worker: QueueWorkerSettings = Field(default_factory=QueueWorkerSettings)
@@ -122,11 +149,12 @@ class Settings(BaseModel):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
+    tracing: TracingSettings = Field(default_factory=TracingSettings)
     logging: LogSettings = Field(default_factory=LogSettings)
     knowledge_bases: list[KBDefinition] = Field(default_factory=list)
 
     @classmethod
-    def from_yaml(cls, path: Path = _SETTINGS_PATH) -> "Settings":
+    def from_yaml(cls, path: Path = _SETTINGS_PATH) -> Settings:
         if path.exists():
             with open(path) as f:
                 data: dict[str, Any] = yaml.safe_load(f) or {}

@@ -12,6 +12,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      postgresql:
+        condition: service_healthy
       redis:
         condition: service_healthy
       qdrant:
@@ -24,11 +26,11 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: dagster-rag-api
-    command: dagster api grpc -h 0.0.0.0 -p 4000 -f src/dagster_pipeline/definitions.py
+    command: dagster api grpc -h 0.0.0.0 -p 4000 -f src/defs/definitions.py
     environment:
       PYTHONPATH: /app/src
       DAGSTER_HOME: /opt/dagster/dagster_home
-      DAGSTER_POSTGRES_URL: postgresql://dagster:dagster@dagster-postgresql:5432/dagster
+      DAGSTER_POSTGRES_URL: postgresql://dagster:password@postgresql:5432/dagster
     volumes:
       - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
       - dagster-storage:/opt/dagster/dagster_home/storage
@@ -36,7 +38,7 @@ services:
     ports:
       - "4000:4000"
     depends_on:
-      dagster-postgresql:
+      postgresql:
         condition: service_healthy
 
   dagster-webserver:
@@ -54,14 +56,14 @@ services:
       - /opt/dagster/workspace.yaml
     environment:
       DAGSTER_HOME: /opt/dagster/dagster_home
-      DAGSTER_POSTGRES_URL: postgresql://dagster:dagster@dagster-postgresql:5432/dagster
+      DAGSTER_POSTGRES_URL: postgresql://dagster:password@postgresql:5432/dagster
     volumes:
       - ./workspace.yaml:/opt/dagster/workspace.yaml
       - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
     ports:
       - "3000:3000"
     depends_on:
-      dagster-postgresql:
+      postgresql:
         condition: service_healthy
       dagster-rag-api:
         condition: service_started
@@ -78,27 +80,28 @@ services:
       - /opt/dagster/workspace.yaml
     environment:
       DAGSTER_HOME: /opt/dagster/dagster_home
-      DAGSTER_POSTGRES_URL: postgresql://dagster:dagster@dagster-postgresql:5432/dagster
+      DAGSTER_POSTGRES_URL: postgresql://dagster:password@postgresql:5432/dagster
     volumes:
       - ./workspace.yaml:/opt/dagster/workspace.yaml
       - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
     depends_on:
-      dagster-postgresql:
+      postgresql:
         condition: service_healthy
       dagster-rag-api:
         condition: service_started
 
-  dagster-postgresql:
+  postgresql:
     image: postgres:15-alpine
-    container_name: dagster-postgresql
+    container_name: postgresql
     environment:
-      POSTGRES_USER: dagster
-      POSTGRES_PASSWORD: dagster
-      POSTGRES_DB: dagster
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
     volumes:
-      - dagster-pg-data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dagster"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -118,7 +121,7 @@ services:
       retries: 5
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.18.2
     container_name: qdrant
     ports:
       - "6333:6333"
@@ -172,7 +175,7 @@ services:
     restart: "no"
 
 volumes:
-  dagster-pg-data:
+  pg_data:
   dagster-storage:
   redis-data:
   qdrant-data:

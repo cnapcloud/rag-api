@@ -65,7 +65,7 @@ def ensure_bucket() -> None:
 class S3Event:
     event_type: str       # "PUT" | "DELETE"
     kb_id: str
-    object_key: str       # "pdf/keycloak-guide.pdf" (without kb_id prefix)
+    doc_source: str       # "pdf/keycloak-guide.pdf" (without kb_id prefix)
     etag: str
     size: int
     cursor: str           # next polling cursor (event timestamp etc.)
@@ -98,7 +98,7 @@ def poll_s3_events(cursor: str | None = None) -> list[S3Event]:
                 parts = key.split("/", 1)
                 if len(parts) < 2:
                     continue
-                kb_id, object_key = parts[0], parts[1]
+                kb_id, doc_source = parts[0], parts[1]
 
                 last_modified = obj["LastModified"]
                 if cursor and last_modified:
@@ -110,7 +110,7 @@ def poll_s3_events(cursor: str | None = None) -> list[S3Event]:
                     S3Event(
                         event_type="PUT",
                         kb_id=kb_id,
-                        object_key=object_key,
+                        doc_source=doc_source,
                         etag=obj.get("ETag", "").strip('"'),
                         size=obj.get("Size", 0),
                         cursor=last_modified.isoformat(),
@@ -126,11 +126,11 @@ def poll_s3_events(cursor: str | None = None) -> list[S3Event]:
 # File CRUD
 # ──────────────────────────────────────────────
 
-def download_object(kb_id: str, object_key: str, dest: Path) -> Path:
+def download_object(kb_id: str, doc_source: str, dest: Path) -> Path:
     """Download a file from S3 to a local path."""
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     client.download_file(cfg.rag_bucket, full_key, str(dest))
@@ -138,11 +138,11 @@ def download_object(kb_id: str, object_key: str, dest: Path) -> Path:
     return dest
 
 
-def upload_object(kb_id: str, object_key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+def upload_object(kb_id: str, doc_source: str, data: bytes, content_type: str = "application/octet-stream") -> str:
     """Upload a file to S3 and return the ETag."""
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
 
     response = client.put_object(
         Bucket=cfg.rag_bucket,
@@ -155,11 +155,11 @@ def upload_object(kb_id: str, object_key: str, data: bytes, content_type: str = 
     return etag
 
 
-def delete_object(kb_id: str, object_key: str) -> None:
+def delete_object(kb_id: str, doc_source: str) -> None:
     """Delete an object from S3."""
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
     client.delete_object(Bucket=cfg.rag_bucket, Key=full_key)
     logger.info("S3 object deleted: %s", full_key)
 
@@ -173,41 +173,69 @@ def delete_kb_prefix(kb_id: str) -> int:
 
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=cfg.rag_bucket, Prefix=prefix):
-        objects = page.get("Contents", [])
-        if objects:
-            delete_keys = [{"Key": obj["Key"]} for obj in objects]
-            client.delete_objects(
-                Bucket=cfg.rag_bucket,
-                Delete={"Objects": delete_keys},
-            )
-            count += len(delete_keys)
+        for obj in page.get("Contents", []):
+            client.delete_object(Bucket=cfg.rag_bucket, Key=obj["Key"])
+            count += 1
 
     logger.info("S3 KB prefix deleted: %s count=%d", prefix, count)
     return count
 
 
-def get_object_etag(kb_id: str, object_key: str) -> str | None:
+def get_object_etag(kb_id: str, doc_source: str) -> str | None:
     """Return the ETag for an object, or None if it doesn't exist."""
+    etag, _ = get_object_meta(kb_id, doc_source)
+    return etag
+
+
+def get_object_meta(kb_id: str, doc_source: str) -> tuple[str | None, int]:
+    """Return (etag, size) for an object using a single head_object call.
+
+    Returns (None, 0) if the object does not exist or the call fails.
+    """
     from botocore.exceptions import ClientError
 
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
     try:
         response = client.head_object(Bucket=cfg.rag_bucket, Key=full_key)
-        return response.get("ETag", "").strip('"')
+        etag = response.get("ETag", "").strip('"') or None
+        size = response.get("ContentLength", 0)
+        return etag, size
     except ClientError:
-        return None
+        return None, 0
 
 
-def list_kb_objects(kb_id: str) -> list[tuple[str, str]]:
-    """Return (object_key, etag) pairs for all objects under a KB prefix."""
+def get_object_last_modified(kb_id: str, doc_source: str) -> str:
+    """Return the LastModified timestamp for an object as an ISO 8601 UTC string.
+
+    Returns empty string if the object does not exist or the call fails.
+    """
+    from botocore.exceptions import ClientError
+
+    cfg = get_settings().s3
+    client = get_s3_client()
+    full_key = f"{kb_id}/{doc_source}"
+    try:
+        response = client.head_object(Bucket=cfg.rag_bucket, Key=full_key)
+        last_modified = response.get("LastModified")
+        return last_modified.isoformat() if last_modified else ""
+    except ClientError:
+        return ""
+
+
+def list_kb_objects(kb_id: str) -> list[tuple[str, str, str, int]]:
+    """Return (doc_source, etag, last_modified_iso, size) tuples for all objects under a KB prefix.
+
+    last_modified_iso is an ISO 8601 UTC string (e.g. '2024-03-15T09:00:00+00:00').
+    size is the object size in bytes (0 if unavailable).
+    """
     from botocore.exceptions import ClientError
 
     cfg = get_settings().s3
     client = get_s3_client()
     prefix = f"{kb_id}/"
-    results: list[tuple[str, str]] = []
+    results: list[tuple[str, str, str, int]] = []
     try:
         paginator = client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=cfg.rag_bucket, Prefix=prefix):
@@ -216,7 +244,10 @@ def list_kb_objects(kb_id: str) -> list[tuple[str, str]]:
                 if not key:
                     continue
                 etag = obj.get("ETag", "").strip('"')
-                results.append((key, etag))
+                last_modified = obj.get("LastModified")
+                last_modified_iso = last_modified.isoformat() if last_modified else ""
+                size = obj.get("Size", 0)
+                results.append((key, etag, last_modified_iso, size))
     except ClientError as e:
         logger.error("S3 list_kb_objects failed: kb=%s err=%s", kb_id, e)
     return results

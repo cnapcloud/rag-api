@@ -38,8 +38,8 @@ def get_qdrant_client() -> QdrantClient:
     return _client
 
 
-def make_doc_key(kb_id: str, object_key: str) -> str:
-    return f"{kb_id}{_DOC_KEY_SEP}{object_key}"
+def make_doc_key(kb_id: str, doc_source: str) -> str:
+    return f"{kb_id}{_DOC_KEY_SEP}{doc_source}"
 
 
 # ──────────────────────────────────────────────
@@ -111,11 +111,11 @@ def drop_collection(
 
 def delete_chunks_by_doc(
     kb_id: str,
-    object_key: str,
+    doc_source: str,
     client: QdrantClient | None = None,
 ) -> None:
     c = client or get_qdrant_client()
-    doc_key = make_doc_key(kb_id, object_key)
+    doc_key = make_doc_key(kb_id, doc_source)
     c.delete(
         collection_name=kb_id,
         points_selector=qmodels.FilterSelector(
@@ -129,7 +129,7 @@ def delete_chunks_by_doc(
             )
         ),
     )
-    logger.info("Qdrant chunks deleted: kb=%s key=%s", kb_id, object_key)
+    logger.info("Qdrant chunks deleted: kb=%s key=%s", kb_id, doc_source)
 
 
 def upsert_chunks(
