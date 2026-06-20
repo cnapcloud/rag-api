@@ -71,8 +71,8 @@ class FakeRedis:
         pass
 
     # helpers
-    def set_doc_status(self, kb_id, object_key, status):
-        self._hashes[f"doc:{kb_id}:{object_key}"] = {"status": status}
+    def set_doc_status(self, kb_id, doc_source, status):
+        self._hashes[f"doc:{kb_id}:{doc_source}"] = {"status": status}
 
     def upload_queue_size(self):
         return len(self._lists.get("rag:upload:queue", []))
@@ -97,8 +97,8 @@ def _run_sensor(fake_redis, get_run_by_id=None):
     mock_settings = MagicMock()
     mock_settings.queue_worker.enabled = False
 
-    def _pg_get_doc_status(kb_id, object_key):
-        return fake_redis._hashes.get(f"doc:{kb_id}:{object_key}") or None
+    def _pg_get_doc_status(kb_id, doc_source):
+        return fake_redis._hashes.get(f"doc:{kb_id}:{doc_source}") or None
 
     ctx = build_sensor_context()
     with ExitStack() as stack:
@@ -125,7 +125,7 @@ class TestSensorConcurrencyGuard:
         active_run.is_finished = False
 
         r = FakeRedis()
-        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "object_key": "doc.pdf"}))
+        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "doc_source": "doc.pdf"}))
         r._hashes["doc:kb-1:doc.pdf"] = {"status": "running", "run_id": "run-ingest-active"}
 
         result = _run_sensor(r, get_run_by_id=lambda _: active_run)
@@ -141,7 +141,7 @@ class TestSensorConcurrencyGuard:
 
         r = FakeRedis()
         r.lpush("rag:upload:queue", json.dumps(
-            {"kb_id": "kb-1", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
+            {"kb_id": "kb-1", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
         ))
         r._hashes["doc:kb-1:doc.pdf"] = {"status": "deleting", "run_id": "run-delete-active"}
 
@@ -154,7 +154,7 @@ class TestSensorConcurrencyGuard:
     def test_ac1_delete_proceeds_after_ingest_completes(self):
         """AC-1 follow-up (sensor): ingest 완료(indexed) 후 delete → 정상 dispatch."""
         r = FakeRedis()
-        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "object_key": "doc.pdf"}))
+        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "doc_source": "doc.pdf"}))
         r.set_doc_status("kb-1", "doc.pdf", "indexed")  # ingest 완료 상태
 
         result = _run_sensor(r)
@@ -167,7 +167,7 @@ class TestSensorConcurrencyGuard:
         """AC-2 follow-up (sensor): delete 완료(메타 없음) 후 ingest → 정상 dispatch."""
         r = FakeRedis()
         r.lpush("rag:upload:queue", json.dumps(
-            {"kb_id": "kb-1", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
+            {"kb_id": "kb-1", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
         ))
         # delete 완료 → 메타 없음 (doc hash 자체가 존재하지 않음)
 
@@ -201,8 +201,8 @@ class TestQueueWorkerConcurrencyGuard:
             coro.close()
             return MagicMock()
 
-        def _pg_get_doc_status(kb_id, object_key):
-            return fake_redis._hashes.get(f"doc:{kb_id}:{object_key}") or None
+        def _pg_get_doc_status(kb_id, doc_source):
+            return fake_redis._hashes.get(f"doc:{kb_id}:{doc_source}") or None
 
         with (
             patch("infra.redis.get_redis_client", return_value=fake_redis),
@@ -217,7 +217,7 @@ class TestQueueWorkerConcurrencyGuard:
     def test_ac1_delete_delayed_while_ingest_processing(self):
         """AC-1 (QueueWorker): ingest processing 중 delete 요청 → requeue, _run_delete 없음."""
         r = FakeRedis()
-        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "object_key": "doc.pdf"}))
+        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "doc_source": "doc.pdf"}))
         r.set_doc_status("kb-1", "doc.pdf", "running")
 
         dispatched, requeued = self._run_poll(r)
@@ -230,7 +230,7 @@ class TestQueueWorkerConcurrencyGuard:
         """AC-2 (QueueWorker): delete 진행 중 ingest 요청 → requeue, _run_ingest 없음."""
         r = FakeRedis()
         r.lpush("rag:upload:queue", json.dumps(
-            {"kb_id": "kb-1", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
+            {"kb_id": "kb-1", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
         ))
         r.set_doc_status("kb-1", "doc.pdf", "deleting")
 
@@ -243,7 +243,7 @@ class TestQueueWorkerConcurrencyGuard:
     def test_ac1_delete_proceeds_after_ingest_completes(self):
         """AC-1 follow-up (QueueWorker): ingest 완료 후 delete → _run_delete dispatch."""
         r = FakeRedis()
-        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "object_key": "doc.pdf"}))
+        r.lpush("rag:delete:queue", json.dumps({"kb_id": "kb-1", "doc_source": "doc.pdf"}))
         r.set_doc_status("kb-1", "doc.pdf", "indexed")
 
         dispatched, requeued = self._run_poll(r)
@@ -255,7 +255,7 @@ class TestQueueWorkerConcurrencyGuard:
         """AC-2 follow-up (QueueWorker): delete 완료(메타 없음) 후 ingest → _run_ingest dispatch."""
         r = FakeRedis()
         r.lpush("rag:upload:queue", json.dumps(
-            {"kb_id": "kb-1", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
+            {"kb_id": "kb-1", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}
         ))
         # 메타 없음 → is_doc_busy() False
 

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class UpsertResult:
     kb_id: str
-    object_key: str
+    doc_source: str
     chunk_count: int
     doc_key: str
     doc_created_at: str = ""
@@ -26,7 +26,7 @@ class UpsertResult:
 
 def upsert(
     kb_id: str,
-    object_key: str,
+    doc_source: str,
     embedded_nodes: list[EmbeddedNode],
 ) -> UpsertResult:
     """
@@ -34,14 +34,14 @@ def upsert(
     2. 신규 청크 배치 삽입 (Dense + Sparse 벡터)
     """
     client = qdrant_infra.get_qdrant_client()
-    doc_key = qdrant_infra.make_doc_key(kb_id, object_key)
+    doc_key = qdrant_infra.make_doc_key(kb_id, doc_source)
     updated_at = datetime.now(timezone.utc).isoformat()
 
     # 컬렉션 보장
     qdrant_infra.ensure_collection(kb_id, client)
 
     # 기존 청크 삭제
-    qdrant_infra.delete_chunks_by_doc(kb_id, object_key, client)
+    qdrant_infra.delete_chunks_by_doc(kb_id, doc_source, client)
 
     doc_created_at = embedded_nodes[0].node.metadata.get("doc_created_at", "") if embedded_nodes else ""
 
@@ -55,7 +55,7 @@ def upsert(
             "kb_id": kb_id,
             "doc_key": doc_key,
             "doc_type": meta.get("doc_type", ""),
-            "object_key": object_key,
+            "doc_source": doc_source,
             "chunk_index": meta.get("chunk_index", 0),
             "page_num": meta.get("page_label", None),
             "total_chunks": meta.get("total_chunks", len(embedded_nodes)),
@@ -85,10 +85,10 @@ def upsert(
 
     qdrant_infra.upsert_chunks(kb_id, points, client)
 
-    logger.info("Upsert done: kb=%s key=%s chunks=%d", kb_id, object_key, len(points))
+    logger.info("Upsert done: kb=%s key=%s chunks=%d", kb_id, doc_source, len(points))
     return UpsertResult(
         kb_id=kb_id,
-        object_key=object_key,
+        doc_source=doc_source,
         chunk_count=len(points),
         doc_key=doc_key,
         doc_created_at=doc_created_at,

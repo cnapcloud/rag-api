@@ -49,7 +49,7 @@ class TestRecoverDocEndpoint:
         assert resp.status_code == 202
         body = resp.json()
         assert body["kb_id"] == "kb-test"
-        assert body["object_key"] == "doc.pdf"
+        assert body["doc_source"] == "doc.pdf"
         assert body["queued"] is True
 
         assert len(set_failed_calls) == 1
@@ -60,7 +60,7 @@ class TestRecoverDocEndpoint:
         assert key == "rag:upload:queue"
         event = json.loads(raw)
         assert event["kb_id"] == "kb-test"
-        assert event["object_key"] == "doc.pdf"
+        assert event["doc_source"] == "doc.pdf"
         assert event["force"] is True
 
     def test_indexed_doc_returns_409(self, client):

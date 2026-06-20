@@ -115,9 +115,9 @@ except Exception as e:
 ```python
 # 올바름 — runner.py, sensor 등 최상위 진입점에서만 허용
 try:
-    run_pipeline(kb_id, object_key)
+    run_pipeline(kb_id, doc_source)
 except Exception as e:
-    logger.exception("Pipeline failed: kb=%s key=%s", kb_id, object_key)
+    logger.exception("Pipeline failed: kb=%s key=%s", kb_id, doc_source)
     raise
 
 # 잘못됨 — 중간 레이어에서 Exception을 넓게 잡고 삼킴

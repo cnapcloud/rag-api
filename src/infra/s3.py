@@ -65,7 +65,7 @@ def ensure_bucket() -> None:
 class S3Event:
     event_type: str       # "PUT" | "DELETE"
     kb_id: str
-    object_key: str       # "pdf/keycloak-guide.pdf" (without kb_id prefix)
+    doc_source: str       # "pdf/keycloak-guide.pdf" (without kb_id prefix)
     etag: str
     size: int
     cursor: str           # next polling cursor (event timestamp etc.)
@@ -98,7 +98,7 @@ def poll_s3_events(cursor: str | None = None) -> list[S3Event]:
                 parts = key.split("/", 1)
                 if len(parts) < 2:
                     continue
-                kb_id, object_key = parts[0], parts[1]
+                kb_id, doc_source = parts[0], parts[1]
 
                 last_modified = obj["LastModified"]
                 if cursor and last_modified:
@@ -110,7 +110,7 @@ def poll_s3_events(cursor: str | None = None) -> list[S3Event]:
                     S3Event(
                         event_type="PUT",
                         kb_id=kb_id,
-                        object_key=object_key,
+                        doc_source=doc_source,
                         etag=obj.get("ETag", "").strip('"'),
                         size=obj.get("Size", 0),
                         cursor=last_modified.isoformat(),
@@ -126,11 +126,11 @@ def poll_s3_events(cursor: str | None = None) -> list[S3Event]:
 # File CRUD
 # ──────────────────────────────────────────────
 
-def download_object(kb_id: str, object_key: str, dest: Path) -> Path:
+def download_object(kb_id: str, doc_source: str, dest: Path) -> Path:
     """Download a file from S3 to a local path."""
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     client.download_file(cfg.rag_bucket, full_key, str(dest))
@@ -138,11 +138,11 @@ def download_object(kb_id: str, object_key: str, dest: Path) -> Path:
     return dest
 
 
-def upload_object(kb_id: str, object_key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+def upload_object(kb_id: str, doc_source: str, data: bytes, content_type: str = "application/octet-stream") -> str:
     """Upload a file to S3 and return the ETag."""
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
 
     response = client.put_object(
         Bucket=cfg.rag_bucket,
@@ -155,11 +155,11 @@ def upload_object(kb_id: str, object_key: str, data: bytes, content_type: str = 
     return etag
 
 
-def delete_object(kb_id: str, object_key: str) -> None:
+def delete_object(kb_id: str, doc_source: str) -> None:
     """Delete an object from S3."""
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
     client.delete_object(Bucket=cfg.rag_bucket, Key=full_key)
     logger.info("S3 object deleted: %s", full_key)
 
@@ -181,13 +181,13 @@ def delete_kb_prefix(kb_id: str) -> int:
     return count
 
 
-def get_object_etag(kb_id: str, object_key: str) -> str | None:
+def get_object_etag(kb_id: str, doc_source: str) -> str | None:
     """Return the ETag for an object, or None if it doesn't exist."""
     from botocore.exceptions import ClientError
 
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
     try:
         response = client.head_object(Bucket=cfg.rag_bucket, Key=full_key)
         return response.get("ETag", "").strip('"')
@@ -195,7 +195,7 @@ def get_object_etag(kb_id: str, object_key: str) -> str | None:
         return None
 
 
-def get_object_last_modified(kb_id: str, object_key: str) -> str:
+def get_object_last_modified(kb_id: str, doc_source: str) -> str:
     """Return the LastModified timestamp for an object as an ISO 8601 UTC string.
 
     Returns empty string if the object does not exist or the call fails.
@@ -204,7 +204,7 @@ def get_object_last_modified(kb_id: str, object_key: str) -> str:
 
     cfg = get_settings().s3
     client = get_s3_client()
-    full_key = f"{kb_id}/{object_key}"
+    full_key = f"{kb_id}/{doc_source}"
     try:
         response = client.head_object(Bucket=cfg.rag_bucket, Key=full_key)
         last_modified = response.get("LastModified")
@@ -214,7 +214,7 @@ def get_object_last_modified(kb_id: str, object_key: str) -> str:
 
 
 def list_kb_objects(kb_id: str) -> list[tuple[str, str, str]]:
-    """Return (object_key, etag, last_modified_iso) triples for all objects under a KB prefix.
+    """Return (doc_source, etag, last_modified_iso) triples for all objects under a KB prefix.
 
     last_modified_iso is an ISO 8601 UTC string (e.g. '2024-03-15T09:00:00+00:00').
     """

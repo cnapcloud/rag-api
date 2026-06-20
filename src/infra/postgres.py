@@ -128,7 +128,7 @@ def delete_kb_meta(kb_id: str) -> None:
 # Document metadata
 # ──────────────────────────────────────────────
 
-def set_doc_status(kb_id: str, object_key: str, fields: dict) -> None:
+def set_doc_status(kb_id: str, doc_source: str, fields: dict) -> None:
     """UPSERT a document row; created_at is set on INSERT and never overwritten."""
     safe = {k: v for k, v in fields.items() if k in _ALLOWED_DOC_FIELDS}
     if not safe:
@@ -139,12 +139,12 @@ def set_doc_status(kb_id: str, object_key: str, fields: dict) -> None:
     placeholders = ", ".join(["%s"] * len(values))
     set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in col_names)
     sql = (
-        f"INSERT INTO documents (kb_id, object_key, {col_list}) "
+        f"INSERT INTO documents (kb_id, doc_source, {col_list}) "
         f"VALUES (%s, %s, {placeholders}) "
-        f"ON CONFLICT (kb_id, object_key) DO UPDATE SET {set_clause}"
+        f"ON CONFLICT (kb_id, doc_source) DO UPDATE SET {set_clause}"
     )
     with get_pool().connection() as conn:
-        conn.execute(sql, [kb_id, object_key] + values)
+        conn.execute(sql, [kb_id, doc_source] + values)
         conn.commit()
 
 
@@ -173,11 +173,11 @@ _DOC_SELECT = """
 """
 
 
-def get_doc_status(kb_id: str, object_key: str) -> dict | None:
+def get_doc_status(kb_id: str, doc_source: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(
-            _DOC_SELECT + "WHERE kb_id = %s AND object_key = %s",
-            [kb_id, object_key],
+            _DOC_SELECT + "WHERE kb_id = %s AND doc_source = %s",
+            [kb_id, doc_source],
         ).fetchone()
     return _row_to_doc(row) if row else None
 
@@ -185,16 +185,16 @@ def get_doc_status(kb_id: str, object_key: str) -> dict | None:
 def list_docs(kb_id: str) -> list[dict]:
     with get_pool().connection() as conn:
         rows = conn.execute(
-            "SELECT object_key, status, etag, run_id, created_at, updated_at, "
+            "SELECT doc_source, status, etag, run_id, created_at, updated_at, "
             "chunk_count, file_size, doc_type, embedding_model, error, doc_created_at "
             "FROM documents WHERE kb_id = %s ORDER BY created_at",
             [kb_id],
         ).fetchall()
     result = []
     for row in rows:
-        object_key = row[0]
+        doc_source = row[0]
         d = _row_to_doc(row[1:])
-        d["object_key"] = object_key
+        d["doc_source"] = doc_source
         result.append(d)
     return result
 
@@ -202,21 +202,21 @@ def list_docs(kb_id: str) -> list[dict]:
 def list_docs_by_status(kb_id: str, status: str) -> list[dict]:
     with get_pool().connection() as conn:
         rows = conn.execute(
-            "SELECT object_key, status, etag, run_id, created_at, updated_at, "
+            "SELECT doc_source, status, etag, run_id, created_at, updated_at, "
             "chunk_count, file_size, doc_type, embedding_model, error, doc_created_at "
             "FROM documents WHERE kb_id = %s AND status = %s ORDER BY created_at",
             [kb_id, status],
         ).fetchall()
     result = []
     for row in rows:
-        object_key = row[0]
+        doc_source = row[0]
         d = _row_to_doc(row[1:])
-        d["object_key"] = object_key
+        d["doc_source"] = doc_source
         result.append(d)
     return result
 
 
-def get_doc_etag(kb_id: str, object_key: str) -> str | None:
+def get_doc_etag(kb_id: str, doc_source: str) -> str | None:
     """Return the stored ETag for a document regardless of its current status.
 
     set_processing() does not clear the etag column, so the previous ETag remains
@@ -224,30 +224,30 @@ def get_doc_etag(kb_id: str, object_key: str) -> str | None:
     """
     with get_pool().connection() as conn:
         row = conn.execute(
-            "SELECT etag FROM documents WHERE kb_id = %s AND object_key = %s",
-            [kb_id, object_key],
+            "SELECT etag FROM documents WHERE kb_id = %s AND doc_source = %s",
+            [kb_id, doc_source],
         ).fetchone()
     return row[0] if row and row[0] else None
 
 
-def set_doc_etag(kb_id: str, object_key: str, etag: str) -> None:
-    set_doc_status(kb_id, object_key, {"etag": etag, "updated_at": datetime.now(timezone.utc).isoformat()})
+def set_doc_etag(kb_id: str, doc_source: str, etag: str) -> None:
+    set_doc_status(kb_id, doc_source, {"etag": etag, "updated_at": datetime.now(timezone.utc).isoformat()})
 
 
-def delete_doc_etag(kb_id: str, object_key: str) -> None:
+def delete_doc_etag(kb_id: str, doc_source: str) -> None:
     with get_pool().connection() as conn:
         conn.execute(
-            "UPDATE documents SET etag = NULL WHERE kb_id = %s AND object_key = %s",
-            [kb_id, object_key],
+            "UPDATE documents SET etag = NULL WHERE kb_id = %s AND doc_source = %s",
+            [kb_id, doc_source],
         )
         conn.commit()
 
 
-def delete_doc_meta(kb_id: str, object_key: str) -> None:
+def delete_doc_meta(kb_id: str, doc_source: str) -> None:
     with get_pool().connection() as conn:
         conn.execute(
-            "DELETE FROM documents WHERE kb_id = %s AND object_key = %s",
-            [kb_id, object_key],
+            "DELETE FROM documents WHERE kb_id = %s AND doc_source = %s",
+            [kb_id, doc_source],
         )
         conn.commit()
-    logger.info("Doc meta deleted: kb=%s key=%s", kb_id, object_key)
+    logger.info("Doc meta deleted: kb=%s key=%s", kb_id, doc_source)

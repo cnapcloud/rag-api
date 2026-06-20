@@ -63,7 +63,7 @@ kb:{kb_id}                          # KB 메타데이터 (Hash)
 
 docs:{kb_id}                        # KB 내 문서 키 목록 (Set)
 
-doc:{kb_id}:{object_key}            # 문서 상태 (Hash)
+doc:{kb_id}:{doc_source}            # 문서 상태 (Hash)
     status                          # running | indexed | failed | deleting
     etag
     run_id
@@ -88,9 +88,9 @@ rag:delete:delay                    # 삭제 딜레이 큐 (Sorted Set, score=re
 ```python
 {
     "kb_id":              str,   # "kb-01"
-    "doc_key":            str,   # "{kb_id}::{object_key}"
+    "doc_key":            str,   # "{kb_id}::{doc_source}"
     "doc_type":           str,   # "pdf" | "docx" | "txt" | "md" | "hwp"
-    "object_key":         str,   # "doc.pdf"
+    "doc_source":         str,   # "doc.pdf"
     "chunk_index":        int,
     "page_num":           int | None,
     "total_chunks":       int,
@@ -366,19 +366,19 @@ defs = Definitions(
 ```python
 class IngestConfig(Config):
     kb_id: str
-    object_key: str
+    doc_source: str
     etag: str
     file_size: int = 0
     force: bool = False
 
 @op(out={"valid_config": Out(dagster_type=dict, is_required=False)})
 def validate_op(context: OpExecutionContext, config: IngestConfig):
-    set_processing(config.kb_id, config.object_key, etag=config.etag, run_id=context.run_id)
-    should_process = validate(kb_id, object_key, etag, file_size, force)
+    set_processing(config.kb_id, config.doc_source, etag=config.etag, run_id=context.run_id)
+    should_process = validate(kb_id, doc_source, etag, file_size, force)
     if should_process:
-        yield Output({"kb_id": ..., "object_key": ..., "run_id": context.run_id}, "valid_config")
+        yield Output({"kb_id": ..., "doc_source": ..., "run_id": context.run_id}, "valid_config")
     else:
-        restore_indexed(config.kb_id, config.object_key, etag=config.etag)
+        restore_indexed(config.kb_id, config.doc_source, etag=config.etag)
 
 @op
 def parse_op(context, valid_config: dict): ...
@@ -414,7 +414,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
         # 활성 run이 있으면 delay, zombie면 recover 후 dispatch
         if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, ...):
             continue
-        set_processing(kb_id, object_key, etag=etag)
+        set_processing(kb_id, doc_source, etag=etag)
         yield RunRequest(run_key=str(uuid4()), job_name="ingest_job", ...)
         count += 1
 
@@ -425,7 +425,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
             break
         if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, ...):
             continue
-        set_deleting(kb_id, object_key)
+        set_deleting(kb_id, doc_source)
         yield RunRequest(run_key=str(uuid4()), job_name="delete_job", ...)
         count += 1
 ```
@@ -479,8 +479,8 @@ app.add_typer(kb_app, name="kb")
 @app.command()
 def ingest(kb_id: str, file: Path, force: bool = False):
     # S3 업로드 후 Redis 큐 enqueue (Dagster sensor가 소비)
-    etag = upload_object(kb_id=kb_id, object_key=file.name, data=content)
-    enqueue_upload_event(kb_id=kb_id, object_key=file.name, etag=etag, ...)
+    etag = upload_object(kb_id=kb_id, doc_source=file.name, data=content)
+    enqueue_upload_event(kb_id=kb_id, doc_source=file.name, etag=etag, ...)
 
 @app.command()
 def serve(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
@@ -496,17 +496,17 @@ def search(kb_ids: list[str], query: str, top_k: int = 10):
 
 ```python
 def run_ingest_pipeline(
-    kb_id: str, object_key: str, etag: str = "",
+    kb_id: str, doc_source: str, etag: str = "",
     file_size: int = 0, force: bool = False, run_id: str = "direct",
 ) -> int:
-    should_process = validate(kb_id, object_key, etag, file_size, force=force)
+    should_process = validate(kb_id, doc_source, etag, file_size, force=force)
     if not should_process:
         return 0                          # ETag 동일 → skip
 
-    documents = parse(kb_id, object_key) # S3에서 다운로드 후 파싱
+    documents = parse(kb_id, doc_source) # S3에서 다운로드 후 파싱
     nodes     = chunk(documents)
     embedded  = embed(nodes)
-    result    = upsert(kb_id, object_key, embedded)
-    update_meta(kb_id, object_key, result, etag=etag, run_id=run_id)
+    result    = upsert(kb_id, doc_source, embedded)
+    update_meta(kb_id, doc_source, result, etag=etag, run_id=run_id)
     return result.chunk_count
 ```

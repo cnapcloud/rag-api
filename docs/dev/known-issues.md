@@ -6,12 +6,12 @@
 
 ## 목차
 
-1. [DELETE /docs/{key} returns 200 for non-existent document](#1-delete-docskey-returns-200-for-non-existent-document)
+1. [DELETE /docs/{source} returns 200 for non-existent document](#1-delete-docssource-returns-200-for-non-existent-document)
 2. [Dagster SensorDefinition owners parameter BetaWarning](#2-dagster-sensordefinition-owners-parameter-betawarning)
 
 ---
 
-## 1. DELETE /docs/{key} returns 200 for non-existent document
+## 1. DELETE /docs/{source} returns 200 for non-existent document
 
 | 항목 | 내용 |
 |------|------|
@@ -25,12 +25,12 @@
 
 ```bash
 curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/notexist.pdf
-# {"kb_id":"kb-01","object_key":"notexist.pdf","status":"deleted"}  HTTP 200
+# {"kb_id":"kb-01","doc_source":"notexist.pdf","status":"deleted"}  HTTP 200
 ```
 
 **원인**
 
-`DELETE /api/kb/{kb_id}/docs/{key}` 라우터가 삭제 전 문서 존재 여부를 확인하지 않는다.
+`DELETE /api/kb/{kb_id}/docs/{source}` 라우터가 삭제 전 문서 존재 여부를 확인하지 않는다.
 Qdrant 및 Redis에서 해당 키가 없더라도 삭제 연산 자체는 오류 없이 완료되므로
 결과적으로 아무것도 삭제하지 않았음에도 성공 응답을 반환한다.
 
@@ -45,9 +45,9 @@ Qdrant 및 Redis에서 해당 키가 없더라도 삭제 연산 자체는 오류
 
 ```python
 # api/routers/docs.py
-meta = get_doc_meta(kb_id, key)
+meta = get_doc_meta(kb_id, source)
 if meta is None:
-    raise NotFoundError(f"Document not found: kb={kb_id} key={key}")
+    raise NotFoundError(f"Document not found: kb={kb_id} source={source}")
 ```
 
 **비고**

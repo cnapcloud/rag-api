@@ -11,7 +11,7 @@ CREATE INDEX IF NOT EXISTS idx_kb_tags ON knowledge_bases USING GIN (tags);
 
 CREATE TABLE IF NOT EXISTS documents (
     kb_id            TEXT NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE,
-    object_key       TEXT NOT NULL,
+    doc_source       TEXT NOT NULL,
     status           TEXT NOT NULL DEFAULT 'running',
     etag             TEXT,
     run_id           TEXT NOT NULL DEFAULT '',
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS documents (
     doc_created_at   TIMESTAMPTZ,
     title_hash       TEXT,
     content_simhash  BIGINT,
-    PRIMARY KEY (kb_id, object_key)
+    PRIMARY KEY (kb_id, doc_source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_etag
@@ -38,10 +38,10 @@ CREATE TABLE IF NOT EXISTS simhash_bands (
     kb_id        TEXT     NOT NULL,
     band_index   SMALLINT NOT NULL,
     band_value   INTEGER  NOT NULL,
-    object_key   TEXT     NOT NULL,
-    PRIMARY KEY (kb_id, band_index, band_value, object_key),
-    FOREIGN KEY (kb_id, object_key)
-        REFERENCES documents(kb_id, object_key) ON DELETE CASCADE
+    doc_source   TEXT     NOT NULL,
+    PRIMARY KEY (kb_id, band_index, band_value, doc_source),
+    FOREIGN KEY (kb_id, doc_source)
+        REFERENCES documents(kb_id, doc_source) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_simhash_bands

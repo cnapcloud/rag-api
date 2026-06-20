@@ -24,10 +24,10 @@ CREATE TABLE knowledge_bases (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 문서 메타데이터 (Redis doc:{kb_id}:{object_key} 대체)
+-- 문서 메타데이터 (Redis doc:{kb_id}:{doc_source} 대체)
 CREATE TABLE documents (
     kb_id            TEXT NOT NULL REFERENCES knowledge_bases(kb_id),
-    object_key       TEXT NOT NULL,
+    doc_source       TEXT NOT NULL,
     status           TEXT NOT NULL DEFAULT 'running',
     etag             TEXT,
     run_id           TEXT NOT NULL DEFAULT '',
@@ -39,9 +39,9 @@ CREATE TABLE documents (
     embedding_model  TEXT,
     error            TEXT,
     doc_created_at   TIMESTAMPTZ,
-    title_hash       TEXT,    -- SHA-256 of object_key (filename), dedup 1단계용
+    title_hash       TEXT,    -- SHA-256 of doc_source (filename), dedup 1단계용
     content_simhash  BIGINT,  -- 64-bit SimHash of body, dedup 1단계용
-    PRIMARY KEY (kb_id, object_key)
+    PRIMARY KEY (kb_id, doc_source)
 );
 
 -- 역방향 ETag 조회 (다른 파일명, 동일 내용 탐지용)
@@ -55,10 +55,10 @@ CREATE TABLE simhash_bands (
     kb_id        TEXT     NOT NULL,
     band_index   SMALLINT NOT NULL,  -- 0~3 (64bit → 16bit × 4조각)
     band_value   INTEGER  NOT NULL,
-    object_key   TEXT     NOT NULL,
-    PRIMARY KEY (kb_id, band_index, band_value, object_key),
-    FOREIGN KEY (kb_id, object_key)
-        REFERENCES documents(kb_id, object_key) ON DELETE CASCADE
+    doc_source   TEXT     NOT NULL,
+    PRIMARY KEY (kb_id, band_index, band_value, doc_source),
+    FOREIGN KEY (kb_id, doc_source)
+        REFERENCES documents(kb_id, doc_source) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_simhash_bands ON simhash_bands (kb_id, band_index, band_value);
@@ -86,9 +86,9 @@ CREATE INDEX idx_simhash_bands ON simhash_bands (kb_id, band_index, band_value);
 |---|---|
 | `kb:{kb_id}` Hash | `knowledge_bases` 테이블 |
 | `kbs` Set | `SELECT kb_id FROM knowledge_bases` |
-| `doc:{kb_id}:{object_key}` Hash | `documents` 테이블 |
-| `docs:{kb_id}` Set | `SELECT object_key FROM documents WHERE kb_id = ?` |
-| `etag:{kb_id}:{object_key}` String | `documents.etag` 컬럼 + 인덱스 |
+| `doc:{kb_id}:{doc_source}` Hash | `documents` 테이블 |
+| `docs:{kb_id}` Set | `SELECT doc_source FROM documents WHERE kb_id = ?` |
+| `etag:{kb_id}:{doc_source}` String | `documents.etag` 컬럼 + 인덱스 |
 
 **Redis에 남기는 것:** `queue:ingest` 큐만
 

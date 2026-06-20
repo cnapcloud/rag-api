@@ -25,10 +25,10 @@ def _check_ext(filename: str) -> str:
     return ext
 
 
-def _trigger_ingest(kb_id: str, object_key: str, etag: str, file_size: int, force: bool = False) -> None:
+def _trigger_ingest(kb_id: str, doc_source: str, etag: str, file_size: int, force: bool = False) -> None:
     from dagster_pipeline.sensors.event_queue_sensor import enqueue_upload_event
 
-    enqueue_upload_event(kb_id=kb_id, object_key=object_key, etag=etag, file_size=file_size, force=force)
+    enqueue_upload_event(kb_id=kb_id, doc_source=doc_source, etag=etag, file_size=file_size, force=force)
 
 
 @router.post("/kb/{kb_id}/docs/upload", status_code=202)
@@ -45,18 +45,18 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
 
     _check_ext(file.filename or "")
     content = await file.read()
-    object_key = file.filename or f"upload_{uuid.uuid4()}"
+    doc_source = file.filename or f"upload_{uuid.uuid4()}"
 
     etag = upload_object(
         kb_id=kb_id,
-        object_key=object_key,
+        doc_source=doc_source,
         data=content,
         content_type=file.content_type or "application/octet-stream",
     )
 
     return {
-        "object_key": object_key,
-        "status_url": f"/api/kb/{kb_id}/docs/{object_key}/status",
+        "doc_source": doc_source,
+        "status_url": f"/api/kb/{kb_id}/docs/{doc_source}/status",
         "etag": etag,
     }
 
@@ -81,17 +81,17 @@ async def upload_docs_batch(
         try:
             _check_ext(file.filename or "")
             content = await file.read()
-            object_key = file.filename or f"upload_{uuid.uuid4()}"
+            doc_source = file.filename or f"upload_{uuid.uuid4()}"
             etag = upload_object(
                 kb_id=kb_id,
-                object_key=object_key,
+                doc_source=doc_source,
                 data=content,
                 content_type=file.content_type or "application/octet-stream",
             )
             results.append(
                 {
-                    "filename": object_key,
-                    "status_url": f"/api/kb/{kb_id}/docs/{object_key}/status",
+                    "filename": doc_source,
+                    "status_url": f"/api/kb/{kb_id}/docs/{doc_source}/status",
                     "etag": etag,
                 }
             )
@@ -116,32 +116,32 @@ async def list_docs(
     return {"kb_id": kb_id, "docs": docs, "total": len(docs)}
 
 
-@router.get("/kb/{kb_id}/docs/{key:path}/status")
-async def get_doc_status(kb_id: str, key: str):
+@router.get("/kb/{kb_id}/docs/{source:path}/status")
+async def get_doc_status(kb_id: str, source: str):
     from infra.postgres import get_doc_status
 
-    data = get_doc_status(kb_id, key)
+    data = get_doc_status(kb_id, source)
     if not data:
-        raise NotFoundError(f"Document not found: kb={kb_id} key={key}")
-    return {"kb_id": kb_id, "object_key": key, **data}
+        raise NotFoundError(f"Document not found: kb={kb_id} source={source}")
+    return {"kb_id": kb_id, "doc_source": source, **data}
 
 
-@router.delete("/kb/{kb_id}/docs/{key:path}", status_code=200)
-async def delete_doc(kb_id: str, key: str):
+@router.delete("/kb/{kb_id}/docs/{source:path}", status_code=200)
+async def delete_doc(kb_id: str, source: str):
     from infra.postgres import delete_doc_meta
     from infra.qdrant import delete_chunks_by_doc
     from infra.s3 import delete_object
 
-    delete_chunks_by_doc(kb_id, key)
-    delete_doc_meta(kb_id, key)
+    delete_chunks_by_doc(kb_id, source)
+    delete_doc_meta(kb_id, source)
 
     # S3 delete is best-effort: Qdrant/Postgres cleanup already succeeded.
     try:
-        delete_object(kb_id, key)
+        delete_object(kb_id, source)
     except ClientError as e:
-        logger.warning("S3 object deletion failed (ignored): kb=%s key=%s err=%s", kb_id, key, e)
+        logger.warning("S3 object deletion failed (ignored): kb=%s source=%s err=%s", kb_id, source, e)
 
-    return {"kb_id": kb_id, "object_key": key, "status": "deleted"}
+    return {"kb_id": kb_id, "doc_source": source, "status": "deleted"}
 
 
 @router.post("/kb/{kb_id}/reindex", status_code=202)
@@ -163,25 +163,25 @@ async def reindex_kb(
     objects = list_kb_objects(kb_id)
 
     # Pre-fetch all Postgres doc metadata for sorting (one pass)
-    pg_docs = {d["object_key"]: d for d in pg_list_docs(kb_id)}
+    pg_docs = {d["doc_source"]: d for d in pg_list_docs(kb_id)}
 
     # Determine which objects to queue, then sort oldest-first
-    to_queue: list[tuple[str, str, str]] = []  # (object_key, s3_etag, sort_key)
+    to_queue: list[tuple[str, str, str]] = []  # (doc_source, s3_etag, sort_key)
     skipped = 0
 
-    for object_key, s3_etag, s3_last_modified in objects:
+    for doc_source, s3_etag, s3_last_modified in objects:
         if not force:
-            pg_etag = get_doc_etag(kb_id, object_key)
+            pg_etag = get_doc_etag(kb_id, doc_source)
             if pg_etag == s3_etag:
                 skipped += 1
                 continue
-        sort_date = pg_docs.get(object_key, {}).get("doc_created_at") or s3_last_modified
-        to_queue.append((object_key, s3_etag, sort_date))
+        sort_date = pg_docs.get(doc_source, {}).get("doc_created_at") or s3_last_modified
+        to_queue.append((doc_source, s3_etag, sort_date))
 
     to_queue.sort(key=lambda x: x[2])
 
-    for object_key, s3_etag, _ in to_queue:
-        _trigger_ingest(kb_id, object_key, s3_etag, 0, force=force)
+    for doc_source, s3_etag, _ in to_queue:
+        _trigger_ingest(kb_id, doc_source, s3_etag, 0, force=force)
 
     queued = len(to_queue)
     logger.info("Reindex KB: kb=%s queued=%d skipped=%d force=%s", kb_id, queued, skipped, force)
@@ -191,7 +191,7 @@ async def reindex_kb(
 @router.post("/kb/{kb_id}/docs/reindex", status_code=202)
 async def reindex_doc(
     kb_id: str,
-    key: str = Query(..., description="Object key (may contain /)"),
+    source: str = Query(..., description="Document source path (may contain /)"),
     force: bool = Query(False),
 ):
     """
@@ -202,22 +202,22 @@ async def reindex_doc(
     from infra.postgres import get_doc_etag
     from infra.s3 import get_object_etag
 
-    s3_etag = get_object_etag(kb_id, key)
+    s3_etag = get_object_etag(kb_id, source)
     if s3_etag is None:
-        raise NotFoundError(f"Document not found in S3: kb={kb_id} key={key}")
+        raise NotFoundError(f"Document not found in S3: kb={kb_id} source={source}")
 
     if not force:
-        pg_etag = get_doc_etag(kb_id, key)
+        pg_etag = get_doc_etag(kb_id, source)
         if pg_etag == s3_etag:
             return {"kb_id": kb_id, "queued": 0, "skipped": 1}
 
-    _trigger_ingest(kb_id, key, s3_etag, 0, force=force)
-    logger.info("Reindex doc: kb=%s key=%s force=%s", kb_id, key, force)
+    _trigger_ingest(kb_id, source, s3_etag, 0, force=force)
+    logger.info("Reindex doc: kb=%s source=%s force=%s", kb_id, source, force)
     return {"kb_id": kb_id, "queued": 1, "skipped": 0}
 
 
-@router.post("/kb/{kb_id}/docs/{key:path}/recover", status_code=202)
-async def recover_doc(kb_id: str, key: str):
+@router.post("/kb/{kb_id}/docs/{source:path}/recover", status_code=202)
+async def recover_doc(kb_id: str, source: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
     import json
 
@@ -225,18 +225,18 @@ async def recover_doc(kb_id: str, key: str):
     from infra.redis import get_redis_client
     from pipeline.ops.meta import set_failed
 
-    data = get_doc_status(kb_id, key)
+    data = get_doc_status(kb_id, source)
     if not data:
-        raise NotFoundError(f"Document not found: kb={kb_id} key={key}")
+        raise NotFoundError(f"Document not found: kb={kb_id} source={source}")
     if data.get("status") != "running":
         raise ConflictError(
             f"Document is not in a recoverable state: status={data.get('status')}"
         )
-    set_failed(kb_id, key, "Manually recovered via API", run_id=data.get("run_id", ""))
-    event = json.dumps({"kb_id": kb_id, "object_key": key, "etag": data.get("etag", ""), "force": True})
+    set_failed(kb_id, source, "Manually recovered via API", run_id=data.get("run_id", ""))
+    event = json.dumps({"kb_id": kb_id, "doc_source": source, "etag": data.get("etag", ""), "force": True})
     get_redis_client().lpush("rag:upload:queue", event)
-    logger.info("Manual recover queued: kb=%s key=%s", kb_id, key)
-    return {"kb_id": kb_id, "object_key": key, "queued": True}
+    logger.info("Manual recover queued: kb=%s source=%s", kb_id, source)
+    return {"kb_id": kb_id, "doc_source": source, "queued": True}
 
 
 @router.get("/docs/status")

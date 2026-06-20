@@ -15,7 +15,7 @@ zombie 복구 로직을 `validate_op`에서 `event_queue_sensor`로 이동한다
 
 ```python
 # 기존
-if not try_set_processing(kb_id, object_key, etag=etag):
+if not try_set_processing(kb_id, doc_source, etag=etag):
     r.zadd(UPLOAD_DELAY_KEY, {raw: ready_at})
     continue
 yield RunRequest(...)
@@ -24,7 +24,7 @@ yield RunRequest(...)
 from infra import redis as redis_infra
 from pipeline.ops.meta import set_failed, set_processing
 
-prev = redis_infra.get_doc_status(kb_id, object_key)
+prev = redis_infra.get_doc_status(kb_id, doc_source)
 if prev:
     s = prev.get("status")
     if s == "deleting":
@@ -39,14 +39,14 @@ if prev:
                 r.zadd(UPLOAD_DELAY_KEY, {raw: ready_at})
                 continue
             # Dagster run 종료 → zombie 복구 후 dispatch
-            set_failed(kb_id, object_key,
+            set_failed(kb_id, doc_source,
                        f"Recovered: previous run no longer active (run_id={prev_run_id})",
                        run_id=prev_run_id)
             logger.warning("Zombie run recovered: kb=%s key=%s prev_run_id=%s",
-                           kb_id, object_key, prev_run_id)
+                           kb_id, doc_source, prev_run_id)
         # run_id="" → dispatch lock 잔류(job 미시작), 그냥 dispatch
 
-set_processing(kb_id, object_key, etag=etag)  # run_id는 여전히 "" — job 시작 전
+set_processing(kb_id, doc_source, etag=etag)  # run_id는 여전히 "" — job 시작 전
 yield RunRequest(...)
 ```
 
@@ -61,7 +61,7 @@ if prev and prev.get("status") == "running":
     ...  # 이 블록 전체 삭제
 
 # 유지
-set_processing(config.kb_id, config.object_key, etag=config.etag, run_id=context.run_id)
+set_processing(config.kb_id, config.doc_source, etag=config.etag, run_id=context.run_id)
 ```
 
 `set_failed`, `redis_infra` import도 더 이상 불필요하면 제거.

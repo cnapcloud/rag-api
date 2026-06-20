@@ -14,7 +14,7 @@ def ingest_run_config():
             "validate_op": {
                 "config": {
                     "kb_id": "kb-test",
-                    "object_key": "pdf/test.pdf",
+                    "doc_source": "pdf/test.pdf",
                     "etag": "test-etag-001",
                     "file_size": 1024,
                 }

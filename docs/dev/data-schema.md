@@ -13,8 +13,8 @@ PointStruct
 │                             — BM25 FastEmbed sparse embedding
 └── payload
     ├── kb_id              : str      — Knowledge Base ID
-    ├── doc_key            : str      — "{kb_id}___{object_key}" (doc-level delete filter key)
-    ├── object_key         : str      — S3 object path (without kb_id prefix)
+    ├── doc_key            : str      — "{kb_id}___{doc_source}" (doc-level delete filter key)
+    ├── doc_source         : str      — document source identifier (S3 path, URL, Confluence link, etc.)
     ├── doc_type           : str      — file extension (pdf, docx, txt, md, hwp)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document
@@ -58,12 +58,12 @@ Indexes:
 
 ### `documents` table
 
-Replaces Redis `doc:{kb_id}:{object_key}` hash, `docs:{kb_id}` set, and `etag:{kb_id}:{object_key}` key.
+Replaces Redis `doc:{kb_id}:{doc_source}` hash, `docs:{kb_id}` set, and `etag:{kb_id}:{doc_source}` key.
 
 ```
 documents
 ├── kb_id            TEXT NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE
-├── object_key       TEXT NOT NULL
+├── doc_source       TEXT NOT NULL
 ├── status           TEXT NOT NULL DEFAULT 'running'  -- running | indexed | deleting | failed
 ├── etag             TEXT                             -- S3 ETag (MD5 hex, quotes stripped)
 ├── run_id           TEXT NOT NULL DEFAULT ''         -- Dagster run ID or "direct"
@@ -75,9 +75,9 @@ documents
 ├── embedding_model  TEXT                             -- embedding model name
 ├── error            TEXT                             -- failure message (status=failed)
 ├── doc_created_at   TIMESTAMPTZ                      -- actual document creation date (US-10)
-├── title_hash       TEXT                             -- SHA-256 of object_key, for dedup (US-12)
+├── title_hash       TEXT                             -- SHA-256 of doc_source, for dedup (US-12)
 ├── content_simhash  BIGINT                           -- 64-bit SimHash of body, for dedup (US-12)
-└── PRIMARY KEY (kb_id, object_key)
+└── PRIMARY KEY (kb_id, doc_source)
 ```
 
 Indexes:
@@ -91,9 +91,9 @@ simhash_bands
 ├── kb_id        TEXT NOT NULL
 ├── band_index   SMALLINT NOT NULL    -- 0-3 (64bit → 16bit × 4 bands)
 ├── band_value   INTEGER NOT NULL
-├── object_key   TEXT NOT NULL
-├── PRIMARY KEY (kb_id, band_index, band_value, object_key)
-└── FOREIGN KEY (kb_id, object_key) REFERENCES documents ON DELETE CASCADE
+├── doc_source   TEXT NOT NULL
+├── PRIMARY KEY (kb_id, band_index, band_value, doc_source)
+└── FOREIGN KEY (kb_id, doc_source) REFERENCES documents ON DELETE CASCADE
 ```
 
 Index: `idx_simhash_bands` on `(kb_id, band_index, band_value)`

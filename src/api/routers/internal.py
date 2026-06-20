@@ -61,21 +61,21 @@ async def handle_storage_event(payload: S3WebhookPayload):
             logger.warning("Unexpected object path (no KB prefix): %s", obj_path)
             continue
 
-        kb_id, object_key = parts[0], parts[1]
-        if not object_key:
-            logger.warning("Empty object_key in event: %s", obj_path)
+        kb_id, doc_source = parts[0], parts[1]
+        if not doc_source:
+            logger.warning("Empty doc_source in event: %s", obj_path)
             continue
 
         etag = record.s3.object.eTag.strip('"')
         size = record.s3.object.size
 
         if event_name.startswith("s3:ObjectCreated"):
-            logger.info("Storage webhook PUT: kb=%s key=%s etag=%s", kb_id, object_key, etag)
-            enqueue_upload_event(kb_id=kb_id, object_key=object_key, etag=etag, file_size=size)
+            logger.info("Storage webhook PUT: kb=%s key=%s etag=%s", kb_id, doc_source, etag)
+            enqueue_upload_event(kb_id=kb_id, doc_source=doc_source, etag=etag, file_size=size)
 
         elif event_name.startswith("s3:ObjectRemoved"):
-            logger.info("Storage webhook DELETE: kb=%s key=%s", kb_id, object_key)
-            enqueue_delete_event(kb_id=kb_id, object_key=object_key)
+            logger.info("Storage webhook DELETE: kb=%s key=%s", kb_id, doc_source)
+            enqueue_delete_event(kb_id=kb_id, doc_source=doc_source)
 
         else:
             logger.debug("Unhandled storage event: %s", event_name)

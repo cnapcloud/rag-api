@@ -14,9 +14,9 @@ import pytest
 # ──────────────────────────────────────────────
 
 class TestExtractDocCreatedAt:
-    def _call(self, file_path, suffix, kb_id="kb-test", object_key="doc.pdf"):
+    def _call(self, file_path, suffix, kb_id="kb-test", doc_source="doc.pdf"):
         from pipeline.ops.parse import _extract_doc_created_at
-        return _extract_doc_created_at(file_path, suffix, kb_id, object_key)
+        return _extract_doc_created_at(file_path, suffix, kb_id, doc_source)
 
     def test_pdf_creation_date(self, tmp_path):
         """PDF with CreationDate returns that date as ISO UTC string."""
@@ -179,7 +179,7 @@ class TestMetaDocCreatedAt:
 
         return UpsertResult(
             kb_id="kb-test",
-            object_key="doc.pdf",
+            doc_source="doc.pdf",
             chunk_count=3,
             doc_key="kb-test___doc.pdf",
             doc_created_at=doc_created_at,
@@ -190,13 +190,13 @@ class TestMetaDocCreatedAt:
 
         stored: dict = {}
 
-        def fake_set_doc_status(kb_id, object_key, fields):
+        def fake_set_doc_status(kb_id, doc_source, fields):
             stored.update(fields)
 
         with patch("pipeline.ops.meta.postgres_infra.set_doc_status", side_effect=fake_set_doc_status):
             update_meta(
                 kb_id="kb-test",
-                object_key="doc.pdf",
+                doc_source="doc.pdf",
                 upsert_result=self._make_upsert_result("2023-05-15T10:30:00+00:00"),
                 doc_created_at="2023-05-15T10:30:00+00:00",
             )
@@ -208,13 +208,13 @@ class TestMetaDocCreatedAt:
 
         stored: dict = {}
 
-        def fake_set_doc_status(kb_id, object_key, fields):
+        def fake_set_doc_status(kb_id, doc_source, fields):
             stored.update(fields)
 
         with patch("pipeline.ops.meta.postgres_infra.set_doc_status", side_effect=fake_set_doc_status):
             update_meta(
                 kb_id="kb-test",
-                object_key="doc.pdf",
+                doc_source="doc.pdf",
                 upsert_result=self._make_upsert_result(""),
                 doc_created_at="",
             )
@@ -235,14 +235,14 @@ class TestReindexOrdering:
             ("b.pdf", "etag-b", "2024-02-01T00:00:00+00:00"),
         ]
         pg_docs = [
-            {"object_key": "a.pdf", "doc_created_at": "2022-06-01T00:00:00+00:00"},
-            {"object_key": "b.pdf", "doc_created_at": "2021-01-01T00:00:00+00:00"},
-            {"object_key": "c.pdf", "doc_created_at": "2023-01-01T00:00:00+00:00"},
+            {"doc_source": "a.pdf", "doc_created_at": "2022-06-01T00:00:00+00:00"},
+            {"doc_source": "b.pdf", "doc_created_at": "2021-01-01T00:00:00+00:00"},
+            {"doc_source": "c.pdf", "doc_created_at": "2023-01-01T00:00:00+00:00"},
         ]
         enqueued: list[str] = []
 
-        def fake_trigger(kb_id, object_key, etag, file_size, force=False):
-            enqueued.append(object_key)
+        def fake_trigger(kb_id, doc_source, etag, file_size, force=False):
+            enqueued.append(doc_source)
 
         with (
             patch("infra.s3.list_kb_objects", return_value=objects),
@@ -266,8 +266,8 @@ class TestReindexOrdering:
         ]
         enqueued: list[str] = []
 
-        def fake_trigger(kb_id, object_key, etag, file_size, force=False):
-            enqueued.append(object_key)
+        def fake_trigger(kb_id, doc_source, etag, file_size, force=False):
+            enqueued.append(doc_source)
 
         with (
             patch("infra.s3.list_kb_objects", return_value=objects),

@@ -15,7 +15,7 @@
 ## Redis 키 컨벤션
 
 ```
-etag:{kb_id}:{object_key}      # ETag 캐시
+etag:{kb_id}:{doc_source}      # ETag 캐시
 kb:{kb_id}                     # KB 메타데이터 (hash)
 doc:{kb_id}:{doc_key}          # 문서 메타데이터 (hash)
 docs:{kb_id}                   # 문서 목록 (set)

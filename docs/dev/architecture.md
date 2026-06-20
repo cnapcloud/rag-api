@@ -111,7 +111,7 @@ delete_chunks_op  (Qdrant)
     │  doc_key 필터로 청크 전체 삭제
     ↓
 delete_meta_op    (Redis)
-    │  doc:{kb_id}:{object_key} 키 삭제
+    │  doc:{kb_id}:{doc_source} 키 삭제
 ```
 
 ---

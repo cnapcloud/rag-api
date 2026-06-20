@@ -33,7 +33,7 @@ Dagster `context.run_id`를 사용하므로 항상 실제 Dagster run_id가 저�
 
 ```python
 # validate_op 진입 직후
-set_processing(config.kb_id, config.object_key,
+set_processing(config.kb_id, config.doc_source,
                etag=config.etag, run_id=context.run_id)
 ```
 
@@ -42,7 +42,7 @@ set_processing(config.kb_id, config.object_key,
 `set_processing()` 호출 전에 기존 상태를 읽어 zombie 여부를 판단한다.
 
 ```python
-prev = redis_infra.get_doc_status(config.kb_id, config.object_key)
+prev = redis_infra.get_doc_status(config.kb_id, config.doc_source)
 if prev and prev.get("status") == "running":
     prev_run_id = prev.get("run_id", "")
     if prev_run_id:
@@ -50,7 +50,7 @@ if prev and prev.get("status") == "running":
         if run is None or run.is_finished:
             set_failed(
                 config.kb_id,
-                config.object_key,
+                config.doc_source,
                 f"Recovered: previous run no longer active (run_id={prev_run_id})",
                 run_id=prev_run_id,
             )
@@ -84,9 +84,9 @@ async def recover_doc(kb_id: str, key: str):
             f"Document is not in a recoverable state: status={data.get('status')}"
         )
     set_failed(kb_id, key, "Manually recovered via API", run_id=data.get("run_id", ""))
-    event = json.dumps({"kb_id": kb_id, "object_key": key, "etag": data.get("etag", ""), "force": True})
+    event = json.dumps({"kb_id": kb_id, "doc_source": key, "etag": data.get("etag", ""), "force": True})
     get_redis_client().lpush("rag:upload:queue", event)
-    return {"kb_id": kb_id, "object_key": key, "queued": True}
+    return {"kb_id": kb_id, "doc_source": key, "queued": True}
 ```
 
 ### Step 6 — 테스트

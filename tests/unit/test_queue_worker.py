@@ -44,7 +44,7 @@ def test_poll_upload_not_processing_dispatches():
     worker._semaphore = asyncio.Semaphore(4)
 
     fake_redis, _ = _make_redis(
-        upload_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}]
+        upload_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}]
     )
     dispatched = []
 
@@ -73,7 +73,7 @@ def test_poll_upload_while_processing_requeues():
     worker._semaphore = asyncio.Semaphore(4)
 
     fake_redis, _ = _make_redis(
-        upload_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}]
+        upload_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}]
     )
     dispatched = []
 
@@ -100,7 +100,7 @@ def test_poll_delete_not_processing_dispatches():
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
 
-    fake_redis, _ = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+    fake_redis, _ = _make_redis(delete_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf"}])
     dispatched = []
 
     def fake_create_task(coro, **kw):
@@ -127,7 +127,7 @@ def test_poll_delete_while_processing_requeues():
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
 
-    fake_redis, _ = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+    fake_redis, _ = _make_redis(delete_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf"}])
     dispatched = []
 
     def fake_create_task(coro, **kw):
@@ -154,7 +154,7 @@ def test_poll_upload_while_deleting_requeues():
     worker._semaphore = asyncio.Semaphore(4)
 
     fake_redis, _ = _make_redis(
-        upload_events=[{"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}]
+        upload_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}]
     )
     dispatched = []
 
@@ -181,7 +181,7 @@ def test_poll_delete_while_deleting_requeues():
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
 
-    fake_redis, _ = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+    fake_redis, _ = _make_redis(delete_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf"}])
     dispatched = []
 
     def fake_create_task(coro, **kw):
@@ -209,10 +209,10 @@ def test_poll_upload_fills_limit_delete_still_runs():
     worker._semaphore = asyncio.Semaphore(10)
 
     upload_events = [
-        {"kb_id": "kb-test", "object_key": f"doc{i}.pdf", "etag": f"e{i}", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": f"doc{i}.pdf", "etag": f"e{i}", "file_size": 0, "force": False}
         for i in range(max_per_poll)
     ]
-    delete_events = [{"kb_id": "kb-test", "object_key": f"old{i}.pdf"} for i in range(3)]
+    delete_events = [{"kb_id": "kb-test", "doc_source": f"old{i}.pdf"} for i in range(3)]
     fake_redis, _ = _make_redis(upload_events=upload_events, delete_events=delete_events)
 
     ingest_dispatched = []
@@ -248,7 +248,7 @@ def test_poll_returns_true_when_upload_hits_limit():
     worker._semaphore = asyncio.Semaphore(10)
 
     upload_events = [
-        {"kb_id": "kb-test", "object_key": f"doc{i}.pdf", "etag": f"e{i}", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": f"doc{i}.pdf", "etag": f"e{i}", "file_size": 0, "force": False}
         for i in range(max_per_poll)
     ]
     fake_redis, _ = _make_redis(upload_events=upload_events)
@@ -276,10 +276,10 @@ def test_poll_returns_false_when_queues_drained():
     worker._semaphore = asyncio.Semaphore(10)
 
     upload_events = [
-        {"kb_id": "kb-test", "object_key": f"doc{i}.pdf", "etag": f"e{i}", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": f"doc{i}.pdf", "etag": f"e{i}", "file_size": 0, "force": False}
         for i in range(3)
     ]
-    delete_events = [{"kb_id": "kb-test", "object_key": f"old{i}.pdf"} for i in range(2)]
+    delete_events = [{"kb_id": "kb-test", "doc_source": f"old{i}.pdf"} for i in range(2)]
     fake_redis, _ = _make_redis(upload_events=upload_events, delete_events=delete_events)
 
     def fake_create_task(coro, **kw):
@@ -302,7 +302,7 @@ def test_requeue_after_delay_pushes_back():
     from pipeline.queue_worker import QueueWorker
 
     worker = QueueWorker()
-    raw = json.dumps({"kb_id": "kb-test", "object_key": "doc.pdf"})
+    raw = json.dumps({"kb_id": "kb-test", "doc_source": "doc.pdf"})
     pushed = []
 
     fake_redis = MagicMock()

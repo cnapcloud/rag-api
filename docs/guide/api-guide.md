@@ -80,10 +80,10 @@ curl -X POST http://localhost:8000/api/kb/kb-01/reindex
 curl -X POST "http://localhost:8000/api/kb/kb-01/reindex?force=true"
 
 # 단일 문서 재인덱싱
-curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?key=doc.pdf"
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?source=doc.pdf"
 
 # 단일 문서 강제 재인덱싱 (failed 상태 등)
-curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?key=doc.pdf&force=true"
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?source=doc.pdf&force=true"
 
 # stuck 문서 복구 — status=running 인 경우에만 사용
 curl -X POST http://localhost:8000/api/kb/kb-01/docs/doc.pdf/recover

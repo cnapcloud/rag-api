@@ -318,7 +318,7 @@ SimHash 계산 → 4조각 분할
 | 판정 | 처리 |
 |---|---|
 | 동일 | 색인 스킵 (원본 파일 보존, 이력만 기록) |
-| 제목변경 | Qdrant payload(object_key/doc_key) 갱신 + Redis 키 rename, 재임베딩 없음 |
+| 제목변경 | Qdrant payload(doc_source/doc_key) 갱신 + Redis 키 rename, 재임베딩 없음 |
 | 유사 | A 신규 색인 + C를 deprecated 전환 (상태 필드 갱신) |
 | 관련 | A 신규 색인 + 관련 링크 메타데이터 추가 |
 | 무관 | A 신규 색인 |
@@ -357,7 +357,7 @@ A가 여러 후보와 동시에 매칭되어 후보별로 다른 판정을 받�
 **롤백:** 그레이스 기간 내 C↔A의 status 재전환만으로 즉시 복구 (재임베딩 불필요)
 
 **"제목변경" 처리 (요약)**
-- object_key_history(Redis)에 변경 이력 누적, 누적 길이 ≥M이면 자동 처리 중단 후 "검토대기"
+- doc_source_history(Redis)에 변경 이력 누적, 누적 길이 ≥M이면 자동 처리 중단 후 "검토대기"
 - Redis rename(읽기→쓰기→삭제) 원자성: Lua 스크립트 처리 확정
 
 **출력**

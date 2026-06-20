@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def run_ingest_pipeline(
     kb_id: str,
-    object_key: str,
+    doc_source: str,
     etag: str = "",
     file_size: int = 0,
     force: bool = False,
@@ -28,60 +28,60 @@ def run_ingest_pipeline(
     from pipeline.ops.validate import validate
 
     try:
-        should_process = validate(kb_id, object_key, etag, file_size, force=force)
+        should_process = validate(kb_id, doc_source, etag, file_size, force=force)
     except IngestValidationError as e:
-        set_failed(kb_id, object_key, str(e), run_id=run_id)
-        logger.error("Validation failed: kb=%s key=%s err=%s", kb_id, object_key, e)
+        set_failed(kb_id, doc_source, str(e), run_id=run_id)
+        logger.error("Validation failed: kb=%s key=%s err=%s", kb_id, doc_source, e)
         raise
 
     if not should_process:
-        current = postgres_infra.get_doc_status(kb_id, object_key)
+        current = postgres_infra.get_doc_status(kb_id, doc_source)
         if current and current.get("status") == "running":
-            restore_indexed(kb_id, object_key, etag=etag)
-        logger.info("Skipping: kb=%s key=%s", kb_id, object_key)
+            restore_indexed(kb_id, doc_source, etag=etag)
+        logger.info("Skipping: kb=%s key=%s", kb_id, doc_source)
         return 0
 
-    set_processing(kb_id, object_key, run_id=run_id)
+    set_processing(kb_id, doc_source, run_id=run_id)
 
     try:
-        documents = parse(kb_id=kb_id, object_key=object_key)
+        documents = parse(kb_id=kb_id, doc_source=doc_source)
         nodes = chunk(documents)
         embedded_nodes = embed(nodes)
-        upsert_result = upsert(kb_id, object_key, embedded_nodes)
+        upsert_result = upsert(kb_id, doc_source, embedded_nodes)
 
         cfg = get_settings().embedding
         update_meta(
             kb_id=kb_id,
-            object_key=object_key,
+            doc_source=doc_source,
             upsert_result=upsert_result,
             etag=etag,
             run_id=run_id,
             file_size=file_size,
-            doc_type=object_key.rsplit(".", 1)[-1],
+            doc_type=doc_source.rsplit(".", 1)[-1],
             embedding_model=cfg.model,
             doc_created_at=upsert_result.doc_created_at,
         )
-        logger.info("Ingest done: kb=%s key=%s chunks=%d", kb_id, object_key, upsert_result.chunk_count)
+        logger.info("Ingest done: kb=%s key=%s chunks=%d", kb_id, doc_source, upsert_result.chunk_count)
         return upsert_result.chunk_count
 
     except Exception as e:
-        set_failed(kb_id, object_key, str(e), run_id=run_id)
-        logger.exception("Pipeline failed: kb=%s key=%s", kb_id, object_key)
+        set_failed(kb_id, doc_source, str(e), run_id=run_id)
+        logger.exception("Pipeline failed: kb=%s key=%s", kb_id, doc_source)
         raise
 
 
-def run_delete_pipeline(kb_id: str, object_key: str) -> None:
+def run_delete_pipeline(kb_id: str, doc_source: str) -> None:
     """Delete a single document from Qdrant and Postgres."""
     from infra import postgres as postgres_infra
     from infra import qdrant as qdrant_infra
     from pipeline.ops.meta import set_deleting, set_failed
 
-    set_deleting(kb_id, object_key, run_id="direct")
+    set_deleting(kb_id, doc_source, run_id="direct")
     try:
-        qdrant_infra.delete_chunks_by_doc(kb_id, object_key)
-        postgres_infra.delete_doc_meta(kb_id, object_key)
-        logger.info("Delete done: kb=%s key=%s", kb_id, object_key)
+        qdrant_infra.delete_chunks_by_doc(kb_id, doc_source)
+        postgres_infra.delete_doc_meta(kb_id, doc_source)
+        logger.info("Delete done: kb=%s key=%s", kb_id, doc_source)
     except Exception as e:
-        set_failed(kb_id, object_key, f"delete_pipeline failed: {e}")
-        logger.exception("Delete pipeline failed: kb=%s key=%s", kb_id, object_key)
+        set_failed(kb_id, doc_source, f"delete_pipeline failed: {e}")
+        logger.exception("Delete pipeline failed: kb=%s key=%s", kb_id, doc_source)
         raise

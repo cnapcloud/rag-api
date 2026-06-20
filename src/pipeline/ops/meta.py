@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def update_meta(
     kb_id: str,
-    object_key: str,
+    doc_source: str,
     upsert_result: UpsertResult,
     etag: str = "",
     run_id: str = "",
@@ -36,30 +36,30 @@ def update_meta(
     }
     if doc_created_at:
         fields["doc_created_at"] = doc_created_at
-    postgres_infra.set_doc_status(kb_id, object_key, fields)
-    logger.info("Meta updated: kb=%s key=%s status=indexed chunks=%d", kb_id, object_key, upsert_result.chunk_count)
+    postgres_infra.set_doc_status(kb_id, doc_source, fields)
+    logger.info("Meta updated: kb=%s key=%s status=indexed chunks=%d", kb_id, doc_source, upsert_result.chunk_count)
 
 
-def set_processing(kb_id: str, object_key: str, run_id: str = "") -> None:
+def set_processing(kb_id: str, doc_source: str, run_id: str = "") -> None:
     """Set status=running at the start of an ingest operation."""
     postgres_infra.set_doc_status(
         kb_id,
-        object_key,
+        doc_source,
         {"status": "running", "run_id": run_id, "updated_at": datetime.now(timezone.utc).isoformat()},
     )
 
 
-def set_deleting(kb_id: str, object_key: str, run_id: str = "") -> None:
+def set_deleting(kb_id: str, doc_source: str, run_id: str = "") -> None:
     """Set status=deleting at the start of a delete operation."""
     postgres_infra.set_doc_status(
         kb_id,
-        object_key,
+        doc_source,
         {"status": "deleting", "run_id": run_id, "updated_at": datetime.now(timezone.utc).isoformat()},
     )
-    logger.info("Status set to deleting: kb=%s key=%s", kb_id, object_key)
+    logger.info("Status set to deleting: kb=%s key=%s", kb_id, doc_source)
 
 
-def restore_indexed(kb_id: str, object_key: str, etag: str = "") -> None:
+def restore_indexed(kb_id: str, doc_source: str, etag: str = "") -> None:
     """Restore status to indexed after an ETag-skip (no-op ingest).
 
     Called when the dispatch layer set processing but validate found ETag unchanged.
@@ -67,15 +67,15 @@ def restore_indexed(kb_id: str, object_key: str, etag: str = "") -> None:
     fields: dict = {"status": "indexed"}
     if etag:
         fields["etag"] = etag
-    postgres_infra.set_doc_status(kb_id, object_key, fields)
-    logger.info("Status restored to indexed (ETag skip): kb=%s key=%s", kb_id, object_key)
+    postgres_infra.set_doc_status(kb_id, doc_source, fields)
+    logger.info("Status restored to indexed (ETag skip): kb=%s key=%s", kb_id, doc_source)
 
 
-def set_failed(kb_id: str, object_key: str, error: str, run_id: str = "") -> None:
+def set_failed(kb_id: str, doc_source: str, error: str, run_id: str = "") -> None:
     """Set status=failed with error message."""
     postgres_infra.set_doc_status(
         kb_id,
-        object_key,
+        doc_source,
         {
             "status": "failed",
             "error": error[:500],
@@ -83,4 +83,4 @@ def set_failed(kb_id: str, object_key: str, error: str, run_id: str = "") -> Non
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
     )
-    logger.error("Pipeline failed: kb=%s key=%s error=%s", kb_id, object_key, error[:200])
+    logger.error("Pipeline failed: kb=%s key=%s error=%s", kb_id, doc_source, error[:200])

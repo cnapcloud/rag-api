@@ -95,7 +95,7 @@ def _run_sensor(
 def test_upload_sensor_put_generates_ingest_run():
     """PUT event -> ingest_job RunRequest with UUID run_key."""
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 1024, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 1024, "force": False}
     ])
     result = _run_sensor(fake_redis)
 
@@ -106,13 +106,13 @@ def test_upload_sensor_put_generates_ingest_run():
     assert req.run_key
     cfg = req.run_config["ops"]["validate_op"]["config"]
     assert cfg["kb_id"] == "kb-test"
-    assert cfg["object_key"] == "doc.pdf"
+    assert cfg["doc_source"] == "doc.pdf"
     assert cfg["force"] is False
 
 
 def test_upload_sensor_delete_generates_delete_run():
     """DELETE event -> delete_job RunRequest with UUID run_key."""
-    fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+    fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf"}])
     result = _run_sensor(fake_redis)
 
     assert len(result) == 1
@@ -131,7 +131,7 @@ def test_upload_sensor_no_events():
 def test_upload_sensor_batch_put():
     """Multiple PUT events -> all consumed in one sensor tick."""
     events = [
-        {"kb_id": "kb-test", "object_key": f"doc{i}.pdf", "etag": f"etag-{i:03d}", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": f"doc{i}.pdf", "etag": f"etag-{i:03d}", "file_size": 0, "force": False}
         for i in range(5)
     ]
     result = _run_sensor(_make_redis(put_events=events))
@@ -143,8 +143,8 @@ def test_upload_sensor_batch_put():
 def test_upload_sensor_mixed_queues():
     """PUT and DELETE events consumed together in one tick."""
     fake_redis = _make_redis(
-        put_events=[{"kb_id": "kb-test", "object_key": "new.pdf", "etag": "etag-new", "file_size": 0, "force": False}],
-        delete_events=[{"kb_id": "kb-test", "object_key": "old.pdf"}],
+        put_events=[{"kb_id": "kb-test", "doc_source": "new.pdf", "etag": "etag-new", "file_size": 0, "force": False}],
+        delete_events=[{"kb_id": "kb-test", "doc_source": "old.pdf"}],
     )
     result = _run_sensor(fake_redis)
 
@@ -157,7 +157,7 @@ def test_upload_sensor_mixed_queues():
 def test_upload_sensor_force_flag_propagated():
     """force=True in PUT event -> run_config carries force=True."""
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": True}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": True}
     ])
     result = _run_sensor(fake_redis)
 
@@ -172,7 +172,7 @@ def test_sensor_upload_skips_processing_doc():
     active_run.is_finished = False
 
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
     ])
     result = _run_sensor(
         fake_redis,
@@ -190,7 +190,7 @@ def test_sensor_upload_zombie_run_dispatches():
     dead_run.is_finished = True
 
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
     ])
     calls = []
     result = _run_sensor(
@@ -209,7 +209,7 @@ def test_sensor_upload_zombie_run_dispatches():
 def test_sensor_upload_run_not_found_dispatches():
     """Upload event: doc has run_id but Dagster returns None -> zombie recovered, dispatched."""
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
     ])
     calls = []
     result = _run_sensor(
@@ -227,7 +227,7 @@ def test_sensor_upload_run_not_found_dispatches():
 def test_sensor_upload_dispatch_lock_remnant_dispatches():
     """Upload event: status=running with no run_id (dispatch lock remnant) -> dispatch immediately."""
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
     ])
     result = _run_sensor(
         fake_redis,
@@ -244,7 +244,7 @@ def test_sensor_upload_deleting_with_active_run_delayed():
     active_run.is_finished = False
 
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
     ])
     result = _run_sensor(
         fake_redis,
@@ -263,7 +263,7 @@ def test_sensor_upload_deleting_no_run_id_dispatches():
     status=deleting with no run_id, causing upload events to loop in the delay queue.
     """
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
     ])
     result = _run_sensor(
         fake_redis,
@@ -281,7 +281,7 @@ def test_sensor_upload_deleting_zombie_run_dispatches():
     dead_run.is_finished = True
 
     fake_redis = _make_redis(put_events=[
-        {"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
+        {"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False}
     ])
     calls = []
     result = _run_sensor(
@@ -302,7 +302,7 @@ def test_sensor_delete_blocked_by_active_run_delayed():
     active_run.is_finished = False
 
     for status in ("running", "deleting"):
-        fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+        fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf"}])
         result = _run_sensor(
             fake_redis,
             pg_doc_status={"status": status, "run_id": "run-active"},
@@ -318,7 +318,7 @@ def test_sensor_delete_zombie_run_dispatches():
     dead_run = MagicMock()
     dead_run.is_finished = True
 
-    fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+    fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf"}])
     calls = []
     result = _run_sensor(
         fake_redis,
@@ -335,7 +335,7 @@ def test_sensor_delete_zombie_run_dispatches():
 def test_sensor_delete_no_run_id_dispatches():
     """Delete event: doc is running/deleting but run_id is empty -> dispatch immediately."""
     for status in ("running", "deleting"):
-        fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "object_key": "doc.pdf"}])
+        fake_redis = _make_redis(delete_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf"}])
         result = _run_sensor(
             fake_redis,
             pg_doc_status={"status": status, "run_id": ""},
@@ -347,7 +347,7 @@ def test_sensor_delete_no_run_id_dispatches():
 
 def test_sensor_drain_delay_queue():
     """Ready item in delay queue is moved to main queue and dispatched."""
-    raw = json.dumps({"kb_id": "kb-test", "object_key": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False})
+    raw = json.dumps({"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "etag-001", "file_size": 0, "force": False})
     fake_redis = FakeRedis()
     fake_redis.zadd("rag:upload:delay", {raw: time.time() - 1})
 
@@ -361,8 +361,8 @@ def test_sensor_drain_delay_queue():
 def test_sensor_run_keys_unique():
     """Two events in one tick -> two different run_keys."""
     events = [
-        {"kb_id": "kb-test", "object_key": "a.pdf", "etag": "e1", "file_size": 0, "force": False},
-        {"kb_id": "kb-test", "object_key": "b.pdf", "etag": "e2", "file_size": 0, "force": False},
+        {"kb_id": "kb-test", "doc_source": "a.pdf", "etag": "e1", "file_size": 0, "force": False},
+        {"kb_id": "kb-test", "doc_source": "b.pdf", "etag": "e2", "file_size": 0, "force": False},
     ]
     result = _run_sensor(_make_redis(put_events=events))
 

@@ -69,12 +69,12 @@ def ingest(
     content_type = mimetypes.guess_type(str(file))[0] or "application/octet-stream"
 
     typer.echo(f"Uploading to S3: kb={kb_id} key={file.name}")
-    etag = upload_object(kb_id=kb_id, object_key=file.name, data=content, content_type=content_type)
+    etag = upload_object(kb_id=kb_id, doc_source=file.name, data=content, content_type=content_type)
     typer.echo(f"Uploaded: etag={etag}")
 
     from dagster_pipeline.sensors.event_queue_sensor import enqueue_upload_event
 
-    enqueue_upload_event(kb_id=kb_id, object_key=file.name, etag=etag, file_size=len(content), force=force)
+    enqueue_upload_event(kb_id=kb_id, doc_source=file.name, etag=etag, file_size=len(content), force=force)
     typer.echo(f"Queued for ingest: kb={kb_id} key={file.name}")
 
 

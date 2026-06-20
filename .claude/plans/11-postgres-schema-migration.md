@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
 
 CREATE TABLE IF NOT EXISTS documents (
     kb_id            TEXT NOT NULL REFERENCES knowledge_bases(kb_id),
-    object_key       TEXT NOT NULL,
+    doc_source       TEXT NOT NULL,
     status           TEXT NOT NULL DEFAULT 'running',
     etag             TEXT,
     run_id           TEXT NOT NULL DEFAULT '',
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS documents (
     doc_created_at   TIMESTAMPTZ,
     title_hash       TEXT,
     content_simhash  BIGINT,
-    PRIMARY KEY (kb_id, object_key)
+    PRIMARY KEY (kb_id, doc_source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_etag
@@ -82,10 +82,10 @@ CREATE TABLE IF NOT EXISTS simhash_bands (
     kb_id        TEXT     NOT NULL,
     band_index   SMALLINT NOT NULL,
     band_value   INTEGER  NOT NULL,
-    object_key   TEXT     NOT NULL,
-    PRIMARY KEY (kb_id, band_index, band_value, object_key),
-    FOREIGN KEY (kb_id, object_key)
-        REFERENCES documents(kb_id, object_key) ON DELETE CASCADE
+    doc_source   TEXT     NOT NULL,
+    PRIMARY KEY (kb_id, band_index, band_value, doc_source),
+    FOREIGN KEY (kb_id, doc_source)
+        REFERENCES documents(kb_id, doc_source) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_simhash_bands
@@ -140,9 +140,9 @@ def run_migrations() -> None:
 `set_doc_status`, `get_doc_status`, `list_docs`, `list_docs_by_status`
 `get_doc_etag`, `set_doc_etag`, `delete_doc_etag`
 `delete_doc_meta`, `delete_kb_docs`
-— Redis `doc:{kb_id}:{object_key}` Hash / `docs:{kb_id}` Set / `etag:*` 대체
+— Redis `doc:{kb_id}:{doc_source}` Hash / `docs:{kb_id}` Set / `etag:*` 대체
 
-`set_doc_status`는 `INSERT ... ON CONFLICT (kb_id, object_key) DO UPDATE` 패턴 사용.
+`set_doc_status`는 `INSERT ... ON CONFLICT (kb_id, doc_source) DO UPDATE` 패턴 사용.
 
 ---
 

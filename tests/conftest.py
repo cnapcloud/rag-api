@@ -44,8 +44,8 @@ class FakePostgresStore:
         for k in keys_to_del:
             del self._docs[k]
 
-    def set_doc_status(self, kb_id: str, object_key: str, fields: dict) -> None:
-        key = (kb_id, object_key)
+    def set_doc_status(self, kb_id: str, doc_source: str, fields: dict) -> None:
+        key = (kb_id, doc_source)
         if key not in self._docs:
             self._docs[key] = {
                 "status": "", "etag": "", "run_id": "", "error": "",
@@ -56,12 +56,12 @@ class FakePostgresStore:
         for k, v in fields.items():
             self._docs[key][k] = str(v) if v is not None else ""
 
-    def get_doc_status(self, kb_id: str, object_key: str) -> dict | None:
-        return dict(self._docs.get((kb_id, object_key), {})) or None
+    def get_doc_status(self, kb_id: str, doc_source: str) -> dict | None:
+        return dict(self._docs.get((kb_id, doc_source), {})) or None
 
     def list_docs(self, kb_id: str) -> list[dict]:
         return [
-            {"object_key": k[1], **dict(v)}
+            {"doc_source": k[1], **dict(v)}
             for k, v in self._docs.items()
             if k[0] == kb_id
         ]
@@ -69,20 +69,20 @@ class FakePostgresStore:
     def list_docs_by_status(self, kb_id: str, status: str) -> list[dict]:
         return [d for d in self.list_docs(kb_id) if d.get("status") == status]
 
-    def get_doc_etag(self, kb_id: str, object_key: str) -> str | None:
-        doc = self._docs.get((kb_id, object_key))
+    def get_doc_etag(self, kb_id: str, doc_source: str) -> str | None:
+        doc = self._docs.get((kb_id, doc_source))
         return doc.get("etag") or None if doc else None
 
-    def set_doc_etag(self, kb_id: str, object_key: str, etag: str) -> None:
-        self.set_doc_status(kb_id, object_key, {"etag": etag})
+    def set_doc_etag(self, kb_id: str, doc_source: str, etag: str) -> None:
+        self.set_doc_status(kb_id, doc_source, {"etag": etag})
 
-    def delete_doc_etag(self, kb_id: str, object_key: str) -> None:
-        doc = self._docs.get((kb_id, object_key))
+    def delete_doc_etag(self, kb_id: str, doc_source: str) -> None:
+        doc = self._docs.get((kb_id, doc_source))
         if doc:
             doc["etag"] = ""
 
-    def delete_doc_meta(self, kb_id: str, object_key: str) -> None:
-        self._docs.pop((kb_id, object_key), None)
+    def delete_doc_meta(self, kb_id: str, doc_source: str) -> None:
+        self._docs.pop((kb_id, doc_source), None)
 
     def ping(self) -> bool:
         return True
