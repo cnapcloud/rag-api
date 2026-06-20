@@ -13,9 +13,11 @@ def ingest_failure_hook(context: HookContext) -> None:
         kb_id: str = op_config.get("kb_id", "") or run_tags.get("kb_id", "")
         doc_source: str = op_config.get("doc_source", "") or run_tags.get("doc_source", "")
         if not kb_id or not doc_source:
+            context.log.info("ingest_failure_hook: kb_id or doc_source not found, skip set_failed")
             return
         from pipeline.ops.meta import set_failed
         set_failed(kb_id, doc_source, f"ingest_job op failed: {context.step_key}", run_id=context.run_id)
+        context.log.info("ingest_failure_hook: set_failed kb=%s key=%s op=%s", kb_id, doc_source, context.step_key)
     except Exception as e:
         context.log.error("ingest_failure_hook error: %s", e)
 
