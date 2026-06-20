@@ -103,9 +103,9 @@ Create modal fields:
 | Documents               [Upload]  [Reindex All]        |
 |                                                        |
 | KB: [kb-01 ▼]  Status: [All ▼]  Sort: [Updated ▼] [↓]  |
-| [ Search path...                                    ]  |
+| [ Search source...                                  ]  |
 |                                                        |
-| [ ] Name              Status   Chunks  Age             |
+| [ ] Source            Status   Chunks  Age             |
 | ─────────────────────────────────────────────────────  |
 | [x] report-2024.pdf   indexed  42      2h              |
 | [ ] manual.docx       running  —       5m              |

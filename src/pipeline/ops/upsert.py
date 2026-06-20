@@ -83,7 +83,8 @@ def upsert(
             )
         )
 
-    qdrant_infra.upsert_chunks(kb_id, points, client)
+    if points:
+        qdrant_infra.upsert_chunks(kb_id, points, client)
 
     logger.info("Upsert done: kb=%s key=%s chunks=%d", kb_id, doc_source, len(points))
     return UpsertResult(

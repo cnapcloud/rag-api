@@ -145,6 +145,15 @@ curl -X POST http://localhost:8000/api/search \
 | `rerank.enabled` | true | 리랭킹 활성화 여부 |
 | `rerank.top_n` | settings | 리랭킹 후 반환할 결과 수 |
 
+### hybrid 모드 점수(score) 특징
+
+hybrid 모드의 `score`는 코사인 유사도가 아닌 **RRF(Reciprocal Rank Fusion) 순위 점수**다.
+
+- 공식: `score = 1 / (60 + rank)` — 1위 ≈ 0.0164, 10위 ≈ 0.0143
+- dense 순위 + sparse 순위를 합산해 재순위 매긴 값이므로 절댓값은 의미 없음
+- `min_score`는 hybrid 모드에서 무시됨 (RRF 점수 최댓값이 ~0.016이라 0.0~1.0 코사인 임계값 적용 불가)
+- **결과 품질 제어는 `top_k`로** 한다 (상위 N개 제한이 곧 낮은 순위 제거)
+
 ---
 
 ## 6. 문서 목록 조회

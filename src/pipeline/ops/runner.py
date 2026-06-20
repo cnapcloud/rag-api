@@ -46,6 +46,8 @@ def run_ingest_pipeline(
     try:
         documents = parse(kb_id=kb_id, doc_source=doc_source)
         nodes = chunk(documents)
+        if not nodes:
+            raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
         embedded_nodes = embed(nodes)
         upsert_result = upsert(kb_id, doc_source, embedded_nodes)
 

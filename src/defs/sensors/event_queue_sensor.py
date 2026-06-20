@@ -159,7 +159,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
                     }
                 }
             },
-            tags={"kb_id": kb_id, "trigger": "api_upload"},
+            tags={"kb_id": kb_id, "doc_source": doc_source, "trigger": "api_upload"},
         )
         count += 1
 

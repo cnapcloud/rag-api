@@ -43,6 +43,7 @@ chunking:
   strategy: "recursive"    # recursive / semantic
   chunk_size: 1024
   chunk_overlap: 128
+  min_chunk_chars: 30
   semantic_threshold: 0.8
 
 embedding:

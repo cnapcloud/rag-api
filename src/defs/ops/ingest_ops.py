@@ -8,12 +8,14 @@ def ingest_failure_hook(context: HookContext) -> None:
     """Mark document as failed in Redis when any ingest op fails."""
     try:
         op_config = context.op_config or {}
-        kb_id: str = op_config.get("kb_id", "")
-        doc_source: str = op_config.get("doc_source", "")
+        dagster_run = context.instance.get_run_by_id(context.run_id)
+        run_tags = dagster_run.tags if dagster_run else {}
+        kb_id: str = op_config.get("kb_id", "") or run_tags.get("kb_id", "")
+        doc_source: str = op_config.get("doc_source", "") or run_tags.get("doc_source", "")
         if not kb_id or not doc_source:
             return
         from pipeline.ops.meta import set_failed
-        set_failed(kb_id, doc_source, f"ingest_job op failed: {context.op_def.name}", run_id=context.run_id)
+        set_failed(kb_id, doc_source, f"ingest_job op failed: {context.step_key}", run_id=context.run_id)
     except Exception as e:
         context.log.error("ingest_failure_hook error: %s", e)
 
@@ -85,9 +87,12 @@ def parse_op(context: OpExecutionContext, valid_config: dict):
 @op
 def chunk_op(context: OpExecutionContext, documents):
     """Document → Node 청킹."""
+    from exceptions import IngestValidationError
     from pipeline.ops.chunk import chunk
 
     nodes = chunk(documents)
+    if not nodes:
+        raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
     context.log.info("Chunking done: %d nodes", len(nodes))
     return nodes
 
