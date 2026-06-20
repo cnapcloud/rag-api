@@ -32,16 +32,22 @@ def _patch_redis_queue():
 class TestRecoverDocEndpoint:
 
     def test_running_doc_returns_202_and_requeues(self, client):
-        """status=running doc -> 202, set_failed called, event pushed to upload queue."""
+        """status=running doc -> 202, set_failed called, event pushed to upload queue with pending."""
         fake_redis, queued = _patch_redis_queue()
         set_failed_calls = []
+        pending_calls = []
 
         def fake_set_failed(kb_id, key, error, run_id=""):
             set_failed_calls.append({"kb_id": kb_id, "key": key})
 
         with (
-            patch("infra.postgres.get_doc_status", return_value={"status": "running", "run_id": "r1", "etag": "e1"}),
+            # get_doc_status called twice: once in recover_doc, once inside enqueue_upload_event
+            patch("infra.postgres.get_doc_status", side_effect=[
+                {"status": "running", "run_id": "r1", "etag": "e1"},  # recover_doc check
+                {"status": "failed"},                                   # enqueue_upload_event check (after set_failed)
+            ]),
             patch("pipeline.ops.meta.set_failed", side_effect=fake_set_failed),
+            patch("pipeline.ops.meta.set_pending", side_effect=lambda kb, src: pending_calls.append((kb, src))),
             patch("infra.redis.get_redis_client", return_value=fake_redis),
         ):
             resp = client.post("/api/kb/kb-test/docs/doc.pdf/recover")
@@ -54,6 +60,10 @@ class TestRecoverDocEndpoint:
 
         assert len(set_failed_calls) == 1
         assert set_failed_calls[0]["kb_id"] == "kb-test"
+
+        # enqueue_upload_event saw status=failed -> set_pending was called
+        assert len(pending_calls) == 1
+        assert pending_calls[0] == ("kb-test", "doc.pdf")
 
         assert len(queued) == 1
         key, raw = queued[0]

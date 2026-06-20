@@ -169,7 +169,7 @@ rag-api
 │   ├── exceptions.py
 │   ├── api
 │   ├── config
-│   ├── dagster_pipeline
+│   ├── defs
 │   ├── infra
 │   ├── mcp_server
 │   ├── pipeline

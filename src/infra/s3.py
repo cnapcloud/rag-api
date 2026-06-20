@@ -183,6 +183,15 @@ def delete_kb_prefix(kb_id: str) -> int:
 
 def get_object_etag(kb_id: str, doc_source: str) -> str | None:
     """Return the ETag for an object, or None if it doesn't exist."""
+    etag, _ = get_object_meta(kb_id, doc_source)
+    return etag
+
+
+def get_object_meta(kb_id: str, doc_source: str) -> tuple[str | None, int]:
+    """Return (etag, size) for an object using a single head_object call.
+
+    Returns (None, 0) if the object does not exist or the call fails.
+    """
     from botocore.exceptions import ClientError
 
     cfg = get_settings().s3
@@ -190,9 +199,11 @@ def get_object_etag(kb_id: str, doc_source: str) -> str | None:
     full_key = f"{kb_id}/{doc_source}"
     try:
         response = client.head_object(Bucket=cfg.rag_bucket, Key=full_key)
-        return response.get("ETag", "").strip('"')
+        etag = response.get("ETag", "").strip('"') or None
+        size = response.get("ContentLength", 0)
+        return etag, size
     except ClientError:
-        return None
+        return None, 0
 
 
 def get_object_last_modified(kb_id: str, doc_source: str) -> str:
@@ -213,17 +224,18 @@ def get_object_last_modified(kb_id: str, doc_source: str) -> str:
         return ""
 
 
-def list_kb_objects(kb_id: str) -> list[tuple[str, str, str]]:
-    """Return (doc_source, etag, last_modified_iso) triples for all objects under a KB prefix.
+def list_kb_objects(kb_id: str) -> list[tuple[str, str, str, int]]:
+    """Return (doc_source, etag, last_modified_iso, size) tuples for all objects under a KB prefix.
 
     last_modified_iso is an ISO 8601 UTC string (e.g. '2024-03-15T09:00:00+00:00').
+    size is the object size in bytes (0 if unavailable).
     """
     from botocore.exceptions import ClientError
 
     cfg = get_settings().s3
     client = get_s3_client()
     prefix = f"{kb_id}/"
-    results: list[tuple[str, str, str]] = []
+    results: list[tuple[str, str, str, int]] = []
     try:
         paginator = client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=cfg.rag_bucket, Prefix=prefix):
@@ -234,7 +246,8 @@ def list_kb_objects(kb_id: str) -> list[tuple[str, str, str]]:
                 etag = obj.get("ETag", "").strip('"')
                 last_modified = obj.get("LastModified")
                 last_modified_iso = last_modified.isoformat() if last_modified else ""
-                results.append((key, etag, last_modified_iso))
+                size = obj.get("Size", 0)
+                results.append((key, etag, last_modified_iso, size))
     except ClientError as e:
         logger.error("S3 list_kb_objects failed: kb=%s err=%s", kb_id, e)
     return results

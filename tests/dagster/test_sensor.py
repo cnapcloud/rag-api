@@ -63,7 +63,7 @@ def _run_sensor(
     pg_doc_status: value returned by infra.postgres.get_doc_status (None or dict).
     """
     from dagster import RunRequest, build_sensor_context
-    from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
+    from defs.sensors.event_queue_sensor import event_queue_sensor
 
     mock_settings = MagicMock()
     mock_settings.queue_worker.enabled = False
@@ -72,7 +72,7 @@ def _run_sensor(
     with ExitStack() as stack:
         stack.enter_context(patch("infra.redis.get_redis_client", return_value=fake_redis))
         stack.enter_context(
-            patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings)
+            patch("defs.sensors.event_queue_sensor._get_settings", return_value=mock_settings)
         )
         stack.enter_context(patch("infra.postgres.get_doc_status", return_value=pg_doc_status))
         stack.enter_context(patch("infra.postgres.set_doc_status"))
@@ -356,6 +356,47 @@ def test_sensor_drain_delay_queue():
     assert len(result) == 1
     assert result[0].job_name == "ingest_job"
     assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 0
+
+
+def test_drain_delay_queue_sets_pending_when_not_running():
+    """_drain_delay_queue: doc not running -> set_pending called before lpush."""
+    from defs.sensors.event_queue_sensor import _drain_delay_queue
+
+    raw = json.dumps({"kb_id": "kb-test", "doc_source": "doc.pdf"})
+    fake_redis = FakeRedis()
+    fake_redis.zadd("rag:upload:delay", {raw: time.time() - 1})
+
+    pending_calls = []
+
+    with (
+        patch("infra.postgres.get_doc_status", return_value={"status": "indexed"}),
+        patch("pipeline.ops.meta.set_pending", side_effect=lambda kb, src: pending_calls.append((kb, src))),
+    ):
+        _drain_delay_queue(fake_redis, "rag:upload:delay", "rag:upload:queue")
+
+    assert len(pending_calls) == 1
+    assert pending_calls[0] == ("kb-test", "doc.pdf")
+    assert fake_redis._lists.get("rag:upload:queue") == [raw]
+
+
+def test_drain_delay_queue_skips_pending_when_still_running():
+    """_drain_delay_queue: doc still running -> set_pending NOT called, lpush still happens."""
+    from defs.sensors.event_queue_sensor import _drain_delay_queue
+
+    raw = json.dumps({"kb_id": "kb-test", "doc_source": "doc.pdf"})
+    fake_redis = FakeRedis()
+    fake_redis.zadd("rag:upload:delay", {raw: time.time() - 1})
+
+    pending_calls = []
+
+    with (
+        patch("infra.postgres.get_doc_status", return_value={"status": "running", "run_id": "r1"}),
+        patch("pipeline.ops.meta.set_pending", side_effect=lambda kb, src: pending_calls.append((kb, src))),
+    ):
+        _drain_delay_queue(fake_redis, "rag:upload:delay", "rag:upload:queue")
+
+    assert len(pending_calls) == 0
+    assert fake_redis._lists.get("rag:upload:queue") == [raw]
 
 
 def test_sensor_run_keys_unique():

@@ -40,6 +40,16 @@ def update_meta(
     logger.info("Meta updated: kb=%s key=%s status=indexed chunks=%d", kb_id, doc_source, upsert_result.chunk_count)
 
 
+def set_pending(kb_id: str, doc_source: str) -> None:
+    """Set status=pending when an ingest or delete event is enqueued and no active run exists."""
+    postgres_infra.set_doc_status(
+        kb_id,
+        doc_source,
+        {"status": "pending", "updated_at": datetime.now(timezone.utc).isoformat()},
+    )
+    logger.info("Status set to pending: kb=%s key=%s", kb_id, doc_source)
+
+
 def set_processing(kb_id: str, doc_source: str, run_id: str = "") -> None:
     """Set status=running at the start of an ingest operation."""
     postgres_infra.set_doc_status(

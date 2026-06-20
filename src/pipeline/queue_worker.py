@@ -12,10 +12,9 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-logger = logging.getLogger(__name__)
+from pipeline.enqueue import DELETE_QUEUE_KEY, UPLOAD_QUEUE_KEY
 
-UPLOAD_QUEUE_KEY = "rag:upload:queue"
-DELETE_QUEUE_KEY = "rag:delete:queue"
+logger = logging.getLogger(__name__)
 
 class QueueWorker:
     def __init__(self, max_workers: int = 4, poll_interval_sec: int = 5, max_per_poll: int = 5) -> None:
@@ -73,11 +72,10 @@ class QueueWorker:
                     asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw))
                     logger.info("Upload event delayed (deleting): kb=%s key=%s", kb_id, doc_source)
                     continue
-                elif s == "running" and doc.get("run_id", ""):
+                elif s == "running":
                     asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw))
                     logger.info("Upload event delayed (running): kb=%s key=%s", kb_id, doc_source)
                     continue
-                # run_id="" → dispatch lock remnant, fall through
 
             set_processing(kb_id, doc_source)
             logger.info(
@@ -125,6 +123,21 @@ class QueueWorker:
 
         delay = get_settings().queue_poll.retry_interval_sec
         await asyncio.sleep(delay)
+
+        try:
+            event = json.loads(raw)
+            kb_id = event.get("kb_id", "")
+            doc_source = event.get("doc_source", "")
+            if kb_id and doc_source:
+                from infra import postgres as pg
+                from pipeline.ops.meta import set_pending
+                doc = pg.get_doc_status(kb_id, doc_source)
+                current = doc.get("status", "") if doc else ""
+                if current not in ("running", "deleting"):
+                    set_pending(kb_id, doc_source)
+        except Exception as e:
+            logger.warning("_requeue_after_delay status check failed: %s", e)
+
         get_redis_client().lpush(queue_key, raw)
         logger.debug("Re-queued delayed event to %s", queue_key)
 

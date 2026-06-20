@@ -9,13 +9,13 @@ from uuid import uuid4
 
 from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, SkipReason, sensor
 
-from dagster_pipeline.jobs.delete_job import delete_job
-from dagster_pipeline.jobs.ingest_job import ingest_job
+from defs.jobs.delete_job import delete_job
+from defs.jobs.ingest_job import ingest_job
+
+from pipeline.enqueue import DELETE_QUEUE_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_QUEUE_KEY = "rag:upload:queue"
-DELETE_QUEUE_KEY = "rag:delete:queue"
 UPLOAD_DELAY_KEY = "rag:upload:delay"
 DELETE_DELAY_KEY = "rag:delete:delay"
 
@@ -34,6 +34,20 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
         return
     r.zrem(delay_key, *items)
     for item in items:
+        try:
+            event = json.loads(item)
+        except json.JSONDecodeError:
+            r.lpush(main_key, item)
+            continue
+        kb_id = event.get("kb_id", "")
+        doc_source = event.get("doc_source", "")
+        if kb_id and doc_source:
+            from infra import postgres as pg
+            from pipeline.ops.meta import set_pending
+            doc = pg.get_doc_status(kb_id, doc_source)
+            current = doc.get("status", "") if doc else ""
+            if current not in ("running", "deleting"):
+                set_pending(kb_id, doc_source)
         r.lpush(main_key, item)
     logger.debug("Drained %d item(s) from %s to %s", len(items), delay_key, main_key)
 
@@ -197,27 +211,4 @@ def event_queue_sensor(context: SensorEvaluationContext):
         yield SkipReason("No events in Redis queue — no jobs to trigger")
 
 
-def enqueue_upload_event(
-    kb_id: str,
-    doc_source: str,
-    etag: str,
-    file_size: int = 0,
-    force: bool = False,
-) -> None:
-    """Push a PUT event to the Redis upload queue."""
-    from infra.redis import get_redis_client
-
-    r = get_redis_client()
-    payload = json.dumps(
-        {"kb_id": kb_id, "doc_source": doc_source, "etag": etag, "file_size": file_size, "force": force}
-    )
-    r.lpush(UPLOAD_QUEUE_KEY, payload)
-
-
-def enqueue_delete_event(kb_id: str, doc_source: str) -> None:
-    """Push a DELETE event to the Redis delete queue."""
-    from infra.redis import get_redis_client
-
-    r = get_redis_client()
-    payload = json.dumps({"kb_id": kb_id, "doc_source": doc_source})
-    r.lpush(DELETE_QUEUE_KEY, payload)
+# enqueue_upload_event and enqueue_delete_event have been moved to pipeline.enqueue

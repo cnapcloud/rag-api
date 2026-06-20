@@ -69,6 +69,47 @@ class FakePostgresStore:
     def list_docs_by_status(self, kb_id: str, status: str) -> list[dict]:
         return [d for d in self.list_docs(kb_id) if d.get("status") == status]
 
+    def list_docs_paginated(
+        self,
+        kb_id: str,
+        page: int,
+        page_size: int,
+        status: str | None = None,
+        search: str | None = None,
+        sort_by: str = "updated_at",
+        sort_order: str = "desc",
+    ) -> tuple[list[dict], int]:
+        docs = self.list_docs(kb_id)
+
+        if status:
+            docs = [d for d in docs if d.get("status") == status]
+
+        if search:
+            docs = [d for d in docs if search.lower() in (d.get("doc_source") or "").lower()]
+
+        null_last_fields = {"chunk_count", "file_size"}
+        reverse = sort_order == "desc"
+
+        def _sort_key(d: dict):
+            v = d.get(sort_by)
+            if sort_by in null_last_fields:
+                try:
+                    parsed = int(v) if v not in (None, "") else None
+                except (TypeError, ValueError):
+                    parsed = None
+                if parsed is None:
+                    return (1, 0)
+                return (0, parsed if not reverse else -parsed)
+            return (0, (v or ""))
+
+        docs.sort(key=_sort_key, reverse=False)
+        if sort_by not in null_last_fields:
+            docs.sort(key=lambda d: d.get(sort_by) or "", reverse=reverse)
+
+        total = len(docs)
+        offset = (page - 1) * page_size
+        return docs[offset : offset + page_size], total
+
     def get_doc_etag(self, kb_id: str, doc_source: str) -> str | None:
         doc = self._docs.get((kb_id, doc_source))
         return doc.get("etag") or None if doc else None
@@ -104,6 +145,7 @@ def mock_postgres(monkeypatch):
     monkeypatch.setattr("infra.postgres.get_doc_status", store.get_doc_status)
     monkeypatch.setattr("infra.postgres.list_docs", store.list_docs)
     monkeypatch.setattr("infra.postgres.list_docs_by_status", store.list_docs_by_status)
+    monkeypatch.setattr("infra.postgres.list_docs_paginated", store.list_docs_paginated)
     monkeypatch.setattr("infra.postgres.get_doc_etag", store.get_doc_etag)
     monkeypatch.setattr("infra.postgres.set_doc_etag", store.set_doc_etag)
     monkeypatch.setattr("infra.postgres.delete_doc_etag", store.delete_doc_etag)
@@ -170,7 +212,7 @@ def mock_embed_model():
 
 @pytest.fixture
 def mock_dagster_resources(mock_redis, mock_qdrant, mock_minio):
-    from dagster_pipeline.resources.resources import (
+    from defs.resources.resources import (
         EmbeddingResource,
         MinIOResource,
         QdrantResource,

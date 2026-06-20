@@ -72,10 +72,13 @@ def ingest(
     etag = upload_object(kb_id=kb_id, doc_source=file.name, data=content, content_type=content_type)
     typer.echo(f"Uploaded: etag={etag}")
 
-    from dagster_pipeline.sensors.event_queue_sensor import enqueue_upload_event
+    if force:
+        from pipeline.enqueue import enqueue_upload_event
 
-    enqueue_upload_event(kb_id=kb_id, doc_source=file.name, etag=etag, file_size=len(content), force=force)
-    typer.echo(f"Queued for ingest: kb={kb_id} key={file.name}")
+        enqueue_upload_event(kb_id=kb_id, doc_source=file.name, etag=etag, file_size=len(content), force=True)
+        typer.echo(f"Force-queued for ingest: kb={kb_id} key={file.name}")
+    else:
+        typer.echo(f"Ingest will be triggered by S3 webhook: kb={kb_id} key={file.name}")
 
 
 # ──────────────────────────────────────────────

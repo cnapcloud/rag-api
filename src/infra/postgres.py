@@ -20,6 +20,9 @@ _ALLOWED_DOC_FIELDS = frozenset({
     "file_size", "doc_type", "embedding_model", "error", "doc_created_at",
 })
 
+_ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "doc_source", "chunk_count", "file_size"})
+_NULL_LAST_FIELDS = frozenset({"chunk_count", "file_size"})
+
 
 def get_pool() -> psycopg_pool.ConnectionPool:
     global _pool
@@ -251,3 +254,66 @@ def delete_doc_meta(kb_id: str, doc_source: str) -> None:
         )
         conn.commit()
     logger.info("Doc meta deleted: kb=%s key=%s", kb_id, doc_source)
+
+
+def list_docs_paginated(
+    kb_id: str,
+    page: int,
+    page_size: int,
+    status: str | None = None,
+    search: str | None = None,
+    sort_by: str = "updated_at",
+    sort_order: str = "desc",
+) -> tuple[list[dict], int]:
+    """Paginated, filtered, and sorted document list for a KB.
+
+    Returns (items, total) where total is the count after filtering.
+    page is 1-based; out-of-range page returns ([], total).
+    sort_by must be one of _ALLOWED_SORT_FIELDS (caller must validate).
+    NULL values for chunk_count / file_size sort last regardless of direction.
+    """
+    conditions = ["kb_id = %s"]
+    params: list = [kb_id]
+
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+
+    if search:
+        conditions.append("doc_source ILIKE %s")
+        params.append(f"%{search}%")
+
+    where = " AND ".join(conditions)
+    order_dir = "DESC" if sort_order == "desc" else "ASC"
+    nulls_clause = "NULLS LAST" if sort_by in _NULL_LAST_FIELDS else ""
+    order_clause = f"{sort_by} {order_dir} {nulls_clause}".strip()
+
+    count_sql = f"SELECT COUNT(*) FROM documents WHERE {where}"
+    data_sql = (
+        "SELECT doc_source, status, doc_type, chunk_count, file_size, "
+        "embedding_model, error, created_at, updated_at, etag "
+        f"FROM documents WHERE {where} ORDER BY {order_clause} "
+        "LIMIT %s OFFSET %s"
+    )
+    offset = (page - 1) * page_size
+
+    with get_pool().connection() as conn:
+        total: int = conn.execute(count_sql, params).fetchone()[0]
+        rows = conn.execute(data_sql, params + [page_size, offset]).fetchall()
+
+    items = []
+    for row in rows:
+        doc_source, status_val, doc_type, chunk_count, file_size, embedding_model, error, created_at, updated_at, etag = row
+        items.append({
+            "doc_source": doc_source,
+            "status": status_val or "",
+            "doc_type": doc_type or "",
+            "chunk_count": chunk_count,
+            "file_size": file_size,
+            "embedding_model": embedding_model or "",
+            "etag": etag or "",
+            "error": error,
+            "created_at": created_at.isoformat() if created_at else "",
+            "updated_at": updated_at.isoformat() if updated_at else "",
+        })
+    return items, total

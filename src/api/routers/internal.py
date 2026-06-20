@@ -49,7 +49,7 @@ async def handle_storage_event(payload: S3WebhookPayload):
     Always pushes to Redis queue. Consumer is either event_queue_sensor (Dagster) or QueueWorker (background).
     Returns 202 immediately.
     """
-    from dagster_pipeline.sensors.event_queue_sensor import enqueue_delete_event, enqueue_upload_event
+    from pipeline.enqueue import enqueue_delete_event, enqueue_upload_event
 
     logger.info("Storage webhook received: records=%d", len(payload.Records))
 

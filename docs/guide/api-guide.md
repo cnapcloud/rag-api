@@ -50,11 +50,20 @@ curl -X POST http://localhost:8000/api/kb/kb-01/docs/upload/batch \
   -F "files=@./data/a.pdf" \
   -F "files=@./data/b.pdf"
 
-# KB 전체 문서 목록
+# KB 전체 문서 목록 (기본: 1페이지, 20개, updated_at 내림차순)
 curl http://localhost:8000/api/kb/kb-01/docs
 
-# 상태별 필터 (pending / running / indexed / failed)
+# 페이지네이션
+curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=50"
+
+# 상태 필터 (running / indexed / failed / deleting)
 curl "http://localhost:8000/api/kb/kb-01/docs?status=failed"
+
+# doc_source 부분 문자열 검색 (대소문자 무시)
+curl "http://localhost:8000/api/kb/kb-01/docs?search=report"
+
+# 정렬 (sort_by: updated_at | created_at | doc_source | chunk_count | file_size)
+curl "http://localhost:8000/api/kb/kb-01/docs?sort_by=doc_source&sort_order=asc"
 
 # 단일 문서 인덱싱 상태 확인
 curl http://localhost:8000/api/kb/kb-01/docs/doc.pdf/status
@@ -138,7 +147,58 @@ curl -X POST http://localhost:8000/api/search \
 
 ---
 
-## 6. Knowledge Base 관리
+## 6. 문서 목록 조회
+
+`GET /api/kb/{kb_id}/docs`
+
+### 쿼리 파라미터
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|----------|------|--------|------|
+| `page` | int | 1 | 페이지 번호 (1-based) |
+| `page_size` | int | 20 | 페이지당 항목 수 (최대 100, 초과 시 자동 클램핑) |
+| `status` | str | — | 상태 필터: `running`, `indexed`, `failed`, `deleting` |
+| `search` | str | — | `doc_source` 부분 문자열 검색 (대소문자 무시) |
+| `sort_by` | str | `updated_at` | 정렬 기준: `updated_at`, `created_at`, `doc_source`, `chunk_count`, `file_size` |
+| `sort_order` | str | `desc` | 정렬 방향: `asc`, `desc` |
+
+- `total`은 필터 적용 후 전체 건수 (전체 문서 수가 아님).
+- 범위를 벗어난 `page`는 `items: []`를 반환 (404 아님).
+- `chunk_count`, `file_size` 정렬 시 NULL 값은 방향에 관계없이 항상 마지막.
+
+### 요청 예시
+
+```bash
+# 2페이지, 상태=indexed, "report" 검색, doc_source 오름차순
+curl "http://192.168.0.181:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed&search=report&sort_by=doc_source&sort_order=asc"
+```
+
+### 응답 예시
+
+```json
+{
+  "items": [
+    {
+      "doc_source": "reports/2024/report.pdf",
+      "status": "indexed",
+      "doc_type": "pdf",
+      "chunk_count": 42,
+      "file_size": 1258291,
+      "embedding_model": "ollama/nomic-embed-text",
+      "error": null,
+      "created_at": "2026-06-19T14:30:00+00:00",
+      "updated_at": "2026-06-19T14:32:00+00:00"
+    }
+  ],
+  "total": 87,
+  "page": 1,
+  "page_size": 20
+}
+```
+
+---
+
+## 7. Knowledge Base 관리
 
 ### KB 목록 조회
 
@@ -205,7 +265,7 @@ Qdrant 컬렉션 → S3 오브젝트 → Postgres 메타데이터 순으로 삭�
 
 존재하지 않는 KB 삭제 시 HTTP 404 반환.
 
-## 7. MCP 연결
+## 8. MCP 연결
 
 Claude Desktop `claude_desktop_config.json`:
 

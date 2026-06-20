@@ -230,9 +230,9 @@ class TestReindexOrdering:
     def test_reindex_ordered_by_doc_created_at_from_postgres(self):
         """Documents with Postgres doc_created_at are enqueued oldest-first."""
         objects = [
-            ("c.pdf", "etag-c", "2024-03-01T00:00:00+00:00"),
-            ("a.pdf", "etag-a", "2024-01-01T00:00:00+00:00"),
-            ("b.pdf", "etag-b", "2024-02-01T00:00:00+00:00"),
+            ("c.pdf", "etag-c", "2024-03-01T00:00:00+00:00", 512),
+            ("a.pdf", "etag-a", "2024-01-01T00:00:00+00:00", 1024),
+            ("b.pdf", "etag-b", "2024-02-01T00:00:00+00:00", 2048),
         ]
         pg_docs = [
             {"doc_source": "a.pdf", "doc_created_at": "2022-06-01T00:00:00+00:00"},
@@ -260,9 +260,9 @@ class TestReindexOrdering:
     def test_reindex_fallback_to_s3_last_modified_when_no_postgres(self):
         """Documents without Postgres doc_created_at use S3 LastModified for ordering."""
         objects = [
-            ("z.pdf", "etag-z", "2024-12-01T00:00:00+00:00"),
-            ("m.pdf", "etag-m", "2024-06-01T00:00:00+00:00"),
-            ("a.pdf", "etag-a", "2024-01-01T00:00:00+00:00"),
+            ("z.pdf", "etag-z", "2024-12-01T00:00:00+00:00", 300),
+            ("m.pdf", "etag-m", "2024-06-01T00:00:00+00:00", 400),
+            ("a.pdf", "etag-a", "2024-01-01T00:00:00+00:00", 500),
         ]
         enqueued: list[str] = []
 

@@ -64,7 +64,7 @@ Replaces Redis `doc:{kb_id}:{doc_source}` hash, `docs:{kb_id}` set, and `etag:{k
 documents
 ├── kb_id            TEXT NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE
 ├── doc_source       TEXT NOT NULL
-├── status           TEXT NOT NULL DEFAULT 'running'  -- running | indexed | deleting | failed
+├── status           TEXT NOT NULL DEFAULT 'pending'  -- pending | running | indexed | deleting | failed
 ├── etag             TEXT                             -- S3 ETag (MD5 hex, quotes stripped)
 ├── run_id           TEXT NOT NULL DEFAULT ''         -- Dagster run ID or "direct"
 ├── created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()  -- set on INSERT, never updated
@@ -102,7 +102,8 @@ Index: `idx_simhash_bands` on `(kb_id, band_index, band_value)`
 
 | Status | Meaning |
 |--------|---------|
-| `running` | Ingest in progress |
+| `pending` | Queued — event pushed to Redis, waiting for worker pickup |
+| `running` | Pipeline processing in progress |
 | `indexed` | Ingest complete, chunks stored in Qdrant |
 | `deleting` | Delete in progress |
 | `failed` | Ingest or delete failed — see `error` column |

@@ -146,6 +146,37 @@ def test_poll_delete_while_processing_requeues():
     assert not any("_run_delete" in d for d in dispatched)
 
 
+def test_poll_upload_while_processing_no_run_id_requeues():
+    """Upload event, doc is running with no run_id (QueueWorker mode) -> must requeue.
+
+    Previously fell through due to 'run_id=""' check — now fixed.
+    """
+    from pipeline.queue_worker import QueueWorker
+
+    worker = QueueWorker()
+    worker._semaphore = asyncio.Semaphore(4)
+
+    fake_redis, _ = _make_redis(
+        upload_events=[{"kb_id": "kb-test", "doc_source": "doc.pdf", "etag": "e1", "file_size": 0, "force": False}]
+    )
+    dispatched = []
+
+    def fake_create_task(coro, **kw):
+        dispatched.append(coro.__qualname__ if hasattr(coro, "__qualname__") else str(coro))
+        coro.close()
+        return MagicMock()
+
+    with (
+        patch("infra.redis.get_redis_client", return_value=fake_redis),
+        patch("infra.postgres.get_doc_status", return_value={"status": "running", "run_id": ""}),
+        patch("asyncio.create_task", side_effect=fake_create_task),
+    ):
+        asyncio.run(worker._poll())
+
+    assert any("_requeue_after_delay" in d for d in dispatched)
+    assert not any("_run_ingest" in d for d in dispatched)
+
+
 def test_poll_upload_while_deleting_requeues():
     """Upload event, doc is deleting -> _requeue_after_delay task created."""
     from pipeline.queue_worker import QueueWorker
@@ -297,24 +328,59 @@ def test_poll_returns_false_when_queues_drained():
     assert result is False
 
 
-def test_requeue_after_delay_pushes_back():
-    """_requeue_after_delay sleeps then lpushes the raw event back to the queue."""
+def test_requeue_after_delay_sets_pending_when_doc_not_running():
+    """_requeue_after_delay sets pending then lpushes when doc is not running/deleting."""
     from pipeline.queue_worker import QueueWorker
 
     worker = QueueWorker()
     raw = json.dumps({"kb_id": "kb-test", "doc_source": "doc.pdf"})
     pushed = []
+    pending_calls = []
 
     fake_redis = MagicMock()
     fake_redis.lpush.side_effect = lambda key, val: pushed.append((key, val))
 
     async def run():
-        with patch("config.settings.get_settings") as mock_settings:
+        with (
+            patch("config.settings.get_settings") as mock_settings,
+            patch("infra.redis.get_redis_client", return_value=fake_redis),
+            patch("infra.postgres.get_doc_status", return_value={"status": "indexed"}),
+            patch("pipeline.ops.meta.set_pending", side_effect=lambda kb, src: pending_calls.append((kb, src))),
+        ):
             mock_settings.return_value.queue_poll.retry_interval_sec = 0
-            with patch("infra.redis.get_redis_client", return_value=fake_redis):
-                await worker._requeue_after_delay("rag:upload:queue", raw)
+            await worker._requeue_after_delay("rag:upload:queue", raw)
 
     asyncio.run(run())
 
     assert len(pushed) == 1
     assert pushed[0] == ("rag:upload:queue", raw)
+    assert len(pending_calls) == 1
+    assert pending_calls[0] == ("kb-test", "doc.pdf")
+
+
+def test_requeue_after_delay_skips_pending_when_still_running():
+    """_requeue_after_delay skips set_pending and just lpushes when doc is still running."""
+    from pipeline.queue_worker import QueueWorker
+
+    worker = QueueWorker()
+    raw = json.dumps({"kb_id": "kb-test", "doc_source": "doc.pdf"})
+    pushed = []
+    pending_calls = []
+
+    fake_redis = MagicMock()
+    fake_redis.lpush.side_effect = lambda key, val: pushed.append((key, val))
+
+    async def run():
+        with (
+            patch("config.settings.get_settings") as mock_settings,
+            patch("infra.redis.get_redis_client", return_value=fake_redis),
+            patch("infra.postgres.get_doc_status", return_value={"status": "running", "run_id": "r1"}),
+            patch("pipeline.ops.meta.set_pending", side_effect=lambda kb, src: pending_calls.append((kb, src))),
+        ):
+            mock_settings.return_value.queue_poll.retry_interval_sec = 0
+            await worker._requeue_after_delay("rag:upload:queue", raw)
+
+    asyncio.run(run())
+
+    assert len(pushed) == 1
+    assert len(pending_calls) == 0

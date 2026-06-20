@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, File, Query, UploadFile
 from botocore.exceptions import ClientError
@@ -26,7 +27,7 @@ def _check_ext(filename: str) -> str:
 
 
 def _trigger_ingest(kb_id: str, doc_source: str, etag: str, file_size: int, force: bool = False) -> None:
-    from dagster_pipeline.sensors.event_queue_sensor import enqueue_upload_event
+    from pipeline.enqueue import enqueue_upload_event
 
     enqueue_upload_event(kb_id=kb_id, doc_source=doc_source, etag=etag, file_size=file_size, force=force)
 
@@ -101,19 +102,33 @@ async def upload_docs_batch(
     return {"results": results}
 
 
+_SORT_FIELDS = Literal["updated_at", "created_at", "doc_source", "chunk_count", "file_size"]
+_SORT_ORDERS = Literal["asc", "desc"]
+
+
 @router.get("/kb/{kb_id}/docs")
 async def list_docs(
     kb_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1),
     status: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    sort_by: _SORT_FIELDS = Query(default="updated_at"),
+    sort_order: _SORT_ORDERS = Query(default="desc"),
 ):
-    from infra.postgres import list_docs as pg_list_docs
-    from infra.postgres import list_docs_by_status
+    from infra.postgres import list_docs_paginated
 
-    if status:
-        docs = list_docs_by_status(kb_id, status)
-    else:
-        docs = pg_list_docs(kb_id)
-    return {"kb_id": kb_id, "docs": docs, "total": len(docs)}
+    clamped_size = min(page_size, 100)
+    items, total = list_docs_paginated(
+        kb_id=kb_id,
+        page=page,
+        page_size=clamped_size,
+        status=status,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    return {"items": items, "total": total, "page": page, "page_size": clamped_size}
 
 
 @router.get("/kb/{kb_id}/docs/{source:path}/status")
@@ -166,22 +181,22 @@ async def reindex_kb(
     pg_docs = {d["doc_source"]: d for d in pg_list_docs(kb_id)}
 
     # Determine which objects to queue, then sort oldest-first
-    to_queue: list[tuple[str, str, str]] = []  # (doc_source, s3_etag, sort_key)
+    to_queue: list[tuple[str, str, str, int]] = []  # (doc_source, s3_etag, sort_key, file_size)
     skipped = 0
 
-    for doc_source, s3_etag, s3_last_modified in objects:
+    for doc_source, s3_etag, s3_last_modified, file_size in objects:
         if not force:
             pg_etag = get_doc_etag(kb_id, doc_source)
             if pg_etag == s3_etag:
                 skipped += 1
                 continue
         sort_date = pg_docs.get(doc_source, {}).get("doc_created_at") or s3_last_modified
-        to_queue.append((doc_source, s3_etag, sort_date))
+        to_queue.append((doc_source, s3_etag, sort_date, file_size))
 
     to_queue.sort(key=lambda x: x[2])
 
-    for doc_source, s3_etag, _ in to_queue:
-        _trigger_ingest(kb_id, doc_source, s3_etag, 0, force=force)
+    for doc_source, s3_etag, _, file_size in to_queue:
+        _trigger_ingest(kb_id, doc_source, s3_etag, file_size, force=force)
 
     queued = len(to_queue)
     logger.info("Reindex KB: kb=%s queued=%d skipped=%d force=%s", kb_id, queued, skipped, force)
@@ -200,9 +215,9 @@ async def reindex_doc(
     Returns: { queued: N, skipped: M }
     """
     from infra.postgres import get_doc_etag
-    from infra.s3 import get_object_etag
+    from infra.s3 import get_object_meta
 
-    s3_etag = get_object_etag(kb_id, source)
+    s3_etag, file_size = get_object_meta(kb_id, source)
     if s3_etag is None:
         raise NotFoundError(f"Document not found in S3: kb={kb_id} source={source}")
 
@@ -211,7 +226,7 @@ async def reindex_doc(
         if pg_etag == s3_etag:
             return {"kb_id": kb_id, "queued": 0, "skipped": 1}
 
-    _trigger_ingest(kb_id, source, s3_etag, 0, force=force)
+    _trigger_ingest(kb_id, source, s3_etag, file_size, force=force)
     logger.info("Reindex doc: kb=%s source=%s force=%s", kb_id, source, force)
     return {"kb_id": kb_id, "queued": 1, "skipped": 0}
 
@@ -219,10 +234,8 @@ async def reindex_doc(
 @router.post("/kb/{kb_id}/docs/{source:path}/recover", status_code=202)
 async def recover_doc(kb_id: str, source: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
-    import json
-
+    from pipeline.enqueue import enqueue_upload_event
     from infra.postgres import get_doc_status
-    from infra.redis import get_redis_client
     from pipeline.ops.meta import set_failed
 
     data = get_doc_status(kb_id, source)
@@ -233,8 +246,7 @@ async def recover_doc(kb_id: str, source: str):
             f"Document is not in a recoverable state: status={data.get('status')}"
         )
     set_failed(kb_id, source, "Manually recovered via API", run_id=data.get("run_id", ""))
-    event = json.dumps({"kb_id": kb_id, "doc_source": source, "etag": data.get("etag", ""), "force": True})
-    get_redis_client().lpush("rag:upload:queue", event)
+    enqueue_upload_event(kb_id, source, etag=data.get("etag", ""), file_size=0, force=True)
     logger.info("Manual recover queued: kb=%s source=%s", kb_id, source)
     return {"kb_id": kb_id, "doc_source": source, "queued": True}
 

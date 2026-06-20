@@ -92,7 +92,7 @@ def _run_sensor(fake_redis, get_run_by_id=None):
     from unittest.mock import MagicMock, PropertyMock
 
     from dagster import RunRequest, build_sensor_context
-    from dagster_pipeline.sensors.event_queue_sensor import event_queue_sensor
+    from defs.sensors.event_queue_sensor import event_queue_sensor
 
     mock_settings = MagicMock()
     mock_settings.queue_worker.enabled = False
@@ -103,7 +103,7 @@ def _run_sensor(fake_redis, get_run_by_id=None):
     ctx = build_sensor_context()
     with ExitStack() as stack:
         stack.enter_context(patch("infra.redis.get_redis_client", return_value=fake_redis))
-        stack.enter_context(patch("dagster_pipeline.sensors.event_queue_sensor._get_settings", return_value=mock_settings))
+        stack.enter_context(patch("defs.sensors.event_queue_sensor._get_settings", return_value=mock_settings))
         stack.enter_context(patch("infra.postgres.get_doc_status", side_effect=_pg_get_doc_status))
         stack.enter_context(patch("infra.postgres.set_doc_status"))
         if get_run_by_id is not None:

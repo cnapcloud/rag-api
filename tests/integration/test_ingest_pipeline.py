@@ -28,7 +28,7 @@ def test_ingest_job_success(ingest_run_config):
     """ingest_job full flow integration test (requires infrastructure)."""
     from dagster import execute_in_process
 
-    from dagster_pipeline.jobs.ingest_job import ingest_job
+    from defs.jobs.ingest_job import ingest_job
 
     with (
         patch("pipeline.ops.validate.postgres_infra.get_doc_etag", return_value=None),
@@ -54,7 +54,7 @@ def test_ingest_job_success(ingest_run_config):
 
 def test_ingest_job_skips_on_same_etag(ingest_run_config):
     """ETag unchanged -> validate_op skips and pipeline exits early."""
-    from dagster_pipeline.jobs.ingest_job import ingest_job
+    from defs.jobs.ingest_job import ingest_job
 
     with (
         patch("infra.postgres.get_doc_status", return_value=None),

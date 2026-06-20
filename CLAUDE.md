@@ -32,7 +32,7 @@ src/
   pipeline/ops/              # 순수 함수 파이프라인 Op
     validate.py  → parse.py → chunk.py → embed.py → upsert.py → meta.py
   pipeline/ops/runner.py     # CLI/테스트용 직접 실행 래퍼
-  dagster_pipeline/          # Dagster @op 래퍼 + sensor + resource
+  defs/          # Dagster @op 래퍼 + sensor + resource
   rag/                       # retriever, merger(RRF), reranker
   infra/
     minio.py   # MinIO 클라이언트 + 이벤트 폴링
