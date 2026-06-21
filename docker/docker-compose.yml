@@ -21,6 +21,19 @@ services:
       minio:
         condition: service_healthy
 
+  rag-admin:
+    build:
+      context: ../../rag-admin
+      dockerfile: Dockerfile
+    container_name: rag-admin
+    environment:
+      API_URL: http://rag-api:8000
+    ports:
+      - "8080:80"
+    depends_on:
+      rag-api:
+        condition: service_started
+
   dagster-rag-api:
     build:
       context: ..

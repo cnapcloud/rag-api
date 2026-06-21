@@ -21,18 +21,71 @@ curl http://localhost:8000/ready
 
 ## 2. 지식베이스 (KB)
 
-```bash
-# 전체 KB 목록
-curl http://localhost:8000/api/kb
+### KB 목록 조회
 
-# KB 생성
+```bash
+curl http://localhost:8000/api/kb
+```
+
+응답:
+
+```json
+{
+  "knowledge_bases": [
+    {
+      "kb_id": "kb-99",
+      "kb_name": "지식베이스 99",
+      "description": "첫 번째 지식베이스입니다.",
+      "tags": []
+    }
+  ]
+}
+```
+
+### KB 생성
+
+```bash
 curl -X POST http://localhost:8000/api/kb \
   -H "Content-Type: application/json" \
-  -d '{"kb_id": "kb-01", "description": "테스트 KB"}'
-
-# KB 삭제 (Qdrant + S3 + Redis 모두 삭제)
-curl -X DELETE http://localhost:8000/api/kb/kb-01
+  -d '{
+    "kb_id": "kb-99",
+    "kb_name": "지식베이스 99",
+    "description": "첫 번째 지식베이스입니다.",
+    "tags": ["tag1", "tag2"]
+  }'
 ```
+
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| `kb_id` | 필수 | KB 식별자 (중복 불가) |
+| `kb_name` | 선택 | 표시 이름 (기본값: `""`) |
+| `description` | 선택 | 설명 |
+| `tags` | 선택 | 태그 목록 (기본값: `[]`) |
+
+응답 (HTTP 201):
+
+```json
+{ "kb_id": "kb-99", "status": "created" }
+```
+
+이미 존재하는 `kb_id`로 생성 시 HTTP 409 반환.
+
+### KB 삭제
+
+```bash
+curl -X DELETE http://localhost:8000/api/kb/kb-99
+```
+
+Qdrant 컬렉션 → S3 오브젝트 → Postgres 메타데이터 순으로 삭제. 문서 메타데이터는 cascade 삭제.
+
+응답 (HTTP 200):
+
+```json
+{ "kb_id": "kb-99", "status": "deleted", "s3_objects_deleted": 7 }
+```
+
+존재하지 않는 KB 삭제 시 HTTP 404 반환.
+
 
 ---
 
@@ -95,7 +148,7 @@ curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?source=doc.pdf"
 curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?source=doc.pdf&force=true"
 
 # stuck 문서 복구 — status=running 인 경우에만 사용
-curl -X POST http://localhost:8000/api/kb/kb-01/docs/doc.pdf/recover
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/recover?source=doc.pdf"
 ```
 
 ---
@@ -207,74 +260,7 @@ curl "http://192.168.0.181:8000/api/kb/kb-01/docs?page=2&page_size=10&status=ind
 
 ---
 
-## 7. Knowledge Base 관리
-
-### KB 목록 조회
-
-```bash
-curl http://localhost:8000/api/kb
-```
-
-응답:
-
-```json
-{
-  "knowledge_bases": [
-    {
-      "kb_id": "kb-99",
-      "kb_name": "지식베이스 99",
-      "description": "첫 번째 지식베이스입니다.",
-      "tags": []
-    }
-  ]
-}
-```
-
-### KB 생성
-
-```bash
-curl -X POST http://localhost:8000/api/kb \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kb_id": "kb-99",
-    "kb_name": "지식베이스 99",
-    "description": "첫 번째 지식베이스입니다.",
-    "tags": ["tag1", "tag2"]
-  }'
-```
-
-| 필드 | 필수 | 설명 |
-|------|------|------|
-| `kb_id` | 필수 | KB 식별자 (중복 불가) |
-| `kb_name` | 선택 | 표시 이름 (기본값: `""`) |
-| `description` | 선택 | 설명 |
-| `tags` | 선택 | 태그 목록 (기본값: `[]`) |
-
-응답 (HTTP 201):
-
-```json
-{ "kb_id": "kb-99", "status": "created" }
-```
-
-이미 존재하는 `kb_id`로 생성 시 HTTP 409 반환.
-
-### KB 삭제
-
-```bash
-curl -X DELETE http://localhost:8000/api/kb/kb-99
-```
-
-Qdrant 컬렉션 → S3 오브젝트 → Postgres 메타데이터 순으로 삭제. 문서 메타데이터는 cascade 삭제.
-
-응답 (HTTP 200):
-
-```json
-{ "kb_id": "kb-99", "status": "deleted", "s3_objects_deleted": 7 }
-```
-
-존재하지 않는 KB 삭제 시 HTTP 404 반환.
-
-## 8. MCP 연결
+## 7. MCP 연결
 
 Claude Desktop `claude_desktop_config.json`:
 

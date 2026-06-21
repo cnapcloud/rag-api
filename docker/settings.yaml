@@ -43,6 +43,7 @@ chunking:
   strategy: "recursive"    # recursive / semantic
   chunk_size: 1024
   chunk_overlap: 128
+  min_chunk_chars: 30
   semantic_threshold: 0.8
 
 embedding:
@@ -73,10 +74,10 @@ retrieval:
 knowledge_bases:
   - id: "kb-01"
     name: "지식베이스 01"
-    description: "지식베이스 01"
+    description: "첫 번째 지식베이스입니다."
   - id: "kb-02"
     name: "지식베이스 02"
-    description: "지식베이스 02"
+    description: "두 번째 지식베이스입니다."
 
 mcp:
   enabled: true
