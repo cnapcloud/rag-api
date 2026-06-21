@@ -181,63 +181,7 @@ curl -X POST "http://localhost:8000/api/kb/kb-01/docs/recover?source=doc.pdf"
 
 ---
 
-## 5. 검색
-
-```bash
-curl -X POST http://localhost:8000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "검색어",
-    "kb_ids": ["kb-01", "kb-02"]
-  }'
-```
-
-옵션을 지정할 경우:
-
-```bash
-curl -X POST http://localhost:8000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "검색어",
-    "kb_ids": ["kb-01"],
-    "options": {
-      "mode": "hybrid",
-      "top_k": 10,
-      "hybrid": {
-        "alpha": 0.5
-      },
-      "similarity": {
-        "min_score": 0.7
-      },
-      "rerank": {
-        "enabled": true,
-        "top_n": 5
-      }
-    }
-  }'
-```
-
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `mode` | settings | `"hybrid"` (dense+sparse) 또는 `"similarity"` (dense-only). 생략 시 settings.retrieval.mode 사용 |
-| `top_k` | settings | 반환할 최대 청크 수 |
-| `hybrid.alpha` | settings | 1.0 = Dense 100%, 0.0 = Sparse(키워드) 100%. hybrid 모드에서만 적용 |
-| `similarity.min_score` | settings | similarity 모드에서 반환할 최소 코사인 유사도 (0.0~1.0) |
-| `rerank.enabled` | true | 리랭킹 활성화 여부 |
-| `rerank.top_n` | settings | 리랭킹 후 반환할 결과 수 |
-
-### hybrid 모드 점수(score) 특징
-
-hybrid 모드의 `score`는 코사인 유사도가 아닌 **RRF(Reciprocal Rank Fusion) 순위 점수**다.
-
-- 공식: `score = 1 / (60 + rank)` — 1위 ≈ 0.0164, 10위 ≈ 0.0143
-- dense 순위 + sparse 순위를 합산해 재순위 매긴 값이므로 절댓값은 의미 없음
-- `min_score`는 hybrid 모드에서 무시됨 (RRF 점수 최댓값이 ~0.016이라 0.0~1.0 코사인 임계값 적용 불가)
-- **결과 품질 제어는 `top_k`로** 한다 (상위 N개 제한이 곧 낮은 순위 제거)
-
----
-
-## 6. 문서 목록 조회
+## 5. 문서 목록 조회
 
 `GET /api/kb/{kb_id}/docs`
 
@@ -288,13 +232,106 @@ curl "http://192.168.0.181:8000/api/kb/kb-01/docs?page=2&page_size=10&status=ind
 
 ---
 
+## 6. 검색
+
+### hybrid 모드 (기본)
+
+dense(의미) + sparse(키워드) 검색을 결합해 RRF로 재순위를 매깁니다.
+
+```bash
+curl -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "검색어",
+    "kb_ids": ["kb-01", "kb-02"],
+    "options": {
+      "mode": "hybrid",
+      "top_k": 10,
+      "hybrid": {
+        "alpha": 0.5
+      },
+      "rerank": {
+        "enabled": true,
+        "top_n": 5
+      }
+    }
+  }'
+```
+
+### similarity 모드
+
+dense 벡터 코사인 유사도만 사용합니다. `min_score`로 낮은 유사도 결과를 걸러낼 수 있습니다.
+
+```bash
+curl -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "검색어",
+    "kb_ids": ["kb-01", "kb-02"],
+    "options": {
+      "mode": "similarity",
+      "top_k": 10,
+      "similarity": {
+        "min_score": 0.7
+      },
+      "rerank": {
+        "enabled": true,
+        "top_n": 5
+      }
+    }
+  }'
+```
+
+### 옵션 파라미터
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `mode` | settings | `"hybrid"` 또는 `"similarity"`. 생략 시 settings.retrieval.mode 사용 |
+| `top_k` | settings | 최종 반환할 최대 청크 수 |
+| `hybrid.alpha` | settings | 1.0 = Dense 100%, 0.0 = Sparse(키워드) 100%. hybrid 모드에서만 적용 |
+| `similarity.min_score` | settings | 반환할 최소 코사인 유사도 (0.0~1.0). similarity 모드에서만 적용 |
+| `rerank.enabled` | true | 리랭킹 활성화 여부 |
+| `rerank.top_n` | settings | 리랭킹 후 반환할 결과 수 |
+
+### 모드별 점수(score) 및 복수 KB 집계 방식
+
+**hybrid 모드**
+
+- 각 KB에서 `top_k`개를 독립적으로 검색 (dense 순위 + sparse 순위 합산 → KB 내 RRF 점수)
+- 복수 KB 결과를 하나로 모아 RRF를 다시 적용해 순위를 재산출
+- `score = 1 / (60 + rank)` — 1위 ≈ 0.0164, 10위 ≈ 0.0143
+- 점수 절댓값은 의미 없음. 품질 제어는 `top_k`로 한다 (`min_score` 적용 불가)
+- 최종 결과: 전체 candidate 중 RRF 점수 상위 `top_k`개 반환
+
+**similarity 모드**
+
+- 각 KB에서 `top_k`개를 독립적으로 검색 (코사인 유사도 기준)
+- `min_score` 미만 결과를 KB별로 먼저 제거
+- 복수 KB 결과를 합산한 뒤 코사인 유사도 내림차순으로 정렬
+- 최종 결과: 정렬된 전체 candidate 중 상위 `top_k`개 반환
+
+---
+
 ## 7. MCP 연결
 
-Claude Desktop `claude_desktop_config.json`:
+VS Code `.vscode/mcp.json` (워크스페이스 기준):
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
+    "rag-api": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
+
+또는 사용자 전역 설정 (`settings.json`):
+
+```json
+{
+  "mcp.servers": {
     "rag-api": {
       "type": "http",
       "url": "http://localhost:8000/mcp"

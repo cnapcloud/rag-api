@@ -194,10 +194,10 @@ async def hybrid_search(
             [r for results in all_results for r in results],
             key=lambda r: r.score,
             reverse=True,
-        )
+        )[:_top_k]
     else:
         from rag.merger import rrf_merge
-        merged = rrf_merge(all_results)
+        merged = rrf_merge(all_results)[:_top_k]
 
     logger.info(
         "Search done: mode=%s kbs=%d candidates=%d",
