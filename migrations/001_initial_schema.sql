@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
     tags         TEXT[] NOT NULL DEFAULT '{}',
     description  TEXT DEFAULT NULL,
     status       TEXT NOT NULL DEFAULT 'active',
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_kb_tags ON knowledge_bases USING GIN (tags);

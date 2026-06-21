@@ -18,20 +18,18 @@ sync:
 lock:
 	$(UV) lock
 
-COMPOSE = docker compose -f docker/docker-compose.yml
-
-build:
-	docker buildx build --platform linux/arm64 -t $(IMAGE) -t $(IMAGE_VERSIONED) .
-
-push: build
-	docker push $(IMAGE)
-	docker push $(IMAGE_VERSIONED)
-
 test:
 	$(UV) run pytest -q
 
 compile:
 	$(UV) build
+
+docker-build:
+	docker buildx build --platform linux/arm64 -t $(IMAGE) -t $(IMAGE_VERSIONED) .
+
+docker-push: docker-build
+	docker push $(IMAGE)
+	docker push $(IMAGE_VERSIONED)
 
 clean:
 	rm -rf build dist *.egg-info .venv

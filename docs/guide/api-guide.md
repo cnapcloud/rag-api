@@ -70,6 +70,34 @@ curl -X POST http://localhost:8000/api/kb \
 
 이미 존재하는 `kb_id`로 생성 시 HTTP 409 반환.
 
+### KB 수정
+
+`name`, `description`, `tags` 중 전달한 필드만 업데이트합니다 (PATCH 의미론).
+
+```bash
+curl -X PATCH http://localhost:8000/api/kb/kb-99 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "kb_name": "새 이름",
+    "description": "수정된 설명",
+    "tags": ["tag1", "tag3"]
+  }'
+```
+
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| `kb_name` | 선택 | 표시 이름 |
+| `description` | 선택 | 설명 |
+| `tags` | 선택 | 태그 목록 (전체 교체) |
+
+응답 (HTTP 200):
+
+```json
+{ "kb_id": "kb-99", "status": "updated" }
+```
+
+존재하지 않는 KB 수정 시 HTTP 404 반환.
+
 ### KB 삭제
 
 ```bash

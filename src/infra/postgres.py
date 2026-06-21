@@ -15,6 +15,15 @@ logger = logging.getLogger(__name__)
 
 _pool: psycopg_pool.ConnectionPool | None = None
 
+
+def _to_local_iso(dt: datetime | None) -> str:
+    """Convert a UTC-aware datetime to the server's local timezone ISO string."""
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone().isoformat()
+
 _ALLOWED_DOC_FIELDS = frozenset({
     "status", "etag", "run_id", "updated_at", "chunk_count",
     "file_size", "doc_type", "embedding_model", "error", "doc_created_at",
@@ -89,7 +98,7 @@ def register_kb(
 def get_kb_meta(kb_id: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(
-            "SELECT kb_id, kb_name, description, tags, status, created_at FROM knowledge_bases WHERE kb_id = %s",
+            "SELECT kb_id, kb_name, description, tags, status, created_at, updated_at FROM knowledge_bases WHERE kb_id = %s",
             [kb_id],
         ).fetchone()
     if row is None:
@@ -100,7 +109,8 @@ def get_kb_meta(kb_id: str) -> dict | None:
         "description": row[2],
         "tags": list(row[3]) if row[3] else [],
         "status": row[4],
-        "created_at": row[5].isoformat() if row[5] else "",
+        "created_at": _to_local_iso(row[5]),
+        "updated_at": _to_local_iso(row[6]),
     }
 
 
@@ -108,6 +118,35 @@ def list_kb_ids() -> list[str]:
     with get_pool().connection() as conn:
         rows = conn.execute("SELECT kb_id FROM knowledge_bases ORDER BY kb_id").fetchall()
     return [r[0] for r in rows]
+
+
+def update_kb_meta(
+    kb_id: str,
+    kb_name: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+) -> None:
+    parts, params = [], []
+    if kb_name is not None:
+        parts.append("kb_name = %s")
+        params.append(kb_name)
+    if description is not None:
+        parts.append("description = %s")
+        params.append(description)
+    if tags is not None:
+        parts.append("tags = %s")
+        params.append(tags)
+    if not parts:
+        return
+    parts.append("updated_at = NOW()")
+    params.append(kb_id)
+    with get_pool().connection() as conn:
+        conn.execute(
+            f"UPDATE knowledge_bases SET {', '.join(parts)} WHERE kb_id = %s",
+            params,
+        )
+        conn.commit()
+    logger.info("KB meta updated: %s", kb_id)
 
 
 def update_kb_status(kb_id: str, status: str) -> None:

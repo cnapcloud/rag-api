@@ -21,6 +21,12 @@ class KBCreateRequest(BaseModel):
     tags: list[str] = []
 
 
+class KBUpdateRequest(BaseModel):
+    kb_name: str | None = None
+    description: str | None = None
+    tags: list[str] | None = None
+
+
 @router.get("/kb")
 async def list_kbs():
     from infra.postgres import get_kb_meta, list_kb_ids
@@ -36,6 +42,7 @@ async def list_kbs():
             "tags": meta.get("tags", []) if meta else [],
             "status": meta.get("status", "active") if meta else "active",
             "created_at": meta.get("created_at", "") if meta else "",
+            "updated_at": meta.get("updated_at", "") if meta else "",
         })
     return {"knowledge_bases": result}
 
@@ -62,6 +69,17 @@ async def create_kb(req: KBCreateRequest):
     ensure_collection(req.kb_id)
 
     return {"kb_id": req.kb_id, "status": "created"}
+
+
+@router.patch("/kb/{kb_id}", status_code=200)
+async def update_kb(kb_id: str, req: KBUpdateRequest):
+    from infra.postgres import get_kb_meta, update_kb_meta
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    update_kb_meta(kb_id, req.kb_name, req.description, req.tags)
+    return {"kb_id": kb_id, "status": "updated"}
 
 
 @router.delete("/kb/{kb_id}", status_code=200)
