@@ -83,7 +83,6 @@ class SearchResponse(BaseModel):
 @router.post("/search", response_model=SearchResponse)
 async def search(req: SearchRequest):
     from config.settings import get_settings
-    from rag.reranker import rerank_async
     from rag.retriever import search as retriever_search
 
     cfg = get_settings().retrieval
@@ -104,31 +103,18 @@ async def search(req: SearchRequest):
 
     start = time.monotonic()
 
-    # 1. Search (hybrid or similarity)
-    candidates = await retriever_search(
+    rerank_enabled = req.options.rerank.enabled and cfg.rerank.enabled
+
+    final_results, total_candidates, rerank_provider, fallback_used = await retriever_search(
         query=req.query,
         kb_ids=req.kb_ids,
         top_k=_top_k,
         alpha=_alpha,
         mode=_mode,
         min_score=_min_score,
+        rerank_enabled=rerank_enabled,
+        top_n=_top_n,
     )
-    total_candidates = len(candidates)
-
-    # 2. Rerank
-    rerank_enabled = req.options.rerank.enabled and cfg.rerank.enabled
-    rerank_provider = cfg.rerank.provider if rerank_enabled else "none"
-    fallback_used = False
-
-    if rerank_enabled and candidates:
-        _top_n = min(_top_n, len(candidates))
-        final_results, rerank_provider, fallback_used = await rerank_async(
-            query=req.query,
-            results=candidates,
-            top_n=_top_n,
-        )
-    else:
-        final_results = candidates[:_top_k]
 
     latency_ms = int((time.monotonic() - start) * 1000)
 

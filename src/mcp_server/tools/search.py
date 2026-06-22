@@ -9,7 +9,6 @@ from mcp.server.fastmcp import Context
 from opentelemetry import trace
 
 from config.settings import get_settings
-from rag.reranker import rerank_async
 from rag.retriever import search as retriever_search
 from tracing.span import traced_tool
 
@@ -48,14 +47,9 @@ async def search(
     _min_score = min_score if min_score is not None else cfg.retrieval.similarity.min_score
     start = time.monotonic()
 
-    candidates = await retriever_search(
+    final_results, _, _, _ = await retriever_search(
         query=query, kb_ids=resolved_kb_ids, top_k=top_k, mode=_mode, min_score=_min_score
     )
-
-    if candidates:
-        final_results, _, _ = await rerank_async(query=query, results=candidates)
-    else:
-        final_results = candidates
 
     latency_ms = int((time.monotonic() - start) * 1000)
     span.set_attribute("rag.result_count", len(final_results))

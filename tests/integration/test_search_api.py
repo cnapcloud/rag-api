@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,8 +46,7 @@ def test_search_returns_results(client):
     mock_settings.retrieval.similarity.min_score = 0.0
 
     with (
-        patch("rag.retriever.hybrid_search", return_value=mock_results),
-        patch("rag.reranker.rerank_async", return_value=(mock_results[:2], "jina", False)),
+        patch("rag.retriever.search", new=AsyncMock(return_value=(mock_results[:2], 3, "jina", False))),
         patch("config.settings.get_settings", return_value=mock_settings),
     ):
         resp = client.post(
@@ -87,7 +86,7 @@ def test_search_similarity_mode_with_min_score(client):
     mock_settings.retrieval.similarity.min_score = 0.0
 
     with (
-        patch("rag.retriever.hybrid_search", return_value=mock_results),
+        patch("rag.retriever.search", new=AsyncMock(return_value=(mock_results, 2, "none", False))),
         patch("config.settings.get_settings", return_value=mock_settings),
     ):
         resp = client.post(

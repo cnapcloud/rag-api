@@ -111,8 +111,7 @@ async def test_search_with_explicit_kb_ids():
 
     with (
         patch("mcp_server.tools.search.get_settings", return_value=fake_settings),
-        patch("mcp_server.tools.search.retriever_search", new=AsyncMock(return_value=[candidate])),
-        patch("mcp_server.tools.search.rerank_async", new=AsyncMock(return_value=([reranked], "jina", False))),
+        patch("mcp_server.tools.search.retriever_search", new=AsyncMock(return_value=([reranked], 1, "jina", False))),
     ):
         result = await search(query="what is TDF?", kb_ids=["kb-a"], top_k=5)
 
@@ -132,8 +131,7 @@ async def test_search_expands_to_all_kbs_when_none_specified():
 
     with (
         patch("mcp_server.tools.search.get_settings", return_value=fake_settings),
-        patch("mcp_server.tools.search.retriever_search", new=AsyncMock(return_value=[])) as mock_search,
-        patch("mcp_server.tools.search.rerank_async", new=AsyncMock(return_value=([], "none", False))),
+        patch("mcp_server.tools.search.retriever_search", new=AsyncMock(return_value=([], 0, "none", False))) as mock_search,
     ):
         await search(query="hello")
 

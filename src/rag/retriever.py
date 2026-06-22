@@ -107,15 +107,22 @@ async def search(
     alpha: float | None = None,
     mode: str = "hybrid",
     min_score: float = 0.0,
-) -> list[SearchResult]:
-    """Search across multiple KBs in parallel and merge results.
+    rerank_enabled: bool | None = None,
+    top_n: int | None = None,
+) -> tuple[list[SearchResult], int, str, bool]:
+    """Search across multiple KBs in parallel, merge, and optionally rerank.
 
+    Returns: (results, total_candidates, rerank_provider, fallback_used)
+    rerank_enabled: None uses settings value.
     mode='hybrid': dense+sparse search, RRF merge (alpha applies)
     mode='similarity': dense-only search, cosine score (alpha ignored, min_score applies)
     """
+    from rag.reranker import rerank_async
+
     cfg = get_settings().retrieval
     _top_k = top_k or cfg.top_k
     _alpha = alpha if alpha is not None else cfg.hybrid.alpha
+    _rerank_enabled = rerank_enabled if rerank_enabled is not None else cfg.rerank.enabled
 
     if mode == "similarity" and alpha is not None:
         logger.warning("alpha parameter is ignored in similarity mode")
@@ -145,5 +152,12 @@ async def search(
         from rag.merger import rrf_merge
         merged = rrf_merge(all_results, k=cfg.hybrid.rrf_k)[:_top_k]
 
-    logger.info("Search done: mode=%s kbs=%d candidates=%d", mode, len(kb_ids), len(merged))
-    return merged
+    total_candidates = len(merged)
+    logger.info("Search done: mode=%s kbs=%d candidates=%d", mode, len(kb_ids), total_candidates)
+
+    if _rerank_enabled and merged:
+        _top_n = min(top_n or cfg.rerank.top_n, len(merged))
+        results, provider, fallback = await rerank_async(query=query, results=merged, top_n=_top_n)
+        return results, total_candidates, provider, fallback
+
+    return merged, total_candidates, "none", False
