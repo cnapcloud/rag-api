@@ -100,8 +100,8 @@ def _instrument_tracing(app: FastAPI) -> None:
         return
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-    FastAPIInstrumentor.instrument_app(app, excluded_urls="/mcp$")
-    logger.info("FastAPI tracing instrumentation enabled (excluded: /mcp)")
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="/health,/ready,/mcp$")
+    logger.info("FastAPI tracing instrumentation enabled (excluded: /health,/ready,/mcp)")
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
