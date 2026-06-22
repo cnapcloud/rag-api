@@ -13,7 +13,7 @@ PointStruct
 │                             — BM25 FastEmbed sparse embedding
 └── payload
     ├── kb_id              : str      — Knowledge Base ID
-    ├── doc_key            : str      — "{kb_id}___{doc_source}" (doc-level delete filter key)
+    ├── doc_key            : str      — "{kb_id}::{doc_source}" (doc-level delete filter key)
     ├── doc_source         : str      — document source identifier (S3 path, URL, Confluence link, etc.)
     ├── doc_type           : str      — file extension (pdf, docx, txt, md, hwp)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
@@ -50,7 +50,8 @@ knowledge_bases
 ├── tags         TEXT[] NOT NULL DEFAULT '{}'
 ├── description  TEXT DEFAULT NULL
 ├── status       TEXT NOT NULL DEFAULT 'active'   -- active | deleting
-└── created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+├── created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+└── updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
 
 Indexes:

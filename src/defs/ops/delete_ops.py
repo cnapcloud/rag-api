@@ -5,7 +5,7 @@ from dagster import Config, HookContext, OpExecutionContext, failure_hook, op
 
 @failure_hook
 def delete_failure_hook(context: HookContext) -> None:
-    """Mark document as delete_failed in Redis when any delete op fails."""
+    """Mark document as delete_failed in Postgres when any delete op fails."""
     try:
         op_config = context.op_config or {}
         kb_id: str = op_config.get("kb_id", "")
@@ -35,7 +35,7 @@ def delete_chunks_op(context: OpExecutionContext, config: DeleteConfig):
 
 @op
 def delete_meta_op(context: OpExecutionContext, delete_result: dict):
-    """Redis 문서 메타데이터 삭제."""
+    """Postgres documents 테이블에서 문서 메타데이터 삭제."""
     from infra import postgres as postgres_infra
 
     postgres_infra.delete_doc_meta(delete_result["kb_id"], delete_result["doc_source"])
