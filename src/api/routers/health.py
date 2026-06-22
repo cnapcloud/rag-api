@@ -41,7 +41,7 @@ async def readiness():
     except Exception:
         checks["s3"] = False
 
-    # Ollama (provider=ollama only)
+    # Embedding provider
     if cfg.embedding.provider == "ollama":
         try:
             import httpx
@@ -51,6 +51,18 @@ async def readiness():
             checks["ollama"] = resp.status_code == 200
         except Exception:
             checks["ollama"] = False
+    elif cfg.embedding.provider == "openai":
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=5) as c:
+                resp = await c.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {cfg.embedding.openai_api_key}"},
+                )
+            checks["openai"] = resp.status_code == 200
+        except Exception:
+            checks["openai"] = False
 
     all_ok = all(checks.values())
     status_code = 200 if all_ok else 503

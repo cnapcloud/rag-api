@@ -45,6 +45,14 @@ MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=minioadmin
 ```
 
+Postgres 패스워드는 `docker/docker-compose.yml`에 직접 정의되어 있다. 프로덕션 배포 전에 함께 변경한다.
+
+```yaml
+postgresql:
+  environment:
+    POSTGRES_PASSWORD: password   # 변경 필요
+```
+
 ### 3. 기동
 
 ```bash
@@ -147,4 +155,4 @@ Claude Desktop `claude_desktop_config.json`:
 |---|---|---|
 | MinIO Console | http://localhost:9001 | 업로드된 문서 파일 확인 |
 | Qdrant Dashboard | http://localhost:6333/dashboard | 컬렉션 및 임베딩 벡터 현황 확인 |
-| Dagster UI | http://localhost:3000 | 인제스트 파이프라인 실행 현황 (`queue_worker.enabled: false` 시) |
+| Dagster UI | http://localhost:3000 | 인제스트 파이프라인 실행 현황 (Dagster가 파이프라인을 처리하는 경우: `queue_worker.enabled: false`) |

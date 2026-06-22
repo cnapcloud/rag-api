@@ -59,7 +59,7 @@ retrieval:
   top_k: 10
   hybrid:
     alpha: 0.5                  # alpha=1.0 -> dense only, alpha=0.0 -> sparse only
-    merge_strategy: "rrf"
+    rrf_k: 60
   similarity:
     min_score: 0.0              # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
   rerank:
