@@ -63,9 +63,9 @@ retrieval:
   similarity:
     min_score: 0.0              # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
   rerank:
-    enabled: false
+    enabled: true
     provider: "jina"
-    api_key: ""
+    api_key: jina_026dc0b5a8ff4e6480914e208c1e0682eZK1BWvhq7gdXbQQxRPjP2rZXFo-"
     model: "jina-reranker-v2-base-multilingual"
     top_n: 3
     timeout_sec: 5
@@ -74,6 +74,7 @@ retrieval:
 knowledge_bases:
   - id: "kb-01"
     name: "지식베이스 01"
+    tags: ["general", "default"]
     description: "첫 번째 지식베이스입니다."
   - id: "kb-02"
     name: "지식베이스 02"
