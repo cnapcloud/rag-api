@@ -90,7 +90,7 @@ class RerankerSettings(BaseModel):
 
 class HybridSearchSettings(BaseModel):
     alpha: float = 0.5
-    merge_strategy: str = "rrf"
+    rrf_k: int = 60
 
 
 class SimilaritySearchSettings(BaseModel):

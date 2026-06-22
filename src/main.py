@@ -161,9 +161,9 @@ def search(
     """Hybrid Search 직접 실행 (CLI 테스트용)."""
     import asyncio
 
-    from rag.retriever import hybrid_search
+    from rag.retriever import search
 
-    results = asyncio.run(hybrid_search(query=query, kb_ids=kb_ids, top_k=top_k))
+    results = asyncio.run(search(query=query, kb_ids=kb_ids, top_k=top_k))
 
     if rerank and results:
         from rag.reranker import rerank as do_rerank

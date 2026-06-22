@@ -84,7 +84,7 @@ class SearchResponse(BaseModel):
 async def search(req: SearchRequest):
     from config.settings import get_settings
     from rag.reranker import rerank_async
-    from rag.retriever import hybrid_search
+    from rag.retriever import search as retriever_search
 
     cfg = get_settings().retrieval
 
@@ -105,7 +105,7 @@ async def search(req: SearchRequest):
     start = time.monotonic()
 
     # 1. Search (hybrid or similarity)
-    candidates = await hybrid_search(
+    candidates = await retriever_search(
         query=req.query,
         kb_ids=req.kb_ids,
         top_k=_top_k,

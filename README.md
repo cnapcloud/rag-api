@@ -1,4 +1,4 @@
-# CNAP RAG API
+# RAG API
 
 LlamaIndex + Dagster 기반 문서 인제스트 및 하이브리드 검색 파이프라인.
 
