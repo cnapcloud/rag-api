@@ -255,7 +255,7 @@ class WebConnector:
                 )
                 update_doc_fields(doc["doc_id"], {"error": err_msg})
             else:
-                update_doc_fields(doc["doc_id"], {"status": "failed", "error": err_msg})
+                update_doc_fields(doc["doc_id"], {"status": "failed", "error": err_msg, "connector_id": connector_id})
             logger.warning("Failed to fetch page: source_uri=%s err=%s", source_uri, e)
             return None
 
@@ -290,9 +290,12 @@ class WebConnector:
         if doc is not None and doc.get("status") != "deleted":
             stored = doc.get("content_version") or ""
             if etag and etag == stored:
+                fields: dict = {}
+                if doc.get("connector_id") != connector_id:
+                    fields["connector_id"] = connector_id
                 new_title = _extract_title(html, source_uri)
                 if new_title != doc.get("source"):
-                    update_doc_fields(doc["doc_id"], {"source": new_title})
+                    fields["source"] = new_title
                     logger.info(
                         "Title updated on unchanged page: source_uri=%s title=%r",
                         source_uri,
@@ -300,6 +303,8 @@ class WebConnector:
                     )
                 else:
                     logger.info("Page unchanged (ETag match): source_uri=%s", source_uri)
+                if fields:
+                    update_doc_fields(doc["doc_id"], fields)
                 return html  # Return HTML for link discovery; skip staging.
 
         # Create or set status=fetching.
@@ -314,7 +319,7 @@ class WebConnector:
                 doc_type="html",
             )
         else:
-            update_doc_fields(doc["doc_id"], {"status": "fetching"})
+            update_doc_fields(doc["doc_id"], {"status": "fetching", "connector_id": connector_id})
 
         doc_id = doc["doc_id"]
         title = _extract_title(html, source_uri)
