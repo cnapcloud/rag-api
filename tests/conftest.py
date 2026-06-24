@@ -20,6 +20,7 @@ class FakePostgresStore:
     def __init__(self):
         self._kbs: dict[str, dict] = {}
         self._docs: dict[str, dict] = {}  # keyed by doc_id
+        self._connectors: dict[str, dict] = {}  # keyed by connector_id
 
     # -- KB --
 
@@ -184,6 +185,135 @@ class FakePostgresStore:
     def run_migrations(self) -> None:
         pass
 
+    # -- Connector --
+
+    def create_connector(
+        self,
+        connector_id: str,
+        kb_id: str,
+        name: str,
+        source_type: str,
+        config: dict,
+        sync_schedule: str | None = None,
+        schedule_enabled: bool = False,
+    ) -> dict:
+        now = datetime.now(timezone.utc).isoformat()
+        connector = {
+            "connector_id": connector_id,
+            "kb_id": kb_id,
+            "name": name,
+            "source_type": source_type,
+            "config": config,
+            "sync_schedule": sync_schedule,
+            "schedule_enabled": schedule_enabled,
+            "sync_status": "idle",
+            "sync_started_at": None,
+            "last_synced_at": None,
+            "status": "active",
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._connectors[connector_id] = connector
+        return dict(connector)
+
+    def get_connector(self, connector_id: str) -> dict | None:
+        c = self._connectors.get(connector_id)
+        return dict(c) if c else None
+
+    def list_connectors(
+        self,
+        kb_id: str | None = None,
+        source_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict]:
+        result = []
+        for c in self._connectors.values():
+            if kb_id is not None and c["kb_id"] != kb_id:
+                continue
+            if source_type is not None and c["source_type"] != source_type:
+                continue
+            if status is not None and c["status"] != status:
+                continue
+            result.append(dict(c))
+        result.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+        return result
+
+    def update_connector(self, connector_id: str, fields: dict) -> dict | None:
+        allowed = {"name", "config", "sync_schedule", "schedule_enabled", "status"}
+        if connector_id not in self._connectors:
+            return None
+        for k, v in fields.items():
+            if k in allowed:
+                self._connectors[connector_id][k] = v
+        self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return dict(self._connectors[connector_id])
+
+    def delete_connector(self, connector_id: str) -> None:
+        self._connectors.pop(connector_id, None)
+
+    def set_connector_sync_status(
+        self,
+        connector_id: str,
+        sync_status: str,
+        last_synced_at: datetime | None = None,
+    ) -> None:
+        if connector_id not in self._connectors:
+            return
+        self._connectors[connector_id]["sync_status"] = sync_status
+        if sync_status == "running":
+            self._connectors[connector_id]["sync_started_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            self._connectors[connector_id]["sync_started_at"] = None
+        if last_synced_at is not None:
+            self._connectors[connector_id]["last_synced_at"] = last_synced_at.isoformat()
+        self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def set_connector_status(self, connector_id: str, status: str) -> None:
+        if connector_id in self._connectors:
+            self._connectors[connector_id]["status"] = status
+            self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def get_connector_doc_counts(self, connector_id: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for doc in self._docs.values():
+            if doc.get("connector_id") != connector_id:
+                continue
+            counts[doc["status"]] = counts.get(doc["status"], 0) + 1
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def list_docs_by_connector(self, connector_id: str, *, include_deleted: bool = False) -> list[dict]:
+        result = []
+        for doc in self._docs.values():
+            if doc.get("connector_id") != connector_id:
+                continue
+            if not include_deleted and doc["status"] == "deleted":
+                continue
+            result.append(dict(doc))
+        result.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+        return result
+
+    def list_docs_by_connector_paginated(
+        self,
+        connector_id: str,
+        page: int,
+        page_size: int,
+        status: str | None = None,
+        search: str | None = None,
+        sort_by: str = "updated_at",
+        sort_order: str = "desc",
+        include_deleted: bool = False,
+    ) -> tuple[list[dict], int]:
+        docs = self.list_docs_by_connector(connector_id, include_deleted=include_deleted)
+        if status:
+            docs = [d for d in docs if d.get("status") == status]
+        if search:
+            docs = [d for d in docs if search.lower() in (d.get("source") or "").lower()]
+        docs.sort(key=lambda d: d.get(sort_by) or "", reverse=(sort_order == "desc"))
+        total = len(docs)
+        offset = (page - 1) * page_size
+        return docs[offset: offset + page_size], total
+
 
 @pytest.fixture
 def mock_postgres(monkeypatch):
@@ -202,8 +332,18 @@ def mock_postgres(monkeypatch):
     monkeypatch.setattr("infra.postgres.soft_delete_doc", store.soft_delete_doc)
     monkeypatch.setattr("infra.postgres.list_docs", store.list_docs)
     monkeypatch.setattr("infra.postgres.list_docs_paginated", store.list_docs_paginated)
+    monkeypatch.setattr("infra.postgres.list_docs_by_connector", store.list_docs_by_connector)
+    monkeypatch.setattr("infra.postgres.list_docs_by_connector_paginated", store.list_docs_by_connector_paginated)
     monkeypatch.setattr("infra.postgres.ping", store.ping)
     monkeypatch.setattr("infra.postgres.run_migrations", store.run_migrations)
+    monkeypatch.setattr("infra.postgres.create_connector", store.create_connector)
+    monkeypatch.setattr("infra.postgres.get_connector", store.get_connector)
+    monkeypatch.setattr("infra.postgres.list_connectors", store.list_connectors)
+    monkeypatch.setattr("infra.postgres.update_connector", store.update_connector)
+    monkeypatch.setattr("infra.postgres.delete_connector", store.delete_connector)
+    monkeypatch.setattr("infra.postgres.set_connector_sync_status", store.set_connector_sync_status)
+    monkeypatch.setattr("infra.postgres.set_connector_status", store.set_connector_status)
+    monkeypatch.setattr("infra.postgres.get_connector_doc_counts", store.get_connector_doc_counts)
     return store
 
 

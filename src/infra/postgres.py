@@ -3,18 +3,25 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import psycopg
 import psycopg_pool
+from psycopg.types.json import Jsonb
 
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 _pool: psycopg_pool.ConnectionPool | None = None
+
+
+def generate_id() -> str:
+    """Generate a 16-char hex ID (64-bit, URL-safe)."""
+    return uuid.uuid4().hex[:16]
 
 
 def _to_local_iso(dt: datetime | None) -> str:
@@ -140,6 +147,31 @@ def list_kb_ids() -> list[str]:
     return [r[0] for r in rows]
 
 
+_ALLOWED_KB_SORT_FIELDS = frozenset({"kb_id", "kb_name", "status", "created_at", "updated_at"})
+
+
+def list_kbs(sort_by: str = "kb_id", sort_order: str = "asc") -> list[dict]:
+    col = sort_by if sort_by in _ALLOWED_KB_SORT_FIELDS else "kb_id"
+    direction = "ASC" if sort_order.lower() == "asc" else "DESC"
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            f"SELECT kb_id, kb_name, description, tags, status, created_at, updated_at "
+            f"FROM knowledge_bases ORDER BY {col} {direction}",
+        ).fetchall()
+    return [
+        {
+            "kb_id": r[0],
+            "kb_name": r[1],
+            "description": r[2],
+            "tags": list(r[3]) if r[3] else [],
+            "status": r[4],
+            "created_at": _to_local_iso(r[5]),
+            "updated_at": _to_local_iso(r[6]),
+        }
+        for r in rows
+    ]
+
+
 def update_kb_meta(
     kb_id: str,
     kb_name: str | None = None,
@@ -192,7 +224,6 @@ def delete_kb_meta(kb_id: str) -> None:
 
 def _row_to_doc(row: tuple) -> dict:
     d = dict(zip(_DOC_COLS, row))
-    d["doc_id"] = str(d["doc_id"]) if d["doc_id"] is not None else None
     for col in _DATETIME_COLS:
         if d[col] is not None:
             d[col] = _to_local_iso(d[col])
@@ -214,17 +245,19 @@ def create_doc(
 ) -> dict:
     """INSERT a new document row and return it as a dict.
 
+    doc_id is app-generated as a 16-char hex ID.
     Raises psycopg.errors.UniqueViolation if (kb_id, source_uri) already exists.
     """
+    doc_id = generate_id()
     returning = ", ".join(_DOC_COLS)
     with get_pool().connection() as conn:
         row = conn.execute(
             f"INSERT INTO documents "
-            f"(kb_id, source_uri, source, source_type, status, "
+            f"(doc_id, kb_id, source_uri, source, source_type, status, "
             f"storage_key, content_version, connector_id, file_size, doc_type) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {returning}",
-            [kb_id, source_uri, source, source_type, status,
+            [doc_id, kb_id, source_uri, source, source_type, status,
              storage_key, content_version, connector_id, file_size, doc_type],
         ).fetchone()
         conn.commit()
@@ -344,3 +377,247 @@ def list_docs_paginated(
         ).fetchall()
 
     return [_row_to_doc(r) for r in rows], total
+
+
+def list_docs_by_connector(
+    connector_id: str,
+    *,
+    include_deleted: bool = False,
+) -> list[dict]:
+    conditions = ["connector_id = %s"]
+    params: list[Any] = [connector_id]
+    if not include_deleted:
+        conditions.append("status != 'deleted'")
+    where = " AND ".join(conditions)
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            f"{_DOC_SELECT} WHERE {where} ORDER BY created_at DESC",
+            params,
+        ).fetchall()
+    return [_row_to_doc(r) for r in rows]
+
+
+def list_docs_by_connector_paginated(
+    connector_id: str,
+    page: int,
+    page_size: int,
+    status: str | None = None,
+    search: str | None = None,
+    sort_by: str = "updated_at",
+    sort_order: str = "desc",
+    include_deleted: bool = False,
+) -> tuple[list[dict], int]:
+    conditions = ["connector_id = %s"]
+    params: list[Any] = [connector_id]
+
+    if not include_deleted:
+        conditions.append("status != 'deleted'")
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+    if search:
+        conditions.append("source ILIKE %s")
+        params.append(f"%{search}%")
+
+    where = " AND ".join(conditions)
+    order_dir = "DESC" if sort_order == "desc" else "ASC"
+    nulls_clause = "NULLS LAST" if sort_by in _NULL_LAST_FIELDS else ""
+    order_clause = f"{sort_by} {order_dir} {nulls_clause}".strip()
+
+    offset = (page - 1) * page_size
+    with get_pool().connection() as conn:
+        total: int = conn.execute(
+            f"SELECT COUNT(*) FROM documents WHERE {where}", params
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"{_DOC_SELECT} WHERE {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
+            params + [page_size, offset],
+        ).fetchall()
+
+    return [_row_to_doc(r) for r in rows], total
+
+
+# ──────────────────────────────────────────────
+# Connector metadata
+# ──────────────────────────────────────────────
+
+_CONNECTOR_COLS = (
+    "connector_id", "kb_id", "name", "source_type", "config",
+    "sync_schedule", "schedule_enabled", "sync_status", "sync_started_at",
+    "last_synced_at", "status", "created_at", "updated_at",
+)
+_CONNECTOR_SELECT = "SELECT " + ", ".join(_CONNECTOR_COLS) + " FROM connectors"
+_CONNECTOR_DATETIME_COLS = frozenset({"sync_started_at", "last_synced_at", "created_at", "updated_at"})
+_ALLOWED_CONNECTOR_UPDATE_FIELDS = frozenset({"name", "config", "sync_schedule", "schedule_enabled", "status"})
+_ALLOWED_CONNECTOR_SORT_FIELDS = frozenset({"name", "connector_id", "kb_id", "source_type", "status", "last_synced_at", "created_at", "updated_at"})
+_CONNECTOR_NULL_LAST_FIELDS = frozenset({"last_synced_at"})
+
+
+def _row_to_connector(row: tuple) -> dict:
+    d = dict(zip(_CONNECTOR_COLS, row))
+    for col in _CONNECTOR_DATETIME_COLS:
+        if d[col] is not None:
+            d[col] = _to_local_iso(d[col])
+    return d
+
+
+def create_connector(
+    kb_id: str,
+    name: str,
+    source_type: str,
+    config: dict,
+    sync_schedule: str | None = None,
+    schedule_enabled: bool = False,
+) -> dict:
+    """INSERT a new connector row and return it as a dict.
+
+    connector_id is app-generated as a 16-char hex ID.
+    """
+    connector_id = generate_id()
+    returning = ", ".join(_CONNECTOR_COLS)
+    with get_pool().connection() as conn:
+        row = conn.execute(
+            f"INSERT INTO connectors "
+            f"(connector_id, kb_id, name, source_type, config, sync_schedule, schedule_enabled) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s) "
+            f"RETURNING {returning}",
+            [connector_id, kb_id, name, source_type, Jsonb(config), sync_schedule, schedule_enabled],
+        ).fetchone()
+        conn.commit()
+    return _row_to_connector(row)
+
+
+def get_connector(connector_id: str) -> dict | None:
+    with get_pool().connection() as conn:
+        row = conn.execute(
+            _CONNECTOR_SELECT + " WHERE connector_id = %s",
+            [connector_id],
+        ).fetchone()
+    return _row_to_connector(row) if row else None
+
+
+def list_connectors(
+    kb_id: str | None = None,
+    source_type: str | None = None,
+    status: str | None = None,
+    has_schedule: bool | None = None,
+    search: str | None = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+) -> list[dict]:
+    conditions: list[str] = []
+    params: list[Any] = []
+    if kb_id is not None:
+        conditions.append("kb_id = %s")
+        params.append(kb_id)
+    if source_type is not None:
+        conditions.append("source_type = %s")
+        params.append(source_type)
+    if status is not None:
+        conditions.append("status = %s")
+        params.append(status)
+    if has_schedule is True:
+        conditions.append("sync_schedule IS NOT NULL")
+    elif has_schedule is False:
+        conditions.append("sync_schedule IS NULL")
+    if search is not None:
+        conditions.append("LOWER(name) LIKE %s")
+        params.append(f"%{search.lower()}%")
+
+    col = sort_by if sort_by in _ALLOWED_CONNECTOR_SORT_FIELDS else "created_at"
+    direction = "ASC" if sort_order.lower() == "asc" else "DESC"
+    null_order = "NULLS LAST" if col in _CONNECTOR_NULL_LAST_FIELDS else ""
+    order_clause = f"ORDER BY {col} {direction} {null_order}".strip()
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            f"{_CONNECTOR_SELECT} {where} {order_clause}",
+            params,
+        ).fetchall()
+    return [_row_to_connector(r) for r in rows]
+
+
+def update_connector(connector_id: str, fields: dict) -> dict | None:
+    """UPDATE allowed connector fields. Returns updated row or None if not found."""
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED_CONNECTOR_UPDATE_FIELDS}
+    if not safe:
+        return get_connector(connector_id)
+
+    set_parts: list[str] = []
+    params: list[Any] = []
+    for k, v in safe.items():
+        set_parts.append(f"{k} = %s")
+        params.append(Jsonb(v) if k == "config" and v is not None else v)
+    set_parts.append("updated_at = NOW()")
+    params.append(connector_id)
+
+    returning = ", ".join(_CONNECTOR_COLS)
+    with get_pool().connection() as conn:
+        row = conn.execute(
+            f"UPDATE connectors SET {', '.join(set_parts)} WHERE connector_id = %s RETURNING {returning}",
+            params,
+        ).fetchone()
+        conn.commit()
+    return _row_to_connector(row) if row else None
+
+
+def delete_connector(connector_id: str) -> None:
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM connectors WHERE connector_id = %s", [connector_id])
+        conn.commit()
+    logger.info("Connector deleted: connector_id=%s", connector_id)
+
+
+def set_connector_sync_status(
+    connector_id: str,
+    sync_status: str,
+    last_synced_at: datetime | None = None,
+) -> None:
+    """Update sync_status and manage sync_started_at lifecycle.
+
+    running -> sets sync_started_at = NOW()
+    idle    -> clears sync_started_at = NULL; optionally sets last_synced_at
+    """
+    parts = ["sync_status = %s", "updated_at = NOW()"]
+    params: list[Any] = [sync_status]
+
+    if sync_status == "running":
+        parts.append("sync_started_at = NOW()")
+    else:
+        parts.append("sync_started_at = NULL")
+
+    if last_synced_at is not None:
+        parts.append("last_synced_at = %s")
+        params.append(last_synced_at)
+
+    params.append(connector_id)
+    with get_pool().connection() as conn:
+        conn.execute(
+            f"UPDATE connectors SET {', '.join(parts)} WHERE connector_id = %s",
+            params,
+        )
+        conn.commit()
+
+
+def set_connector_status(connector_id: str, status: str) -> None:
+    with get_pool().connection() as conn:
+        conn.execute(
+            "UPDATE connectors SET status = %s, updated_at = NOW() WHERE connector_id = %s",
+            [status, connector_id],
+        )
+        conn.commit()
+
+
+def get_connector_doc_counts(connector_id: str) -> dict[str, int]:
+    """Return {status: count, ..., "total": n} for documents owned by this connector."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) FROM documents WHERE connector_id = %s GROUP BY status",
+            [connector_id],
+        ).fetchall()
+    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
+    for status, n in rows:
+        counts[status] = int(n)
+    counts["total"] = sum(v for k, v in counts.items() if k != "total")
+    return counts

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS connectors (
 
 -- status values: uploading | fetching | pending | running | indexed | deleting | deleted | failed
 CREATE TABLE IF NOT EXISTS documents (
-    doc_id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id              TEXT         PRIMARY KEY,
     kb_id               TEXT         NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE,
     source              TEXT         NOT NULL,
     source_type         TEXT         NOT NULL,
@@ -65,8 +65,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_status
     ON documents (kb_id, status);
 
 CREATE TABLE IF NOT EXISTS simhash_bands (
-    band_id     UUID     PRIMARY KEY DEFAULT gen_random_uuid(),
-    doc_id      UUID     NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
+    band_id     TEXT     PRIMARY KEY,
+    doc_id      TEXT     NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
     kb_id       TEXT     NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE,
     band_index  SMALLINT NOT NULL,
     band_value  INTEGER  NOT NULL,

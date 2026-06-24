@@ -51,7 +51,7 @@ def _make_doc_row(
 ) -> tuple:
     """Build a tuple matching _DOC_COLS order."""
     return (
-        uuid.UUID(doc_id), kb_id, source, source_type, source_uri, storage_key,
+        doc_id, kb_id, source, source_type, source_uri, storage_key,
         content_version, connector_id, status, deleted_at, run_id, error,
         created_at, updated_at, process_started_at, process_finished_at,
         chunk_count, file_size, doc_type, embedding_model, doc_created_at,

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from llama_index.core import Document, SimpleDirectoryReader
+from llama_index.core.readers.base import BaseReader
 
 from exceptions import IngestValidationError
 from infra.s3 import download_by_key
@@ -57,6 +58,32 @@ def _extract_doc_created_at(file_path: Path, suffix: str, storage_key: str) -> s
         return ""
 
 
+class HTMLCleanReader(BaseReader):
+    """HTML reader that strips structural boilerplate before extracting text.
+
+    Removes nav, footer, header, script, style, aside before returning body text.
+    """
+
+    _STRIP_TAGS = frozenset({"nav", "footer", "header", "script", "style", "aside"})
+
+    def load_data(self, file: Path, extra_info: dict | None = None) -> list[Document]:
+        from bs4 import BeautifulSoup
+
+        with open(file, encoding="utf-8") as f:
+            soup = BeautifulSoup(f, "html.parser")
+
+        for tag in soup.find_all(self._STRIP_TAGS):
+            tag.decompose()
+
+        body = soup.find("body") or soup
+        text = body.get_text(separator="\n", strip=True)
+
+        metadata: dict = {"file_path": str(file)}
+        metadata.update(extra_info or {})
+
+        return [Document(text=text, metadata=metadata)]
+
+
 def _get_file_extractor() -> dict:
     try:
         from llama_index.readers.file import DocxReader, FlatReader, MarkdownReader, PDFReader
@@ -65,28 +92,16 @@ def _get_file_extractor() -> dict:
         logger.warning("llama-index-readers-file not installed, using default reader")
         return {}
 
-    extractors = {
+    return {
         ".pdf": PDFReader(),
         ".md": MarkdownReader(),
         ".docx": DocxReader(),
         ".txt": FlatReader(),
         ".hwp": HWPReader(),
+        ".html": HTMLCleanReader(),
+        ".htm": HTMLCleanReader(),
+        ".rst": FlatReader(),
     }
-
-    try:
-        from llama_index.readers.file import HTMLTagReader
-        extractors[".html"] = HTMLTagReader()
-        extractors[".htm"] = HTMLTagReader()
-    except ImportError:
-        pass
-
-    try:
-        from llama_index.readers.file import FlatReader as _FR
-        extractors[".rst"] = _FR()
-    except ImportError:
-        pass
-
-    return extractors
 
 
 def parse(doc_id: str, storage_key: str, local_path: Path | None = None) -> list[Document]:

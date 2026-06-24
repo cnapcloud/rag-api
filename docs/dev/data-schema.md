@@ -13,7 +13,7 @@ PointStruct
 │                             — BM25 FastEmbed sparse embedding
 └── payload
     ├── kb_id              : str      — Knowledge Base ID
-    ├── doc_id             : str      — UUID of the parent document row (delete filter key)
+    ├── doc_id             : str      — 16-char hex ID of the parent document row (delete filter key)
     ├── doc_type           : str      — file extension (pdf, docx, txt, md, html, rst, …)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document
@@ -59,7 +59,7 @@ Indexes:
 
 ```
 connectors
-├── connector_id      TEXT         PRIMARY KEY
+├── connector_id      TEXT         PRIMARY KEY   -- 16-char hex, app-generated (generate_id())
 ├── kb_id             TEXT         NOT NULL FK knowledge_bases (ON DELETE CASCADE)
 ├── name              TEXT         NOT NULL
 ├── source_type       TEXT         NOT NULL   -- web | confluence | github
@@ -82,7 +82,7 @@ connectors
 
 ```
 documents
-├── doc_id              UUID         PRIMARY KEY DEFAULT gen_random_uuid()
+├── doc_id              TEXT         PRIMARY KEY   -- 16-char hex, app-generated (generate_id())
 ├── kb_id               TEXT         NOT NULL FK knowledge_bases (ON DELETE CASCADE)
 ├── source              TEXT         NOT NULL   -- user-visible display name
 │                                                 s3:         original filename (e.g. report.pdf)
@@ -126,8 +126,8 @@ Indexes:
 
 ```
 simhash_bands
-├── band_id     UUID     PRIMARY KEY DEFAULT gen_random_uuid()
-├── doc_id      UUID     NOT NULL FK documents(doc_id) ON DELETE CASCADE
+├── band_id     TEXT     PRIMARY KEY   -- 16-char hex, app-generated (generate_id())
+├── doc_id      TEXT     NOT NULL FK documents(doc_id) ON DELETE CASCADE
 ├── kb_id       TEXT     NOT NULL   -- denormalized for LSH lookup without JOIN
 ├── band_index  SMALLINT NOT NULL   -- 0-3 (64-bit -> 16-bit x 4 bands)
 ├── band_value  INTEGER  NOT NULL

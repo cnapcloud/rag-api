@@ -12,3 +12,7 @@
 | [13](13-doc-list-pagination.md) | Document List API — 페이지네이션 / 검색 / 정렬 | US-13 | done |
 | [14](14-pending-status.md) | pending 상태 구현 — 큐 대기 상태 가시성 확보 | US-14 | done |
 | [15](15-multi-source-schema-init.md) | Multi-source ingest schema initialization | US-15 | done |
+| [16](16-connector-crud-sync-api.md) | Connector CRUD + Sync API | US-16 | done |
+| [17](17-html-clean-reader.md) | HTML Clean Reader — strip nav/footer/script (R-08) | US-17 | done |
+| [18](18-web-connector.md) | WebConnector implementation (R-09) | US-18 | done |
+| [19](19-connector-dagster-schedule.md) | Connector Dagster Schedule dynamic registration (R-12) | US-19 | done |

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from exceptions import ConflictError, NotFoundError
@@ -28,23 +28,13 @@ class KBUpdateRequest(BaseModel):
 
 
 @router.get("/kb")
-async def list_kbs():
-    from infra.postgres import get_kb_meta, list_kb_ids
+async def list_kbs_endpoint(
+    sort_by: str = Query(default="kb_id"),
+    sort_order: str = Query(default="asc"),
+):
+    from infra.postgres import list_kbs
 
-    kb_ids = list_kb_ids()
-    result = []
-    for kb_id in sorted(kb_ids):
-        meta = get_kb_meta(kb_id)
-        result.append({
-            "kb_id": kb_id,
-            "kb_name": meta.get("kb_name", "") if meta else "",
-            "description": meta.get("description") if meta else None,
-            "tags": meta.get("tags", []) if meta else [],
-            "status": meta.get("status", "active") if meta else "active",
-            "created_at": meta.get("created_at", "") if meta else "",
-            "updated_at": meta.get("updated_at", "") if meta else "",
-        })
-    return {"knowledge_bases": result}
+    return {"knowledge_bases": list_kbs(sort_by=sort_by, sort_order=sort_order)}
 
 
 @router.get("/kb/{kb_id}")
