@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from rag.merger import rrf_merge
-from rag.retriever import SearchResult, search_similarity_kb
+from rag.retriever import SearchResult, search
 
 
 def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchResult:
@@ -15,6 +16,7 @@ def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchR
         chunk_id=chunk_id,
         kb_id=kb_id,
         doc_key=f"{kb_id}/doc.pdf",
+        source="doc.pdf",
         doc_type="pdf",
         chunk_index=0,
         page_num=None,
@@ -57,7 +59,7 @@ class TestRRFMerge:
         assert len(merged) == 6
 
 
-class TestSearchSimilarityKb:
+class TestSearchSimilarity:
     def _make_node(self, node_id: str, score: float, metadata: dict | None = None):
         node = MagicMock()
         node.node_id = node_id
@@ -74,6 +76,7 @@ class TestSearchSimilarityKb:
     def _make_settings(self, top_k: int = 10):
         s = MagicMock()
         s.retrieval.top_k = top_k
+        s.retrieval.hybrid.alpha = 0.5
         return s
 
     def test_uses_dense_only_mode(self):
@@ -86,7 +89,7 @@ class TestSearchSimilarityKb:
             patch("rag.retriever._build_index", return_value=mock_index),
             patch("config.settings.get_settings", return_value=self._make_settings()),
         ):
-            search_similarity_kb("kb-test", "query")
+            asyncio.run(search("query", ["kb-test"], mode="similarity"))
 
         call_kwargs = mock_index.as_retriever.call_args.kwargs
         assert call_kwargs["vector_store_query_mode"] == "default"
@@ -106,7 +109,7 @@ class TestSearchSimilarityKb:
             patch("rag.retriever._build_index", return_value=mock_index),
             patch("config.settings.get_settings", return_value=self._make_settings()),
         ):
-            results = search_similarity_kb("kb-test", "query", min_score=0.4)
+            results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.4))
 
         assert len(results) == 2
         assert all(r.score >= 0.4 for r in results)
@@ -123,7 +126,7 @@ class TestSearchSimilarityKb:
             patch("rag.retriever._build_index", return_value=mock_index),
             patch("config.settings.get_settings", return_value=self._make_settings()),
         ):
-            results = search_similarity_kb("kb-test", "query", min_score=0.0)
+            results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.0))
 
         assert len(results) == 5
 
@@ -138,6 +141,6 @@ class TestSearchSimilarityKb:
             patch("rag.retriever._build_index", return_value=mock_index),
             patch("config.settings.get_settings", return_value=self._make_settings()),
         ):
-            results = search_similarity_kb("kb-test", "query", min_score=0.5)
+            results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.5))
 
         assert results == []

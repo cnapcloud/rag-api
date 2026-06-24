@@ -1,4 +1,4 @@
-"""Unit tests for GET /api/kb/{kb_id}/docs — pagination, search, sort (US-13)."""
+"""Unit tests for GET /api/kb/{kb_id}/docs — pagination, search, sort."""
 
 from __future__ import annotations
 
@@ -17,9 +17,13 @@ def client():
     return TestClient(app)
 
 
-def _make_doc(doc_source: str, status: str = "indexed", chunk_count: int | None = None) -> dict:
+def _make_doc(source: str, status: str = "indexed", chunk_count: int | None = None) -> dict:
     return {
-        "doc_source": doc_source,
+        "doc_id": "11111111-0000-0000-0000-000000000001",
+        "kb_id": "kb1",
+        "source": source,
+        "source_uri": source,
+        "source_type": "s3",
         "status": status,
         "doc_type": "pdf",
         "chunk_count": chunk_count,
@@ -128,17 +132,17 @@ class TestListDocsSearch:
         assert captured["search"] == "report"
 
     def test_search_case_insensitive_in_store(self):
-        """FakePostgresStore filters case-insensitively on doc_source."""
+        """FakePostgresStore filters case-insensitively on source."""
         from tests.conftest import FakePostgresStore
 
         store = FakePostgresStore()
         store.register_kb("kb1")
-        store.set_doc_status("kb1", "Reports/Q1.pdf", {"status": "indexed"})
-        store.set_doc_status("kb1", "archive/old.pdf", {"status": "indexed"})
+        store.create_doc("kb1", "Reports/Q1.pdf", "Reports/Q1.pdf", "s3", status="indexed")
+        store.create_doc("kb1", "archive/old.pdf", "archive/old.pdf", "s3", status="indexed")
 
         items, total = store.list_docs_paginated("kb1", 1, 20, search="report")
         assert total == 1
-        assert items[0]["doc_source"] == "Reports/Q1.pdf"
+        assert items[0]["source"] == "Reports/Q1.pdf"
 
 
 class TestListDocsStatusFilter:
@@ -159,9 +163,9 @@ class TestListDocsStatusFilter:
 
         store = FakePostgresStore()
         store.register_kb("kb1")
-        store.set_doc_status("kb1", "a.pdf", {"status": "indexed"})
-        store.set_doc_status("kb1", "b.pdf", {"status": "failed"})
-        store.set_doc_status("kb1", "c.pdf", {"status": "indexed"})
+        store.create_doc("kb1", "a.pdf", "a.pdf", "s3", status="indexed")
+        store.create_doc("kb1", "b.pdf", "b.pdf", "s3", status="failed")
+        store.create_doc("kb1", "c.pdf", "c.pdf", "s3", status="indexed")
 
         items, total = store.list_docs_paginated("kb1", 1, 20, status="indexed")
         assert total == 2
@@ -169,7 +173,7 @@ class TestListDocsStatusFilter:
 
 
 class TestListDocsSort:
-    def test_sort_by_param_forwarded(self, client):
+    def test_sort_by_source_param_forwarded(self, client):
         captured = {}
 
         def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
@@ -178,10 +182,15 @@ class TestListDocsSort:
             return ([], 0)
 
         with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
-            client.get("/api/kb/kb1/docs?sort_by=doc_source&sort_order=asc")
+            client.get("/api/kb/kb1/docs?sort_by=source&sort_order=asc")
 
-        assert captured["sort_by"] == "doc_source"
+        assert captured["sort_by"] == "source"
         assert captured["sort_order"] == "asc"
+
+    def test_doc_source_is_no_longer_valid_sort_field(self, client):
+        """doc_source is not a valid sort field — should return 422."""
+        resp = client.get("/api/kb/kb1/docs?sort_by=doc_source")
+        assert resp.status_code == 422
 
     def test_invalid_sort_by_returns_422(self, client):
         resp = client.get("/api/kb/kb1/docs?sort_by=nonexistent_field")
@@ -191,17 +200,17 @@ class TestListDocsSort:
         resp = client.get("/api/kb/kb1/docs?sort_order=sideways")
         assert resp.status_code == 422
 
-    def test_sort_by_doc_source_asc_in_store(self):
+    def test_sort_by_source_asc_in_store(self):
         from tests.conftest import FakePostgresStore
 
         store = FakePostgresStore()
         store.register_kb("kb1")
-        store.set_doc_status("kb1", "zebra.pdf", {"status": "indexed"})
-        store.set_doc_status("kb1", "apple.pdf", {"status": "indexed"})
-        store.set_doc_status("kb1", "mango.pdf", {"status": "indexed"})
+        store.create_doc("kb1", "zebra.pdf", "zebra.pdf", "s3", status="indexed")
+        store.create_doc("kb1", "apple.pdf", "apple.pdf", "s3", status="indexed")
+        store.create_doc("kb1", "mango.pdf", "mango.pdf", "s3", status="indexed")
 
-        items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="doc_source", sort_order="asc")
-        sources = [d["doc_source"] for d in items]
+        items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="source", sort_order="asc")
+        sources = [d["source"] for d in items]
         assert sources == sorted(sources)
 
     def test_null_chunk_count_sorts_last_desc(self):
@@ -209,13 +218,14 @@ class TestListDocsSort:
 
         store = FakePostgresStore()
         store.register_kb("kb1")
-        store.set_doc_status("kb1", "a.pdf", {"status": "indexed", "chunk_count": "50"})
-        store.set_doc_status("kb1", "b.pdf", {"status": "indexed"})  # chunk_count empty = None
-        store.set_doc_status("kb1", "c.pdf", {"status": "indexed", "chunk_count": "10"})
+        doc_a = store.create_doc("kb1", "a.pdf", "a.pdf", "s3", status="indexed")
+        doc_b = store.create_doc("kb1", "b.pdf", "b.pdf", "s3", status="indexed")  # chunk_count stays None
+        doc_c = store.create_doc("kb1", "c.pdf", "c.pdf", "s3", status="indexed")
+        store.update_doc_fields(doc_a["doc_id"], {"chunk_count": 50})
+        store.update_doc_fields(doc_c["doc_id"], {"chunk_count": 10})
 
         items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="chunk_count", sort_order="desc")
-        sources = [d["doc_source"] for d in items]
-        # b.pdf (null) must be last
+        sources = [d["source"] for d in items]
         assert sources[-1] == "b.pdf"
 
     def test_null_chunk_count_sorts_last_asc(self):
@@ -223,12 +233,14 @@ class TestListDocsSort:
 
         store = FakePostgresStore()
         store.register_kb("kb1")
-        store.set_doc_status("kb1", "a.pdf", {"status": "indexed", "chunk_count": "50"})
-        store.set_doc_status("kb1", "b.pdf", {"status": "indexed"})
-        store.set_doc_status("kb1", "c.pdf", {"status": "indexed", "chunk_count": "10"})
+        doc_a = store.create_doc("kb1", "a.pdf", "a.pdf", "s3", status="indexed")
+        doc_b = store.create_doc("kb1", "b.pdf", "b.pdf", "s3", status="indexed")
+        doc_c = store.create_doc("kb1", "c.pdf", "c.pdf", "s3", status="indexed")
+        store.update_doc_fields(doc_a["doc_id"], {"chunk_count": 50})
+        store.update_doc_fields(doc_c["doc_id"], {"chunk_count": 10})
 
         items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="chunk_count", sort_order="asc")
-        sources = [d["doc_source"] for d in items]
+        sources = [d["source"] for d in items]
         assert sources[-1] == "b.pdf"
 
 
@@ -239,7 +251,8 @@ class TestListDocsItemShape:
             resp = client.get("/api/kb/kb1/docs")
 
         doc = resp.json()["items"][0]
-        assert "doc_source" in doc
+        assert "doc_id" in doc
+        assert "source" in doc
         assert "status" in doc
         assert "doc_type" in doc
         assert "chunk_count" in doc

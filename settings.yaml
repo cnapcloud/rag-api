@@ -43,6 +43,7 @@ chunking:
   strategy: "recursive"    # recursive / semantic
   chunk_size: 1024
   chunk_overlap: 128
+  min_chunk_chars: 30
   semantic_threshold: 0.8
 
 embedding:
@@ -58,7 +59,7 @@ retrieval:
   top_k: 5
   hybrid:
     alpha: 0.5 # alpha=1.0 → dense only, alpha=0.0 → sparse only
-    merge_strategy: "rrf"
+    rrf_k: 60 # RRF rank constant — higher value reduces score gap between ranks
   similarity:
     min_score: 0.0 # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
   rerank:
@@ -74,6 +75,7 @@ knowledge_bases:
   - id: "kb-01"
     name: "지식베이스 01"
     description: "첫 번째 지식베이스입니다."
+    tags: ["general"]
   - id: "kb-02"
     name: "지식베이스 02"
     description: "두 번째 지식베이스입니다."

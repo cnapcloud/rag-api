@@ -66,6 +66,7 @@ def chunk(
     parser = _build_parser(_strategy, _chunk_size, _chunk_overlap, _semantic_threshold)
 
     nodes = parser.get_nodes_from_documents(documents)
+    nodes = [n for n in nodes if len(n.get_content().strip()) >= cfg.min_chunk_chars]
 
     # 각 노드에 청킹 메타데이터 추가
     for i, node in enumerate(nodes):

@@ -64,8 +64,10 @@ Redis는 이벤트 큐 전용으로만 사용한다 (US-11 이후).
 KB·문서 메타데이터는 Postgres `knowledge_bases` / `documents` 테이블로 이전됨.
 
 ```
-rag:upload:queue   # 인제스트 이벤트 큐 (List, lpush / rpop)
-rag:delete:queue   # 삭제 이벤트 큐   (List, lpush / rpop)
+rag:upload:queue   # 인제스트 이벤트 큐  (List, lpush / rpop)
+rag:delete:queue   # 삭제 이벤트 큐     (List, lpush / rpop)
+rag:upload:delay   # 인제스트 지연 큐    (List, sensor가 준비된 항목을 main 큐로 복원)
+rag:delete:delay   # 삭제 지연 큐       (List, sensor가 준비된 항목을 main 큐로 복원)
 ```
 
 큐 이벤트 JSON 구조:
@@ -445,7 +447,7 @@ PYTHONPATH=src python -m main ingest \
   --kb-id kb-01 \
   --file ./data/ATD00002_2605.pdf
 
-# KB 생성 (Redis + Qdrant)
+# KB 생성 (Postgres + Qdrant)
 PYTHONPATH=src python -m main kb create --kb-id kb-01 --description "CNAP 플랫폼 문서"
 
 # 검색 테스트

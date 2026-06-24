@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+DOC_ID = "11111111-1111-1111-1111-111111111111"
+
 
 @pytest.fixture
 def ingest_run_config():
@@ -13,10 +15,8 @@ def ingest_run_config():
         "ops": {
             "validate_op": {
                 "config": {
-                    "kb_id": "kb-test",
-                    "doc_source": "pdf/test.pdf",
-                    "etag": "test-etag-001",
-                    "file_size": 1024,
+                    "doc_id": DOC_ID,
+                    "force": False,
                 }
             }
         }
@@ -27,23 +27,22 @@ def ingest_run_config():
 def test_ingest_job_success(ingest_run_config):
     """ingest_job full flow integration test (requires infrastructure)."""
     from dagster import execute_in_process
-
     from defs.jobs.ingest_job import ingest_job
 
+    doc = {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/test.pdf", "file_size": 1024, "status": "pending"}
+
     with (
-        patch("pipeline.ops.validate.postgres_infra.get_doc_etag", return_value=None),
-        patch("dagster.ops.parse.download_object"),
-        patch("dagster.ops.parse.SimpleDirectoryReader") as mock_reader,
-        patch("dagster.ops.embed.build_embed_model") as mock_embed,
-        patch("dagster.ops.embed.build_sparse_model", return_value=None),
-        patch("dagster.infra.qdrant.get_qdrant_client") as mock_qdrant_client,
-        patch("infra.postgres.get_doc_status", return_value=None),
+        patch("infra.postgres.get_doc_by_id", return_value=doc),
+        patch("infra.postgres.update_doc_fields"),
+        patch("pipeline.ops.parse.download_by_key"),
+        patch("pipeline.ops.parse.SimpleDirectoryReader") as mock_reader,
+        patch("pipeline.ops.embed.build_embed_model") as mock_embed,
+        patch("pipeline.ops.embed.build_sparse_model", return_value=None),
+        patch("infra.qdrant.get_qdrant_client") as mock_qdrant_client,
     ):
         from llama_index.core import Document
-
         mock_reader.return_value.load_data.return_value = [Document(text="test document content")]
         mock_embed.return_value.get_text_embedding_batch.return_value = [[0.1] * 1024]
-
         qdrant = MagicMock()
         qdrant.get_collection.side_effect = Exception("not found")
         mock_qdrant_client.return_value = qdrant
@@ -52,16 +51,22 @@ def test_ingest_job_success(ingest_run_config):
         assert result.success
 
 
-def test_ingest_job_skips_on_same_etag(ingest_run_config):
-    """ETag unchanged -> validate_op skips and pipeline exits early."""
+def test_ingest_job_validate_passes(ingest_run_config):
+    """validate_op emits valid_config when doc exists and file size is within limits."""
     from defs.jobs.ingest_job import ingest_job
 
+    doc = {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/test.pdf", "file_size": 1024, "status": "pending"}
+
     with (
-        patch("infra.postgres.get_doc_status", return_value=None),
-        patch("infra.postgres.set_doc_status"),
-        patch("pipeline.ops.validate.postgres_infra.get_doc_etag", return_value="test-etag-001"),
-        patch("infra.redis.get_redis_client", return_value=MagicMock()),
+        patch("infra.postgres.get_doc_by_id", return_value=doc),
+        patch("infra.postgres.update_doc_fields"),
+        patch("pipeline.ops.parse.parse", return_value=[]),
+        patch("pipeline.ops.chunk.chunk", return_value=[MagicMock()]),
+        patch("pipeline.ops.embed.embed", return_value=[]),
+        patch("pipeline.ops.upsert.upsert") as mock_upsert,
+        patch("pipeline.ops.meta.update_meta"),
     ):
+        from pipeline.ops.upsert import UpsertResult
+        mock_upsert.return_value = UpsertResult(kb_id="kb-test", doc_id=DOC_ID, chunk_count=1, doc_created_at="")
         result = ingest_job.execute_in_process(run_config=ingest_run_config)
-        # validate_op emits no Output so downstream ops are skipped, but job succeeds
         assert result.success

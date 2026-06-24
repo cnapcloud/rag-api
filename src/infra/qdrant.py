@@ -15,8 +15,6 @@ logger = logging.getLogger(__name__)
 DENSE_VECTOR_NAME = "dense"
 SPARSE_VECTOR_NAME = "sparse"
 
-_DOC_KEY_SEP = "::"
-
 _client: QdrantClient | None = None
 
 
@@ -36,10 +34,6 @@ def get_qdrant_client() -> QdrantClient:
             url = f"{scheme}://{host}:{cfg.port}"
         _client = QdrantClient(url=url, verify=not cfg.insecure, check_compatibility=True)
     return _client
-
-
-def make_doc_key(kb_id: str, doc_source: str) -> str:
-    return f"{kb_id}{_DOC_KEY_SEP}{doc_source}"
 
 
 # ──────────────────────────────────────────────
@@ -109,27 +103,26 @@ def drop_collection(
 # Chunk CRUD
 # ──────────────────────────────────────────────
 
-def delete_chunks_by_doc(
+def delete_chunks_by_doc_id(
     kb_id: str,
-    doc_source: str,
+    doc_id: str,
     client: QdrantClient | None = None,
 ) -> None:
     c = client or get_qdrant_client()
-    doc_key = make_doc_key(kb_id, doc_source)
     c.delete(
         collection_name=kb_id,
         points_selector=qmodels.FilterSelector(
             filter=qmodels.Filter(
                 must=[
                     qmodels.FieldCondition(
-                        key="doc_key",
-                        match=qmodels.MatchValue(value=doc_key),
+                        key="doc_id",
+                        match=qmodels.MatchValue(value=doc_id),
                     )
                 ]
             )
         ),
     )
-    logger.info("Qdrant chunks deleted: kb=%s key=%s", kb_id, doc_source)
+    logger.info("Qdrant chunks deleted: kb=%s doc_id=%s", kb_id, doc_id)
 
 
 def upsert_chunks(

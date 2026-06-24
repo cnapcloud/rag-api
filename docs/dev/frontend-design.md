@@ -34,12 +34,29 @@ Displays infrastructure readiness from `GET /ready`.
 +--------------------------------------------------------+
 | Welcome                                                |
 |                                                        |
-|  Qdrant   [OK]    Redis    [OK]                        |
-|  S3       [OK]    Ollama   [OK]                        |
+|  Qdrant    [OK]    Redis     [OK]                      |
+|  S3        [OK]    Postgres  [OK]                      |
+|  Ollama    [OK]              (only when provider=ollama)|
 +--------------------------------------------------------+
 ```
 
 API: `GET /ready`
+
+Response shape:
+```json
+{
+  "status": "ready",
+  "checks": {
+    "qdrant": true,
+    "redis": true,
+    "postgres": true,
+    "s3": true,
+    "ollama": true
+  }
+}
+```
+
+`ollama` key is only present in the response when `embedding.provider == "ollama"`. Hide the Ollama tile when the key is absent.
 
 ---
 
@@ -63,7 +80,8 @@ API: `GET /ready`
 
 | Action | API |
 |--------|-----|
-| List | `GET /api/kb` |
+| List | `GET /api/kb` — returns `kb_id`, `kb_name`, `description`, `tags`, `status`, `created_at` |
+| Detail | `GET /api/kb/{kb_id}` — same fields as list item, used for detail panel |
 | Create | `POST /api/kb` — body: `kb_id`, `kb_name`, `description`, `tags` |
 | Delete | `DELETE /api/kb/{kb_id}` — confirms cascade (Qdrant + S3 + Postgres) |
 
@@ -85,9 +103,9 @@ Create modal fields:
 | Documents               [Upload]  [Reindex All]        |
 |                                                        |
 | KB: [kb-01 ▼]  Status: [All ▼]  Sort: [Updated ▼] [↓]  |
-| [ Search path...                                    ]  |
+| [ Search source...                                  ]  |
 |                                                        |
-| [ ] Name              Status   Chunks  Age             |
+| [ ] Source            Status   Chunks  Age             |
 | ─────────────────────────────────────────────────────  |
 | [x] report-2024.pdf   indexed  42      2h              |
 | [ ] manual.docx       running  —       5m              |
@@ -106,9 +124,15 @@ KB filter: always scoped to a single KB — no "All" option. Defaults to the fir
 Search performs a substring (contains) match on `doc_source` — matches filename and path segments.
 Sort dropdown options: Updated (default desc), Created, Name, Chunks, Size. Direction toggle [↑][↓].
 
-Pagination: `GET /api/kb/{kb_id}/docs` currently returns all documents without limit/offset.
-**API extension required (US-13)**: add `page`, `page_size`, `status`, `search`, `sort_by`, `sort_order` before implementing this page.
-Page group window: shows 5 page numbers at a time. `[<]` / `[>]` move to the previous/next group of 5. Clicking a number navigates to that page. All group calculation is frontend-only — backend returns only `total`, `page`, `page_size`.
+Pagination: `GET /api/kb/{kb_id}/docs` returns paginated results (default page=1, page_size=20, max 100). Query params: `page`, `page_size`, `status`, `search`, `sort_by`, `sort_order`.
+Page group window: shows 5 page numbers at a time. `[<]` / `[>]` move to the previous/next group of 5. Clicking a number navigates to that page. All group calculation is frontend-only — backend returns `total`, `page`, `page_size`.
+
+Response shape:
+```json
+{ "items": [...], "total": 87, "page": 1, "page_size": 20 }
+```
+Each item: `doc_source`, `status`, `doc_type`, `chunk_count`, `file_size`, `embedding_model`, `error`, `created_at`, `updated_at`, `etag`.
+`etag` is an internal S3 dedup hash — do not display in the UI.
 
 Status badge colors: `indexed` = green, `running` = blue, `pending` = gray, `failed` = red.
 
@@ -133,13 +157,14 @@ The 30-minute threshold should be a frontend config constant, not hardcoded.
 
 | Action | API |
 |--------|-----|
-| List (all) | `GET /api/kb/{kb_id}/docs` |
-| List (by status) | `GET /api/kb/{kb_id}/docs?status=failed` |
-| Upload (single/multi) | `POST /api/kb/{kb_id}/docs/upload/batch` |
+| List (paginated) | `GET /api/kb/{kb_id}/docs?page=1&page_size=20` |
+| List (filtered) | `GET /api/kb/{kb_id}/docs?status=failed&search=report&sort_by=updated_at&sort_order=desc` |
+| Upload single | `POST /api/kb/{kb_id}/docs/upload` — response: `{ doc_source, status_url, etag }` |
+| Upload batch | `POST /api/kb/{kb_id}/docs/upload/batch` — response: `{ results: [{ doc_source, status_url, etag }] }` |
 | Delete | `DELETE /api/kb/{kb_id}/docs/{source}` |
-| Reindex selected | `POST /api/kb/{kb_id}/docs/reindex?source={source}` per item |
-| Reindex all | `POST /api/kb/{kb_id}/reindex` |
-| Recover stuck | `POST /api/kb/{kb_id}/docs/{source}/recover` |
+| Reindex selected | `POST /api/kb/{kb_id}/docs/reindex?source={source}` per item (`&force=true` to force re-embed) |
+| Reindex all | `POST /api/kb/{kb_id}/reindex` (`?force=true` to skip ETag comparison) |
+| Recover stuck | `POST /api/kb/{kb_id}/docs/{source}/recover` — only valid when `status=running` |
 | Status poll | `GET /api/kb/{kb_id}/docs/{source}/status` (poll during `running`) |
 
 Upload flow: file picker (multi-select) → batch upload → auto-poll status every 5 s until `indexed` or `failed`.
@@ -232,8 +257,12 @@ Request body mapped from UI:
 }
 ```
 
-Result card shows: rank, score / rerank_score, kb_id, doc_key, page_num (if present), text excerpt.
-Meta bar shows: `total_candidates`, `returned`, `latency_ms`, `reranked`, `search_mode`.
+Result card shows: rank, score / rerank_score, kb_id, doc_source (human-readable path), page_num (if present), text excerpt.
+`doc_key` (`{kb_id}___{doc_source}`) is available in the response but should not be displayed raw — use `doc_source` for display.
+
+Meta bar shows: `total_candidates`, `returned`, `latency_ms`, `reranked`, `search_mode`, `rerank_fallback`.
+`rerank_fallback: true` means the reranker API failed and RRF scores were used instead — indicate this with a visual hint (e.g. "reranked (fallback)").
+Additional response fields available if needed: `score_threshold`, `rerank_provider`.
 
 API: `POST /api/search`
 
@@ -252,7 +281,7 @@ API: `POST /api/search`
 | SearchOptionsPanel (mode toggle + numeric inputs) | Query |
 | ResultCard (score + excerpt) | Query |
 | ConfirmDialog (delete) | KB, Docs |
-| HealthGrid (2x2 status tiles) | Home |
+| HealthGrid (status tiles: Qdrant/Redis/S3/Postgres + optional Ollama) | Home |
 
 ---
 

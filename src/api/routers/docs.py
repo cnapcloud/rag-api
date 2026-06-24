@@ -7,8 +7,8 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, File, Query, UploadFile
 from botocore.exceptions import ClientError
+from fastapi import APIRouter, File, Query, UploadFile
 
 from exceptions import ConflictError, IngestValidationError, NotFoundError
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".pdf", ".md", ".docx", ".txt", ".hwp"}
+ALLOWED_EXTENSIONS = {".pdf", ".md", ".docx", ".txt", ".hwp", ".html", ".htm", ".rst"}
 
 
 def _check_ext(filename: str) -> str:
@@ -26,39 +26,77 @@ def _check_ext(filename: str) -> str:
     return ext
 
 
-def _trigger_ingest(kb_id: str, doc_source: str, etag: str, file_size: int, force: bool = False) -> None:
-    from pipeline.enqueue import enqueue_upload_event
-
-    enqueue_upload_event(kb_id=kb_id, doc_source=doc_source, etag=etag, file_size=file_size, force=force)
+def _build_storage_key(kb_id: str, filename: str) -> str:
+    return f"{kb_id}/{filename}"
 
 
 @router.post("/kb/{kb_id}/docs/upload", status_code=202)
 async def upload_doc(kb_id: str, file: UploadFile = File(...)):
+    """Row-first single document upload.
+
+    1. Create/update document row (status=uploading)
+    2. Upload file to S3
+    3. Update row with storage_key + content_version (ETag) + status=pending
+    4. Enqueue ingest event
     """
-    Single document upload: store in S3.
-    Ingest is triggered by S3 event webhook (POST /internal/s3-event).
-    """
-    from infra.postgres import list_kb_ids
+    import psycopg.errors
+    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
+    from pipeline.enqueue import enqueue_upload_event
+    from pipeline.source_uri import normalize_source_uri
 
     if kb_id not in list_kb_ids():
         raise NotFoundError(f"KB not found: {kb_id}")
 
-    _check_ext(file.filename or "")
+    filename = file.filename or f"upload_{uuid.uuid4()}"
+    _check_ext(filename)
     content = await file.read()
-    doc_source = file.filename or f"upload_{uuid.uuid4()}"
+    file_size = len(content)
+
+    source_uri = normalize_source_uri("s3", filename)
+    storage_key = _build_storage_key(kb_id, filename)
+    doc_type = Path(filename).suffix.lstrip(".").lower()
+
+    existing = get_doc_by_source_uri(kb_id, source_uri)
+    if existing is None:
+        try:
+            doc = create_doc(
+                kb_id=kb_id,
+                source_uri=source_uri,
+                source=filename,
+                source_type="s3",
+                status="uploading",
+                storage_key=storage_key,
+                file_size=file_size,
+                doc_type=doc_type,
+            )
+        except psycopg.errors.UniqueViolation:
+            # Race condition: concurrent upload created the row; retry lookup
+            doc = get_doc_by_source_uri(kb_id, source_uri)
+            if doc is None:
+                raise
+            update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+    else:
+        doc = existing
+        update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+
+    doc_id: str = doc["doc_id"]
 
     etag = upload_object(
         kb_id=kb_id,
-        doc_source=doc_source,
+        source=filename,
         data=content,
         content_type=file.content_type or "application/octet-stream",
     )
 
+    update_doc_fields(doc_id, {"content_version": etag, "status": "pending"})
+    enqueue_upload_event(doc_id=doc_id)
+
     return {
-        "doc_source": doc_source,
-        "status_url": f"/api/kb/{kb_id}/docs/{doc_source}/status",
+        "doc_id": doc_id,
+        "source_uri": source_uri,
         "etag": etag,
+        "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
     }
 
 
@@ -67,12 +105,12 @@ async def upload_docs_batch(
     kb_id: str,
     files: list[UploadFile] = File(...),
 ):
-    """
-    Batch upload: store files in S3.
-    Ingest is triggered by S3 event webhook (POST /internal/s3-event).
-    """
-    from infra.postgres import list_kb_ids
+    """Row-first batch document upload."""
+    import psycopg.errors
+    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
+    from pipeline.enqueue import enqueue_upload_event
+    from pipeline.source_uri import normalize_source_uri
 
     if kb_id not in list_kb_ids():
         raise NotFoundError(f"KB not found: {kb_id}")
@@ -80,29 +118,62 @@ async def upload_docs_batch(
     results = []
     for file in files:
         try:
-            _check_ext(file.filename or "")
+            filename = file.filename or f"upload_{uuid.uuid4()}"
+            _check_ext(filename)
             content = await file.read()
-            doc_source = file.filename or f"upload_{uuid.uuid4()}"
+            file_size = len(content)
+
+            source_uri = normalize_source_uri("s3", filename)
+            storage_key = _build_storage_key(kb_id, filename)
+            doc_type = Path(filename).suffix.lstrip(".").lower()
+
+            existing = get_doc_by_source_uri(kb_id, source_uri)
+            if existing is None:
+                try:
+                    doc = create_doc(
+                        kb_id=kb_id,
+                        source_uri=source_uri,
+                        source=filename,
+                        source_type="s3",
+                        status="uploading",
+                        storage_key=storage_key,
+                        file_size=file_size,
+                        doc_type=doc_type,
+                    )
+                except psycopg.errors.UniqueViolation:
+                    doc = get_doc_by_source_uri(kb_id, source_uri)
+                    if doc is None:
+                        raise
+                    update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+            else:
+                doc = existing
+                update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+
+            doc_id: str = doc["doc_id"]
+
             etag = upload_object(
                 kb_id=kb_id,
-                doc_source=doc_source,
+                source=filename,
                 data=content,
                 content_type=file.content_type or "application/octet-stream",
             )
-            results.append(
-                {
-                    "filename": doc_source,
-                    "status_url": f"/api/kb/{kb_id}/docs/{doc_source}/status",
-                    "etag": etag,
-                }
-            )
+
+            update_doc_fields(doc_id, {"content_version": etag, "status": "pending"})
+            enqueue_upload_event(doc_id=doc_id)
+
+            results.append({
+                "doc_id": doc_id,
+                "source_uri": source_uri,
+                "etag": etag,
+                "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
+            })
         except (IngestValidationError, ClientError) as e:
-            results.append({"filename": file.filename, "error": str(e), "status": "error"})
+            results.append({"source": file.filename, "error": str(e), "status": "error"})
 
     return {"results": results}
 
 
-_SORT_FIELDS = Literal["updated_at", "created_at", "doc_source", "chunk_count", "file_size"]
+_SORT_FIELDS = Literal["updated_at", "created_at", "source", "chunk_count", "file_size"]
 _SORT_ORDERS = Literal["asc", "desc"]
 
 
@@ -131,32 +202,27 @@ async def list_docs(
     return {"items": items, "total": total, "page": page, "page_size": clamped_size}
 
 
-@router.get("/kb/{kb_id}/docs/{source:path}/status")
-async def get_doc_status(kb_id: str, source: str):
-    from infra.postgres import get_doc_status
+@router.get("/kb/{kb_id}/docs/{doc_id}/status")
+async def get_doc_status(kb_id: str, doc_id: str):
+    from infra.postgres import get_doc_by_id
 
-    data = get_doc_status(kb_id, source)
-    if not data:
-        raise NotFoundError(f"Document not found: kb={kb_id} source={source}")
-    return {"kb_id": kb_id, "doc_source": source, **data}
+    doc = get_doc_by_id(doc_id)
+    if doc is None or doc.get("kb_id") != kb_id:
+        raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
+    return doc
 
 
-@router.delete("/kb/{kb_id}/docs/{source:path}", status_code=200)
-async def delete_doc(kb_id: str, source: str):
-    from infra.postgres import delete_doc_meta
-    from infra.qdrant import delete_chunks_by_doc
-    from infra.s3 import delete_object
+@router.delete("/kb/{kb_id}/docs/{doc_id}", status_code=202)
+async def delete_doc(kb_id: str, doc_id: str):
+    from infra.postgres import get_doc_by_id
+    from pipeline.enqueue import enqueue_delete_event
 
-    delete_chunks_by_doc(kb_id, source)
-    delete_doc_meta(kb_id, source)
+    doc = get_doc_by_id(doc_id)
+    if doc is None or doc.get("kb_id") != kb_id:
+        raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
 
-    # S3 delete is best-effort: Qdrant/Postgres cleanup already succeeded.
-    try:
-        delete_object(kb_id, source)
-    except ClientError as e:
-        logger.warning("S3 object deletion failed (ignored): kb=%s source=%s err=%s", kb_id, source, e)
-
-    return {"kb_id": kb_id, "doc_source": source, "status": "deleted"}
+    enqueue_delete_event(doc_id)
+    return {"kb_id": kb_id, "doc_id": doc_id, "status": "pending"}
 
 
 @router.post("/kb/{kb_id}/reindex", status_code=202)
@@ -164,97 +230,92 @@ async def reindex_kb(
     kb_id: str,
     force: bool = Query(False),
 ):
+    """Re-index all active documents in a KB.
+
+    Compares current S3 ETag against content_version in Postgres.
+    With force=true, re-indexes everything regardless of ETag match.
+    Returns { queued: N, skipped: M }
     """
-    Re-index all documents in a KB.
-    Compares S3 ETag vs Postgres ETag and queues changed documents.
-    With force=true, skips ETag comparison and re-indexes everything.
-    Documents are enqueued oldest-first (doc_created_at from Postgres, fallback to S3 LastModified).
-    Returns: { queued: N, skipped: M }
-    """
-    from infra.postgres import get_doc_etag
-    from infra.postgres import list_docs as pg_list_docs
-    from infra.s3 import list_kb_objects
+    from infra.postgres import list_docs as pg_list_docs, update_doc_fields
+    from infra.s3 import get_object_meta
+    from pipeline.enqueue import enqueue_upload_event
 
-    objects = list_kb_objects(kb_id)
-
-    # Pre-fetch all Postgres doc metadata for sorting (one pass)
-    pg_docs = {d["doc_source"]: d for d in pg_list_docs(kb_id)}
-
-    # Determine which objects to queue, then sort oldest-first
-    to_queue: list[tuple[str, str, str, int]] = []  # (doc_source, s3_etag, sort_key, file_size)
+    docs = pg_list_docs(kb_id, include_deleted=False)
+    queued = 0
     skipped = 0
 
-    for doc_source, s3_etag, s3_last_modified, file_size in objects:
+    for doc in docs:
+        storage_key = doc.get("storage_key") or ""
+        if not storage_key:
+            skipped += 1
+            continue
+
         if not force:
-            pg_etag = get_doc_etag(kb_id, doc_source)
-            if pg_etag == s3_etag:
+            s3_etag, _ = get_object_meta(doc["kb_id"], storage_key.split("/", 1)[-1] if "/" in storage_key else storage_key)
+            if s3_etag and s3_etag == doc.get("content_version"):
                 skipped += 1
                 continue
-        sort_date = pg_docs.get(doc_source, {}).get("doc_created_at") or s3_last_modified
-        to_queue.append((doc_source, s3_etag, sort_date, file_size))
 
-    to_queue.sort(key=lambda x: x[2])
+        enqueue_upload_event(doc_id=doc["doc_id"], force=force)
+        queued += 1
 
-    for doc_source, s3_etag, _, file_size in to_queue:
-        _trigger_ingest(kb_id, doc_source, s3_etag, file_size, force=force)
-
-    queued = len(to_queue)
     logger.info("Reindex KB: kb=%s queued=%d skipped=%d force=%s", kb_id, queued, skipped, force)
     return {"kb_id": kb_id, "queued": queued, "skipped": skipped}
 
 
-@router.post("/kb/{kb_id}/docs/reindex", status_code=202)
+@router.post("/kb/{kb_id}/docs/{doc_id}/reindex", status_code=202)
 async def reindex_doc(
     kb_id: str,
-    source: str = Query(..., description="Document source path (may contain /)"),
+    doc_id: str,
     force: bool = Query(False),
 ):
-    """
-    Re-index a single document.
-    Compares S3 ETag vs Postgres ETag; skips if unchanged unless force=true.
-    Returns: { queued: N, skipped: M }
-    """
-    from infra.postgres import get_doc_etag
+    """Re-index a single document by doc_id."""
+    from infra.postgres import get_doc_by_id
     from infra.s3 import get_object_meta
+    from pipeline.enqueue import enqueue_upload_event
 
-    s3_etag, file_size = get_object_meta(kb_id, source)
-    if s3_etag is None:
-        raise NotFoundError(f"Document not found in S3: kb={kb_id} source={source}")
+    doc = get_doc_by_id(doc_id)
+    if doc is None or doc.get("kb_id") != kb_id:
+        raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
+
+    storage_key = doc.get("storage_key") or ""
+    if not storage_key:
+        raise NotFoundError(f"Document has no storage_key: doc_id={doc_id}")
 
     if not force:
-        pg_etag = get_doc_etag(kb_id, source)
-        if pg_etag == s3_etag:
-            return {"kb_id": kb_id, "queued": 0, "skipped": 1}
+        source = storage_key.split("/", 1)[-1] if "/" in storage_key else storage_key
+        s3_etag, _ = get_object_meta(kb_id, source)
+        if s3_etag and s3_etag == doc.get("content_version"):
+            return {"kb_id": kb_id, "doc_id": doc_id, "queued": 0, "skipped": 1}
 
-    _trigger_ingest(kb_id, source, s3_etag, file_size, force=force)
-    logger.info("Reindex doc: kb=%s source=%s force=%s", kb_id, source, force)
-    return {"kb_id": kb_id, "queued": 1, "skipped": 0}
+    enqueue_upload_event(doc_id=doc_id, force=force)
+    logger.info("Reindex doc: kb=%s doc_id=%s force=%s", kb_id, doc_id, force)
+    return {"kb_id": kb_id, "doc_id": doc_id, "queued": 1, "skipped": 0}
 
 
-@router.post("/kb/{kb_id}/docs/{source:path}/recover", status_code=202)
-async def recover_doc(kb_id: str, source: str):
+@router.post("/kb/{kb_id}/docs/{doc_id}/recover", status_code=202)
+async def recover_doc(kb_id: str, doc_id: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
+    from infra.postgres import get_doc_by_id
     from pipeline.enqueue import enqueue_upload_event
-    from infra.postgres import get_doc_status
     from pipeline.ops.meta import set_failed
 
-    data = get_doc_status(kb_id, source)
-    if not data:
-        raise NotFoundError(f"Document not found: kb={kb_id} source={source}")
-    if data.get("status") != "running":
+    doc = get_doc_by_id(doc_id)
+    if doc is None or doc.get("kb_id") != kb_id:
+        raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
+    if doc.get("status") != "running":
         raise ConflictError(
-            f"Document is not in a recoverable state: status={data.get('status')}"
+            f"Document is not in a recoverable state: status={doc.get('status')}"
         )
-    set_failed(kb_id, source, "Manually recovered via API", run_id=data.get("run_id", ""))
-    enqueue_upload_event(kb_id, source, etag=data.get("etag", ""), file_size=0, force=True)
-    logger.info("Manual recover queued: kb=%s source=%s", kb_id, source)
-    return {"kb_id": kb_id, "doc_source": source, "queued": True}
+    set_failed(doc_id, "Manually recovered via API", run_id=doc.get("run_id", ""))
+    enqueue_upload_event(doc_id=doc_id, force=True)
+    logger.info("Manual recover queued: kb=%s doc_id=%s", kb_id, doc_id)
+    return {"kb_id": kb_id, "doc_id": doc_id, "queued": True}
 
 
 @router.get("/docs/status")
 async def all_docs_status():
-    from infra.postgres import list_docs as pg_list_docs
-    from infra.postgres import list_kb_ids
+    from infra.postgres import list_docs as pg_list_docs, list_kb_ids
 
     kb_ids = list_kb_ids()
     all_docs = {}

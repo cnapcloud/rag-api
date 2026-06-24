@@ -66,6 +66,7 @@ class ChunkingSettings(BaseModel):
     chunk_size: int = 1024
     chunk_overlap: int = 128
     semantic_threshold: float = 0.8
+    min_chunk_chars: int = 30
 
 
 class EmbeddingSettings(BaseModel):
@@ -89,7 +90,7 @@ class RerankerSettings(BaseModel):
 
 class HybridSearchSettings(BaseModel):
     alpha: float = 0.5
-    merge_strategy: str = "rrf"
+    rrf_k: int = 60
 
 
 class SimilaritySearchSettings(BaseModel):

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,19 +15,25 @@ import pytest
 # ──────────────────────────────────────────────
 
 class FakePostgresStore:
-    """In-memory implementation of infra.postgres CRUD functions."""
+    """In-memory implementation of infra.postgres CRUD functions (new doc_id-based API)."""
 
     def __init__(self):
         self._kbs: dict[str, dict] = {}
-        self._docs: dict[tuple, dict] = {}
+        self._docs: dict[str, dict] = {}  # keyed by doc_id
+        self._connectors: dict[str, dict] = {}  # keyed by connector_id
 
-    def register_kb(self, kb_id: str, description: str = "") -> None:
+    # -- KB --
+
+    def register_kb(self, kb_id: str, kb_name: str = "", description: str | None = None, tags: list[str] | None = None) -> None:
         if kb_id not in self._kbs:
             self._kbs[kb_id] = {
                 "kb_id": kb_id,
+                "kb_name": kb_name,
                 "description": description,
+                "tags": tags or [],
                 "status": "active",
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
 
     def get_kb_meta(self, kb_id: str) -> dict | None:
@@ -34,40 +42,107 @@ class FakePostgresStore:
     def list_kb_ids(self) -> list[str]:
         return sorted(self._kbs.keys())
 
+    def update_kb_meta(self, kb_id: str, kb_name: str | None = None, description: str | None = None, tags: list[str] | None = None) -> None:
+        if kb_id not in self._kbs:
+            return
+        if kb_name is not None:
+            self._kbs[kb_id]["kb_name"] = kb_name
+        if description is not None:
+            self._kbs[kb_id]["description"] = description
+        if tags is not None:
+            self._kbs[kb_id]["tags"] = tags
+        self._kbs[kb_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
     def update_kb_status(self, kb_id: str, status: str) -> None:
         if kb_id in self._kbs:
             self._kbs[kb_id]["status"] = status
 
     def delete_kb_meta(self, kb_id: str) -> None:
         self._kbs.pop(kb_id, None)
-        keys_to_del = [k for k in self._docs if k[0] == kb_id]
-        for k in keys_to_del:
-            del self._docs[k]
+        to_del = [doc_id for doc_id, d in self._docs.items() if d["kb_id"] == kb_id]
+        for doc_id in to_del:
+            del self._docs[doc_id]
 
-    def set_doc_status(self, kb_id: str, doc_source: str, fields: dict) -> None:
-        key = (kb_id, doc_source)
-        if key not in self._docs:
-            self._docs[key] = {
-                "status": "", "etag": "", "run_id": "", "error": "",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": "", "chunk_count": "", "file_size": "",
-                "doc_type": "", "embedding_model": "", "doc_created_at": "",
-            }
+    # -- Document --
+
+    def create_doc(
+        self,
+        kb_id: str,
+        source_uri: str,
+        source: str,
+        source_type: str,
+        *,
+        status: str = "pending",
+        storage_key: str | None = None,
+        content_version: str | None = None,
+        connector_id: str | None = None,
+        file_size: int | None = None,
+        doc_type: str | None = None,
+    ) -> dict:
+        doc_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "doc_id": doc_id,
+            "kb_id": kb_id,
+            "source": source,
+            "source_type": source_type,
+            "source_uri": source_uri,
+            "storage_key": storage_key,
+            "content_version": content_version,
+            "connector_id": connector_id,
+            "status": status,
+            "deleted_at": None,
+            "run_id": "",
+            "error": None,
+            "created_at": now,
+            "updated_at": now,
+            "process_started_at": None,
+            "process_finished_at": None,
+            "chunk_count": None,
+            "file_size": file_size,
+            "doc_type": doc_type,
+            "embedding_model": None,
+            "doc_created_at": None,
+            "title_hash": None,
+            "content_simhash": None,
+        }
+        self._docs[doc_id] = doc
+        return dict(doc)
+
+    def get_doc_by_id(self, doc_id: str) -> dict | None:
+        return dict(self._docs[doc_id]) if doc_id in self._docs else None
+
+    def get_doc_by_source_uri(self, kb_id: str, source_uri: str) -> dict | None:
+        for doc in self._docs.values():
+            if doc["kb_id"] == kb_id and doc["source_uri"] == source_uri:
+                return dict(doc)
+        return None
+
+    def update_doc_fields(self, doc_id: str, fields: dict[str, Any]) -> None:
+        if doc_id not in self._docs:
+            return
         for k, v in fields.items():
-            self._docs[key][k] = str(v) if v is not None else ""
+            self._docs[doc_id][k] = v
+        self._docs[doc_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    def get_doc_status(self, kb_id: str, doc_source: str) -> dict | None:
-        return dict(self._docs.get((kb_id, doc_source), {})) or None
+    def soft_delete_doc(self, doc_id: str) -> None:
+        if doc_id in self._docs:
+            self._docs[doc_id]["status"] = "deleted"
+            self._docs[doc_id]["deleted_at"] = datetime.now(timezone.utc).isoformat()
+            self._docs[doc_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    def list_docs(self, kb_id: str) -> list[dict]:
-        return [
-            {"doc_source": k[1], **dict(v)}
-            for k, v in self._docs.items()
-            if k[0] == kb_id
-        ]
-
-    def list_docs_by_status(self, kb_id: str, status: str) -> list[dict]:
-        return [d for d in self.list_docs(kb_id) if d.get("status") == status]
+    def list_docs(self, kb_id: str, *, include_deleted: bool = False, status_filter: str | None = None) -> list[dict]:
+        result = []
+        for doc in self._docs.values():
+            if doc["kb_id"] != kb_id:
+                continue
+            if not include_deleted and doc["status"] == "deleted":
+                continue
+            if status_filter is not None and doc["status"] != status_filter:
+                continue
+            result.append(dict(doc))
+        result.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+        return result
 
     def list_docs_paginated(
         self,
@@ -78,14 +153,14 @@ class FakePostgresStore:
         search: str | None = None,
         sort_by: str = "updated_at",
         sort_order: str = "desc",
+        include_deleted: bool = False,
     ) -> tuple[list[dict], int]:
-        docs = self.list_docs(kb_id)
+        docs = self.list_docs(kb_id, include_deleted=include_deleted)
 
         if status:
             docs = [d for d in docs if d.get("status") == status]
-
         if search:
-            docs = [d for d in docs if search.lower() in (d.get("doc_source") or "").lower()]
+            docs = [d for d in docs if search.lower() in (d.get("source") or "").lower()]
 
         null_last_fields = {"chunk_count", "file_size"}
         reverse = sort_order == "desc"
@@ -93,37 +168,16 @@ class FakePostgresStore:
         def _sort_key(d: dict):
             v = d.get(sort_by)
             if sort_by in null_last_fields:
-                try:
-                    parsed = int(v) if v not in (None, "") else None
-                except (TypeError, ValueError):
-                    parsed = None
-                if parsed is None:
-                    return (1, 0)
-                return (0, parsed if not reverse else -parsed)
+                return (0 if v is not None else 1, -(v or 0) if reverse else (v or 0))
             return (0, (v or ""))
 
-        docs.sort(key=_sort_key, reverse=False)
+        docs.sort(key=_sort_key)
         if sort_by not in null_last_fields:
             docs.sort(key=lambda d: d.get(sort_by) or "", reverse=reverse)
 
         total = len(docs)
         offset = (page - 1) * page_size
-        return docs[offset : offset + page_size], total
-
-    def get_doc_etag(self, kb_id: str, doc_source: str) -> str | None:
-        doc = self._docs.get((kb_id, doc_source))
-        return doc.get("etag") or None if doc else None
-
-    def set_doc_etag(self, kb_id: str, doc_source: str, etag: str) -> None:
-        self.set_doc_status(kb_id, doc_source, {"etag": etag})
-
-    def delete_doc_etag(self, kb_id: str, doc_source: str) -> None:
-        doc = self._docs.get((kb_id, doc_source))
-        if doc:
-            doc["etag"] = ""
-
-    def delete_doc_meta(self, kb_id: str, doc_source: str) -> None:
-        self._docs.pop((kb_id, doc_source), None)
+        return docs[offset: offset + page_size], total
 
     def ping(self) -> bool:
         return True
@@ -131,27 +185,165 @@ class FakePostgresStore:
     def run_migrations(self) -> None:
         pass
 
+    # -- Connector --
+
+    def create_connector(
+        self,
+        connector_id: str,
+        kb_id: str,
+        name: str,
+        source_type: str,
+        config: dict,
+        sync_schedule: str | None = None,
+        schedule_enabled: bool = False,
+    ) -> dict:
+        now = datetime.now(timezone.utc).isoformat()
+        connector = {
+            "connector_id": connector_id,
+            "kb_id": kb_id,
+            "name": name,
+            "source_type": source_type,
+            "config": config,
+            "sync_schedule": sync_schedule,
+            "schedule_enabled": schedule_enabled,
+            "sync_status": "idle",
+            "sync_started_at": None,
+            "last_synced_at": None,
+            "status": "active",
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._connectors[connector_id] = connector
+        return dict(connector)
+
+    def get_connector(self, connector_id: str) -> dict | None:
+        c = self._connectors.get(connector_id)
+        return dict(c) if c else None
+
+    def list_connectors(
+        self,
+        kb_id: str | None = None,
+        source_type: str | None = None,
+        status: str | None = None,
+    ) -> list[dict]:
+        result = []
+        for c in self._connectors.values():
+            if kb_id is not None and c["kb_id"] != kb_id:
+                continue
+            if source_type is not None and c["source_type"] != source_type:
+                continue
+            if status is not None and c["status"] != status:
+                continue
+            result.append(dict(c))
+        result.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+        return result
+
+    def update_connector(self, connector_id: str, fields: dict) -> dict | None:
+        allowed = {"name", "config", "sync_schedule", "schedule_enabled", "status"}
+        if connector_id not in self._connectors:
+            return None
+        for k, v in fields.items():
+            if k in allowed:
+                self._connectors[connector_id][k] = v
+        self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return dict(self._connectors[connector_id])
+
+    def delete_connector(self, connector_id: str) -> None:
+        self._connectors.pop(connector_id, None)
+
+    def set_connector_sync_status(
+        self,
+        connector_id: str,
+        sync_status: str,
+        last_synced_at: datetime | None = None,
+    ) -> None:
+        if connector_id not in self._connectors:
+            return
+        self._connectors[connector_id]["sync_status"] = sync_status
+        if sync_status == "running":
+            self._connectors[connector_id]["sync_started_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            self._connectors[connector_id]["sync_started_at"] = None
+        if last_synced_at is not None:
+            self._connectors[connector_id]["last_synced_at"] = last_synced_at.isoformat()
+        self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def set_connector_status(self, connector_id: str, status: str) -> None:
+        if connector_id in self._connectors:
+            self._connectors[connector_id]["status"] = status
+            self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def get_connector_doc_counts(self, connector_id: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for doc in self._docs.values():
+            if doc.get("connector_id") != connector_id:
+                continue
+            counts[doc["status"]] = counts.get(doc["status"], 0) + 1
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def list_docs_by_connector(self, connector_id: str, *, include_deleted: bool = False) -> list[dict]:
+        result = []
+        for doc in self._docs.values():
+            if doc.get("connector_id") != connector_id:
+                continue
+            if not include_deleted and doc["status"] == "deleted":
+                continue
+            result.append(dict(doc))
+        result.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+        return result
+
+    def list_docs_by_connector_paginated(
+        self,
+        connector_id: str,
+        page: int,
+        page_size: int,
+        status: str | None = None,
+        search: str | None = None,
+        sort_by: str = "updated_at",
+        sort_order: str = "desc",
+        include_deleted: bool = False,
+    ) -> tuple[list[dict], int]:
+        docs = self.list_docs_by_connector(connector_id, include_deleted=include_deleted)
+        if status:
+            docs = [d for d in docs if d.get("status") == status]
+        if search:
+            docs = [d for d in docs if search.lower() in (d.get("source") or "").lower()]
+        docs.sort(key=lambda d: d.get(sort_by) or "", reverse=(sort_order == "desc"))
+        total = len(docs)
+        offset = (page - 1) * page_size
+        return docs[offset: offset + page_size], total
+
 
 @pytest.fixture
 def mock_postgres(monkeypatch):
-    """In-memory Postgres substitute."""
+    """In-memory Postgres substitute (new doc_id-based API)."""
     store = FakePostgresStore()
     monkeypatch.setattr("infra.postgres.register_kb", store.register_kb)
     monkeypatch.setattr("infra.postgres.get_kb_meta", store.get_kb_meta)
     monkeypatch.setattr("infra.postgres.list_kb_ids", store.list_kb_ids)
+    monkeypatch.setattr("infra.postgres.update_kb_meta", store.update_kb_meta)
     monkeypatch.setattr("infra.postgres.update_kb_status", store.update_kb_status)
     monkeypatch.setattr("infra.postgres.delete_kb_meta", store.delete_kb_meta)
-    monkeypatch.setattr("infra.postgres.set_doc_status", store.set_doc_status)
-    monkeypatch.setattr("infra.postgres.get_doc_status", store.get_doc_status)
+    monkeypatch.setattr("infra.postgres.create_doc", store.create_doc)
+    monkeypatch.setattr("infra.postgres.get_doc_by_id", store.get_doc_by_id)
+    monkeypatch.setattr("infra.postgres.get_doc_by_source_uri", store.get_doc_by_source_uri)
+    monkeypatch.setattr("infra.postgres.update_doc_fields", store.update_doc_fields)
+    monkeypatch.setattr("infra.postgres.soft_delete_doc", store.soft_delete_doc)
     monkeypatch.setattr("infra.postgres.list_docs", store.list_docs)
-    monkeypatch.setattr("infra.postgres.list_docs_by_status", store.list_docs_by_status)
     monkeypatch.setattr("infra.postgres.list_docs_paginated", store.list_docs_paginated)
-    monkeypatch.setattr("infra.postgres.get_doc_etag", store.get_doc_etag)
-    monkeypatch.setattr("infra.postgres.set_doc_etag", store.set_doc_etag)
-    monkeypatch.setattr("infra.postgres.delete_doc_etag", store.delete_doc_etag)
-    monkeypatch.setattr("infra.postgres.delete_doc_meta", store.delete_doc_meta)
+    monkeypatch.setattr("infra.postgres.list_docs_by_connector", store.list_docs_by_connector)
+    monkeypatch.setattr("infra.postgres.list_docs_by_connector_paginated", store.list_docs_by_connector_paginated)
     monkeypatch.setattr("infra.postgres.ping", store.ping)
     monkeypatch.setattr("infra.postgres.run_migrations", store.run_migrations)
+    monkeypatch.setattr("infra.postgres.create_connector", store.create_connector)
+    monkeypatch.setattr("infra.postgres.get_connector", store.get_connector)
+    monkeypatch.setattr("infra.postgres.list_connectors", store.list_connectors)
+    monkeypatch.setattr("infra.postgres.update_connector", store.update_connector)
+    monkeypatch.setattr("infra.postgres.delete_connector", store.delete_connector)
+    monkeypatch.setattr("infra.postgres.set_connector_sync_status", store.set_connector_sync_status)
+    monkeypatch.setattr("infra.postgres.set_connector_status", store.set_connector_status)
+    monkeypatch.setattr("infra.postgres.get_connector_doc_counts", store.get_connector_doc_counts)
     return store
 
 

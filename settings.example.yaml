@@ -5,8 +5,16 @@ s3:
   rag_bucket: "rag-api"
   dagster_bucket: "dagster"
   region: "us-east-1"
-  poll_interval_sec: 10
   insecure: true
+
+postgres:
+  host: "<postgres-host>"
+  port: 5432
+  dbname: "rag-api"
+  user: "<user>"
+  password: "<password>"
+  pool_size: 5
+  connect_timeout: 30
 
 qdrant:
   host: "<qdrant-host>"
@@ -23,18 +31,19 @@ ingestion:
   max_file_size_mb: 200
 
 queue_worker:
-  enabled: true             # true: FastAPI QueueWorker 처리 (Dagster 센서 비활성화), false: Dagster 센서 처리
+  enabled: true   # true: FastAPI QueueWorker, false: Dagster sensor
   max_workers: 4
 
 queue_poll:
   poll_interval_sec: 5
   max_per_poll: 5
-  retry_interval_sec: 10    # 동일 문서 재시도 간격
+  retry_interval_sec: 10    # retry interval for the same document
 
 chunking:
   strategy: "recursive"    # recursive / semantic
   chunk_size: 1024
   chunk_overlap: 128
+  min_chunk_chars: 30
   semantic_threshold: 0.8
 
 embedding:
@@ -50,7 +59,7 @@ retrieval:
   top_k: 10
   hybrid:
     alpha: 0.5             # alpha=1.0 → dense only, alpha=0.0 → sparse only
-    merge_strategy: "rrf"
+    rrf_k: 60              # RRF rank constant — higher value reduces score gap between ranks
   similarity:
     min_score: 0.0         # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
   rerank:
@@ -64,13 +73,22 @@ retrieval:
 
 knowledge_bases:
   - id: "kb-01"
-    description: "지식베이스 01"
+    name: "Knowledge Base 01"
+    description: "First knowledge base."
   - id: "kb-02"
-    description: "지식베이스 02"
+    name: "Knowledge Base 02"
+    description: "Second knowledge base."
 
 mcp:
   enabled: true
-  transport: stdio
+  transport: streamable-http
+
+tracing:
+  enabled: false
+  langfuse_baseurl: "http://<langfuse-host>:3000"
+  langfuse_public_key: "<public-key>"
+  langfuse_secret_key: "<secret-key>"
+  service_name: "rag-api"
 
 logging:
   level: INFO

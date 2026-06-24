@@ -57,28 +57,54 @@ def ingest(
     file: Path = typer.Option(..., "--file", help="Local file path to ingest"),
     force: bool = typer.Option(False, "--force/--no-force", help="Skip ETag check and re-index"),
 ):
-    """Upload file to S3 then trigger ingest (Dagster queue or direct)."""
+    """Upload file to S3 then enqueue for ingest."""
     if not file.exists():
         typer.echo(f"File not found: {file}", err=True)
         raise typer.Exit(1)
 
+    import mimetypes
+
+    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
+    from pipeline.enqueue import enqueue_upload_event
+    from pipeline.source_uri import normalize_source_uri
+
+    if kb_id not in list_kb_ids():
+        typer.echo(f"KB not found: {kb_id}", err=True)
+        raise typer.Exit(1)
 
     content = file.read_bytes()
-    import mimetypes
     content_type = mimetypes.guess_type(str(file))[0] or "application/octet-stream"
+    file_size = len(content)
+    doc_type = file.suffix.lstrip(".").lower()
+    source_uri = normalize_source_uri("s3", file.name)
+    storage_key = f"{kb_id}/{file.name}"
+
+    existing = get_doc_by_source_uri(kb_id, source_uri)
+    if existing is None:
+        doc = create_doc(
+            kb_id=kb_id,
+            source_uri=source_uri,
+            source=file.name,
+            source_type="s3",
+            status="uploading",
+            storage_key=storage_key,
+            file_size=file_size,
+            doc_type=doc_type,
+        )
+    else:
+        doc = existing
+        update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+
+    doc_id: str = doc["doc_id"]
 
     typer.echo(f"Uploading to S3: kb={kb_id} key={file.name}")
-    etag = upload_object(kb_id=kb_id, doc_source=file.name, data=content, content_type=content_type)
+    etag = upload_object(kb_id=kb_id, source=file.name, data=content, content_type=content_type)
     typer.echo(f"Uploaded: etag={etag}")
 
-    if force:
-        from pipeline.enqueue import enqueue_upload_event
-
-        enqueue_upload_event(kb_id=kb_id, doc_source=file.name, etag=etag, file_size=len(content), force=True)
-        typer.echo(f"Force-queued for ingest: kb={kb_id} key={file.name}")
-    else:
-        typer.echo(f"Ingest will be triggered by S3 webhook: kb={kb_id} key={file.name}")
+    update_doc_fields(doc_id, {"content_version": etag, "status": "pending"})
+    enqueue_upload_event(doc_id=doc_id, force=force)
+    typer.echo(f"Queued for ingest: kb={kb_id} doc_id={doc_id} force={force}")
 
 
 # ──────────────────────────────────────────────
@@ -153,25 +179,24 @@ def serve(
 
 @app.command()
 def search(
-    kb_ids: list[str] = typer.Option(..., "--kb-ids", help="검색할 KB ID 목록"),
-    query: str = typer.Option(..., "--query", help="검색 쿼리"),
+    kb_ids: list[str] = typer.Option(..., "--kb-ids", help="KB ID list to search"),
+    query: str = typer.Option(..., "--query", help="Search query"),
     top_k: int = typer.Option(10, "--top-k"),
     rerank: bool = typer.Option(True, "--rerank/--no-rerank"),
 ):
-    """Hybrid Search 직접 실행 (CLI 테스트용)."""
+    """Hybrid search (CLI test)."""
     import asyncio
 
-    from rag.retriever import hybrid_search
+    from rag.retriever import search as retriever_search
 
-    results = asyncio.run(hybrid_search(query=query, kb_ids=kb_ids, top_k=top_k))
+    results, total, provider, fallback = asyncio.run(
+        retriever_search(query=query, kb_ids=kb_ids, top_k=top_k, rerank_enabled=rerank)
+    )
 
-    if rerank and results:
-        from rag.reranker import rerank as do_rerank
-
-        results, provider, fallback = do_rerank(query=query, results=results)
+    if provider != "none":
         typer.echo(f"Reranker: {provider} (fallback={fallback})")
 
-    typer.echo(f"\n검색 결과 ({len(results)}건):\n")
+    typer.echo(f"\nSearch results ({len(results)} of {total}):\n")
     for i, r in enumerate(results, 1):
         typer.echo(f"[{i}] score={r.score:.4f} | {r.doc_key} | chunk={r.chunk_index}")
         typer.echo(f"    {r.text[:200]}")

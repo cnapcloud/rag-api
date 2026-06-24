@@ -16,6 +16,7 @@ class SearchResult:
     chunk_id: str
     kb_id: str
     doc_key: str
+    source: str
     doc_type: str
     chunk_index: int
     page_num: int | None
@@ -53,129 +54,84 @@ def _build_index(kb_id: str, embed_model=None):
     return VectorStoreIndex.from_vector_store(vector_store, embed_model=em)
 
 
-def search_hybrid_kb(
-    kb_id: str,
-    query: str,
-    top_k: int | None = None,
-    alpha: float | None = None,
-) -> list[SearchResult]:
-    """Single KB hybrid search (dense+sparse, RRF score)."""
-    cfg = get_settings().retrieval
-    _top_k = top_k or cfg.top_k
-    _alpha = alpha if alpha is not None else cfg.hybrid.alpha
-
-    index = _build_index(kb_id)
-    retriever = index.as_retriever(
-        similarity_top_k=_top_k,
-        vector_store_query_mode="hybrid",
-        alpha=_alpha,
+def _node_to_result(kb_id: str, node) -> SearchResult:
+    meta = node.metadata
+    return SearchResult(
+        chunk_id=node.node_id,
+        kb_id=kb_id,
+        doc_key=meta.get("doc_key", ""),
+        source=meta.get("doc_source", ""),
+        doc_type=meta.get("doc_type", ""),
+        chunk_index=int(meta.get("chunk_index", 0)),
+        page_num=meta.get("page_num") or meta.get("page_label"),
+        text=node.get_content(),
+        score=float(node.score or 0.0),
+        rerank_score=None,
+        updated_at=meta.get("updated_at", ""),
     )
 
-    nodes = retriever.retrieve(query)
-    results: list[SearchResult] = []
-    for node in nodes:
-        meta = node.metadata
-        results.append(
-            SearchResult(
-                chunk_id=node.node_id,
-                kb_id=kb_id,
-                doc_key=meta.get("doc_key", ""),
-                doc_type=meta.get("doc_type", ""),
-                chunk_index=int(meta.get("chunk_index", 0)),
-                page_num=meta.get("page_num") or meta.get("page_label"),
-                text=node.get_content(),
-                score=float(node.score or 0.0),
-                rerank_score=None,
-                updated_at=meta.get("updated_at", ""),
-            )
-        )
-    return results
 
-
-def search_similarity_kb(
+def _search_kb(
     kb_id: str,
     query: str,
-    top_k: int | None = None,
-    min_score: float = 0.0,
+    top_k: int,
+    alpha: float,
+    mode: str,
+    min_score: float,
 ) -> list[SearchResult]:
-    """Single KB dense-only search (cosine similarity score, 0.0~1.0)."""
-    cfg = get_settings().retrieval
-    _top_k = top_k or cfg.top_k
-
     index = _build_index(kb_id)
-    retriever = index.as_retriever(
-        similarity_top_k=_top_k,
-        vector_store_query_mode="default",
-    )
+    if mode == "similarity":
+        retriever = index.as_retriever(
+            similarity_top_k=top_k,
+            vector_store_query_mode="default",
+        )
+    else:
+        retriever = index.as_retriever(
+            similarity_top_k=top_k,
+            vector_store_query_mode="hybrid",
+            alpha=alpha,
+        )
 
     nodes = retriever.retrieve(query)
-    results: list[SearchResult] = []
-    for node in nodes:
-        score = float(node.score or 0.0)
-        if score < min_score:
-            continue
-        meta = node.metadata
-        results.append(
-            SearchResult(
-                chunk_id=node.node_id,
-                kb_id=kb_id,
-                doc_key=meta.get("doc_key", ""),
-                doc_type=meta.get("doc_type", ""),
-                chunk_index=int(meta.get("chunk_index", 0)),
-                page_num=meta.get("page_num") or meta.get("page_label"),
-                text=node.get_content(),
-                score=score,
-                rerank_score=None,
-                updated_at=meta.get("updated_at", ""),
-            )
-        )
-    return results
+    return [
+        _node_to_result(kb_id, node)
+        for node in nodes
+        if mode != "similarity" or float(node.score or 0.0) >= min_score
+    ]
 
 
-async def _search_hybrid_kb_async(
-    kb_id: str, query: str, top_k: int, alpha: float
-) -> list[SearchResult]:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, search_hybrid_kb, kb_id, query, top_k, alpha)
-
-
-async def _search_similarity_kb_async(
-    kb_id: str, query: str, top_k: int, min_score: float
-) -> list[SearchResult]:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, search_similarity_kb, kb_id, query, top_k, min_score)
-
-
-async def hybrid_search(
+async def search(
     query: str,
     kb_ids: list[str],
     top_k: int | None = None,
     alpha: float | None = None,
     mode: str = "hybrid",
     min_score: float = 0.0,
-) -> list[SearchResult]:
-    """Search across multiple KBs in parallel and merge with RRF.
+    rerank_enabled: bool | None = None,
+    top_n: int | None = None,
+) -> tuple[list[SearchResult], int, str, bool]:
+    """Search across multiple KBs in parallel, merge, and optionally rerank.
 
-    mode='hybrid': dense+sparse search, RRF score (alpha applies)
+    Returns: (results, total_candidates, rerank_provider, fallback_used)
+    rerank_enabled: None uses settings value.
+    mode='hybrid': dense+sparse search, RRF merge (alpha applies)
     mode='similarity': dense-only search, cosine score (alpha ignored, min_score applies)
     """
+    from rag.reranker import rerank_async
+
     cfg = get_settings().retrieval
     _top_k = top_k or cfg.top_k
     _alpha = alpha if alpha is not None else cfg.hybrid.alpha
+    _rerank_enabled = rerank_enabled if rerank_enabled is not None else cfg.rerank.enabled
 
-    if mode == "similarity":
-        if alpha is not None:
-            logger.warning("alpha parameter is ignored in similarity mode")
-        tasks = [
-            _search_similarity_kb_async(kb_id, query, _top_k, min_score)
-            for kb_id in kb_ids
-        ]
-    else:
-        tasks = [
-            _search_hybrid_kb_async(kb_id, query, _top_k, _alpha)
-            for kb_id in kb_ids
-        ]
+    if mode == "similarity" and alpha is not None:
+        logger.warning("alpha parameter is ignored in similarity mode")
 
+    loop = asyncio.get_running_loop()
+    tasks = [
+        loop.run_in_executor(None, _search_kb, kb_id, query, _top_k, _alpha, mode, min_score)
+        for kb_id in kb_ids
+    ]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_results: list[list[SearchResult]] = []
@@ -191,15 +147,17 @@ async def hybrid_search(
             [r for results in all_results for r in results],
             key=lambda r: r.score,
             reverse=True,
-        )
+        )[:_top_k]
     else:
         from rag.merger import rrf_merge
-        merged = rrf_merge(all_results)
+        merged = rrf_merge(all_results, k=cfg.hybrid.rrf_k)[:_top_k]
 
-    logger.info(
-        "Search done: mode=%s kbs=%d candidates=%d",
-        mode,
-        len(kb_ids),
-        len(merged),
-    )
-    return merged
+    total_candidates = len(merged)
+    logger.info("Search done: mode=%s kbs=%d candidates=%d", mode, len(kb_ids), total_candidates)
+
+    if _rerank_enabled and merged:
+        _top_n = min(top_n or cfg.rerank.top_n, len(merged))
+        results, provider, fallback = await rerank_async(query=query, results=merged, top_n=_top_n)
+        return results, total_candidates, provider, fallback
+
+    return merged, total_candidates, "none", False

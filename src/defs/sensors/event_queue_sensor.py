@@ -1,4 +1,4 @@
-"""event_queue_sensor — Redis 큐(PUT/DELETE)에 쌓인 이벤트를 소비해 job을 트리거한다."""
+"""event_queue_sensor — consume Redis queue events and trigger Dagster jobs."""
 
 from __future__ import annotations
 
@@ -39,15 +39,13 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
         except json.JSONDecodeError:
             r.lpush(main_key, item)
             continue
-        kb_id = event.get("kb_id", "")
-        doc_source = event.get("doc_source", "")
-        if kb_id and doc_source:
-            from infra import postgres as pg
-            from pipeline.ops.meta import set_pending
-            doc = pg.get_doc_status(kb_id, doc_source)
+        doc_id = event.get("doc_id", "")
+        if doc_id:
+            from infra.postgres import get_doc_by_id, update_doc_fields
+            doc = get_doc_by_id(doc_id)
             current = doc.get("status", "") if doc else ""
             if current not in ("running", "deleting"):
-                set_pending(kb_id, doc_source)
+                update_doc_fields(doc_id, {"status": "pending"})
         r.lpush(main_key, item)
     logger.debug("Drained %d item(s) from %s to %s", len(items), delay_key, main_key)
 
@@ -59,14 +57,9 @@ def _is_blocked_by_active_run(
     delay_key: str,
     delay_sec: float,
     raw: str,
-    kb_id: str,
-    doc_source: str,
+    doc_id: str,
 ) -> bool:
-    """Return True and enqueue delay if an active Dagster run is blocking this event.
-
-    Handles zombie recovery: if the recorded run_id is no longer active, marks the
-    doc as failed and returns False so the caller can proceed with dispatch.
-    """
+    """Return True and enqueue delay if an active Dagster run is blocking this event."""
     from pipeline.ops.meta import set_failed
 
     s = doc.get("status", "")
@@ -78,14 +71,14 @@ def _is_blocked_by_active_run(
         run = context.instance.get_run_by_id(prev_run_id)
         if run is not None and not run.is_finished:
             r.zadd(delay_key, {raw: time.time() + delay_sec})
-            logger.info("Event delayed (%s): kb=%s key=%s delay=%ss", s, kb_id, doc_source, delay_sec)
+            logger.info("Event delayed (%s): doc_id=%s delay=%ss", s, doc_id, delay_sec)
             return True
         set_failed(
-            kb_id, doc_source,
+            doc_id,
             f"Recovered: previous run no longer active (run_id={prev_run_id})",
             run_id=prev_run_id,
         )
-        logger.warning("Zombie run recovered: kb=%s key=%s prev_run_id=%s", kb_id, doc_source, prev_run_id)
+        logger.warning("Zombie run recovered: doc_id=%s prev_run_id=%s", doc_id, prev_run_id)
 
     return False
 
@@ -94,7 +87,7 @@ def _is_blocked_by_active_run(
     jobs=[ingest_job, delete_job],
     minimum_interval_seconds=_poll_interval_sec,
     default_status=DefaultSensorStatus.RUNNING,
-    description="Redis 큐(PUT/DELETE)에서 이벤트를 소비해 ingest_job / delete_job을 트리거한다.",
+    description="Consume Redis queue events (PUT/DELETE) and trigger ingest_job / delete_job.",
 )
 def event_queue_sensor(context: SensorEvaluationContext):
     if _get_settings().queue_worker.enabled:
@@ -103,7 +96,6 @@ def event_queue_sensor(context: SensorEvaluationContext):
 
     try:
         from infra.redis import get_redis_client
-
         r = get_redis_client()
     except Exception as e:
         logger.warning("Redis connection failed (event_queue_sensor): %s", e)
@@ -111,12 +103,12 @@ def event_queue_sensor(context: SensorEvaluationContext):
 
     delay_sec = _get_settings().queue_poll.retry_interval_sec
 
-    # Drain delay queues first — move ready items back to main queues
     _drain_delay_queue(r, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY)
     _drain_delay_queue(r, DELETE_DELAY_KEY, DELETE_QUEUE_KEY)
 
-    # PUT queue → ingest_job
     count = 0
+
+    # PUT queue -> ingest_job
     while count < _max_per_poll:
         raw = r.rpop(UPLOAD_QUEUE_KEY)
         if raw is None:
@@ -128,21 +120,22 @@ def event_queue_sensor(context: SensorEvaluationContext):
             logger.warning("Invalid PUT event format: %s", raw)
             continue
 
-        kb_id = event.get("kb_id", "")
-        doc_source = event.get("doc_source", "")
-        etag = event.get("etag", "")
-        file_size = event.get("file_size", 0)
+        doc_id = event.get("doc_id", "")
         force = event.get("force", False)
-
-        from infra import postgres as postgres_infra
-        from pipeline.ops.meta import set_processing
-
-        doc = postgres_infra.get_doc_status(kb_id, doc_source)
-        if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, kb_id, doc_source):
+        if not doc_id:
+            logger.warning("PUT event missing doc_id (skipped): %s", raw)
             continue
 
-        set_processing(kb_id, doc_source)
-        logger.info("Dispatching ingest_job from queue: kb=%s key=%s", kb_id, doc_source)
+        from infra.postgres import get_doc_by_id
+        from pipeline.ops.meta import set_processing
+
+        doc = get_doc_by_id(doc_id)
+        if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, doc_id):
+            continue
+
+        set_processing(doc_id)
+        kb_id = doc["kb_id"] if doc else ""
+        logger.info("Dispatching ingest_job from queue: doc_id=%s kb=%s", doc_id, kb_id)
         yield RunRequest(
             run_key=str(uuid4()),
             job_name=ingest_job.name,
@@ -150,20 +143,17 @@ def event_queue_sensor(context: SensorEvaluationContext):
                 "ops": {
                     "validate_op": {
                         "config": {
-                            "kb_id": kb_id,
-                            "doc_source": doc_source,
-                            "etag": etag,
-                            "file_size": file_size,
+                            "doc_id": doc_id,
                             "force": force,
                         }
                     }
                 }
             },
-            tags={"kb_id": kb_id, "trigger": "api_upload"},
+            tags={"doc_id": doc_id, "kb_id": kb_id, "trigger": "api_upload"},
         )
         count += 1
 
-    # DELETE queue → delete_job
+    # DELETE queue -> delete_job
     while count < _max_per_poll:
         raw = r.rpop(DELETE_QUEUE_KEY)
         if raw is None:
@@ -175,19 +165,21 @@ def event_queue_sensor(context: SensorEvaluationContext):
             logger.warning("Invalid DELETE event format: %s", raw)
             continue
 
-        kb_id = event.get("kb_id", "")
-        doc_source = event.get("doc_source", "")
-
-        from infra import postgres as postgres_infra
-        from pipeline.ops.meta import set_deleting
-
-        doc = postgres_infra.get_doc_status(kb_id, doc_source)
-        if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, kb_id, doc_source):
+        doc_id = event.get("doc_id", "")
+        if not doc_id:
+            logger.warning("DELETE event missing doc_id (skipped): %s", raw)
             continue
 
-        set_deleting(kb_id, doc_source)
+        from infra.postgres import get_doc_by_id
+        from pipeline.ops.meta import set_deleting
 
-        logger.info("Dispatching delete_job from queue: kb=%s key=%s", kb_id, doc_source)
+        doc = get_doc_by_id(doc_id)
+        if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, doc_id):
+            continue
+
+        set_deleting(doc_id)
+        kb_id = doc["kb_id"] if doc else ""
+        logger.info("Dispatching delete_job from queue: doc_id=%s kb=%s", doc_id, kb_id)
         yield RunRequest(
             run_key=str(uuid4()),
             job_name=delete_job.name,
@@ -195,13 +187,12 @@ def event_queue_sensor(context: SensorEvaluationContext):
                 "ops": {
                     "delete_chunks_op": {
                         "config": {
-                            "kb_id": kb_id,
-                            "doc_source": doc_source,
+                            "doc_id": doc_id,
                         }
                     }
                 }
             },
-            tags={"kb_id": kb_id, "trigger": "api_delete"},
+            tags={"doc_id": doc_id, "kb_id": kb_id, "trigger": "api_delete"},
         )
         count += 1
 
@@ -209,6 +200,3 @@ def event_queue_sensor(context: SensorEvaluationContext):
         logger.info("event_queue_sensor: %d RunRequest(s) created", count)
     else:
         yield SkipReason("No events in Redis queue — no jobs to trigger")
-
-
-# enqueue_upload_event and enqueue_delete_event have been moved to pipeline.enqueue

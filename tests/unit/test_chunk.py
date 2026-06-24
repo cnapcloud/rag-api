@@ -46,6 +46,6 @@ def test_chunk_single_short_document():
     """짧은 문서는 1개 청크로 반환된다."""
     from pipeline.ops.chunk import chunk
 
-    docs = [Document(text="짧은 텍스트")]
+    docs = [Document(text="짧은 텍스트이지만 min_chunk_chars 기준을 충족하는 단일 청크 문서입니다.")]
     nodes = chunk(docs, strategy="recursive", chunk_size=1024, chunk_overlap=128)
     assert len(nodes) == 1

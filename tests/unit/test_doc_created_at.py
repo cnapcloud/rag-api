@@ -1,12 +1,15 @@
-"""Unit tests for US-10: doc_created_at extraction, upsert payload, meta storage, reindex ordering."""
+"""Unit tests for doc_created_at extraction, upsert payload, meta storage, and reindex."""
 
 from __future__ import annotations
 
-import io
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+DOC_ID = "11111111-1111-1111-1111-111111111111"
+STORAGE_KEY = "kb-test/doc.pdf"
 
 
 # ──────────────────────────────────────────────
@@ -14,13 +17,12 @@ import pytest
 # ──────────────────────────────────────────────
 
 class TestExtractDocCreatedAt:
-    def _call(self, file_path, suffix, kb_id="kb-test", doc_source="doc.pdf"):
+    def _call(self, file_path, suffix, storage_key=STORAGE_KEY):
         from pipeline.ops.parse import _extract_doc_created_at
-        return _extract_doc_created_at(file_path, suffix, kb_id, doc_source)
+        return _extract_doc_created_at(file_path, suffix, storage_key)
 
     def test_pdf_creation_date(self, tmp_path):
         """PDF with CreationDate returns that date as ISO UTC string."""
-        import pypdf
         from pypdf import PdfWriter
 
         pdf_path = tmp_path / "test.pdf"
@@ -44,7 +46,7 @@ class TestExtractDocCreatedAt:
         with open(pdf_path, "wb") as f:
             writer.write(f)
 
-        with patch("infra.s3.get_object_last_modified", return_value="2024-01-01T00:00:00+00:00"):
+        with patch("infra.s3.get_object_last_modified_by_key", return_value="2024-01-01T00:00:00+00:00"):
             result = self._call(pdf_path, ".pdf")
         assert result == "2024-01-01T00:00:00+00:00"
 
@@ -71,7 +73,7 @@ class TestExtractDocCreatedAt:
         txt_path = tmp_path / "test.txt"
         txt_path.write_text("hello")
 
-        with patch("infra.s3.get_object_last_modified", return_value="2024-06-01T12:00:00+00:00"):
+        with patch("infra.s3.get_object_last_modified_by_key", return_value="2024-06-01T12:00:00+00:00"):
             result = self._call(txt_path, ".txt")
         assert result == "2024-06-01T12:00:00+00:00"
 
@@ -80,13 +82,13 @@ class TestExtractDocCreatedAt:
         txt_path = tmp_path / "test.txt"
         txt_path.write_text("hello")
 
-        with patch("infra.s3.get_object_last_modified", side_effect=Exception("S3 error")):
+        with patch("infra.s3.get_object_last_modified_by_key", side_effect=Exception("S3 error")):
             result = self._call(txt_path, ".txt")
         assert result == ""
 
     def test_naive_datetime_coerced_to_utc(self, tmp_path):
         """Naive datetime from PDF metadata is treated as UTC."""
-        dt_naive = datetime(2021, 1, 1, 0, 0, 0)  # no tzinfo
+        dt_naive = datetime(2021, 1, 1, 0, 0, 0)
 
         with patch("pypdf.PdfReader") as mock_reader_cls:
             mock_meta = MagicMock()
@@ -94,7 +96,7 @@ class TestExtractDocCreatedAt:
             mock_reader_cls.return_value.metadata = mock_meta
 
             pdf_path = tmp_path / "naive.pdf"
-            pdf_path.write_bytes(b"%PDF-1.4")  # minimal stub
+            pdf_path.write_bytes(b"%PDF-1.4")
             result = self._call(pdf_path, ".pdf")
 
         assert "+00:00" in result or "Z" in result
@@ -108,7 +110,6 @@ class TestExtractDocCreatedAt:
 class TestUpsertDocCreatedAt:
     def _make_embedded_node(self, doc_created_at: str = ""):
         from llama_index.core.schema import TextNode
-
         from pipeline.ops.embed import EmbeddedNode
 
         node = TextNode(text="sample chunk", metadata={"doc_created_at": doc_created_at})
@@ -126,10 +127,10 @@ class TestUpsertDocCreatedAt:
         with (
             patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
             patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc"),
+            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
             patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks"),
         ):
-            result = upsert("kb-test", "doc.pdf", [en])
+            result = upsert("kb-test", DOC_ID, [en])
 
         assert result.doc_created_at == "2023-05-15T10:30:00+00:00"
 
@@ -147,13 +148,33 @@ class TestUpsertDocCreatedAt:
         with (
             patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
             patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc"),
+            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
             patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks", side_effect=capture_upsert),
         ):
-            upsert("kb-test", "doc.pdf", [en])
+            upsert("kb-test", DOC_ID, [en])
 
         assert len(captured_points) == 1
         assert captured_points[0].payload["doc_created_at"] == expected
+
+    def test_qdrant_payload_uses_doc_id_not_doc_key(self, mock_qdrant):
+        """Payload contains doc_id field (not doc_key or doc_source)."""
+        from pipeline.ops.upsert import upsert
+
+        en = self._make_embedded_node("2023-05-15T10:30:00+00:00")
+        captured_points = []
+
+        with (
+            patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
+            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks", side_effect=lambda kb, pts, client=None: captured_points.extend(pts)),
+        ):
+            upsert("kb-test", DOC_ID, [en])
+
+        payload = captured_points[0].payload
+        assert payload.get("doc_id") == DOC_ID
+        assert "doc_key" not in payload
+        assert "doc_source" not in payload
 
     def test_empty_embedded_nodes_doc_created_at_is_empty(self, mock_qdrant):
         from pipeline.ops.upsert import upsert
@@ -161,42 +182,34 @@ class TestUpsertDocCreatedAt:
         with (
             patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
             patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc"),
+            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
             patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks"),
         ):
-            result = upsert("kb-test", "doc.pdf", [])
+            result = upsert("kb-test", DOC_ID, [])
 
         assert result.doc_created_at == ""
 
 
 # ──────────────────────────────────────────────
-# update_meta stores doc_created_at in Redis
+# update_meta stores doc_created_at in Postgres
 # ──────────────────────────────────────────────
 
 class TestMetaDocCreatedAt:
     def _make_upsert_result(self, doc_created_at="2023-05-15T10:30:00+00:00"):
         from pipeline.ops.upsert import UpsertResult
-
-        return UpsertResult(
-            kb_id="kb-test",
-            doc_source="doc.pdf",
-            chunk_count=3,
-            doc_key="kb-test___doc.pdf",
-            doc_created_at=doc_created_at,
-        )
+        return UpsertResult(kb_id="kb-test", doc_id=DOC_ID, chunk_count=3, doc_created_at=doc_created_at)
 
     def test_update_meta_stores_doc_created_at(self):
         from pipeline.ops.meta import update_meta
 
         stored: dict = {}
 
-        def fake_set_doc_status(kb_id, doc_source, fields):
+        def fake_update(doc_id, fields):
             stored.update(fields)
 
-        with patch("pipeline.ops.meta.postgres_infra.set_doc_status", side_effect=fake_set_doc_status):
+        with patch("pipeline.ops.meta.update_doc_fields", side_effect=fake_update):
             update_meta(
-                kb_id="kb-test",
-                doc_source="doc.pdf",
+                doc_id=DOC_ID,
                 upsert_result=self._make_upsert_result("2023-05-15T10:30:00+00:00"),
                 doc_created_at="2023-05-15T10:30:00+00:00",
             )
@@ -208,13 +221,12 @@ class TestMetaDocCreatedAt:
 
         stored: dict = {}
 
-        def fake_set_doc_status(kb_id, doc_source, fields):
+        def fake_update(doc_id, fields):
             stored.update(fields)
 
-        with patch("pipeline.ops.meta.postgres_infra.set_doc_status", side_effect=fake_set_doc_status):
+        with patch("pipeline.ops.meta.update_doc_fields", side_effect=fake_update):
             update_meta(
-                kb_id="kb-test",
-                doc_source="doc.pdf",
+                doc_id=DOC_ID,
                 upsert_result=self._make_upsert_result(""),
                 doc_created_at="",
             )
@@ -223,60 +235,82 @@ class TestMetaDocCreatedAt:
 
 
 # ──────────────────────────────────────────────
-# reindex_kb ordering
+# reindex_kb behavior
 # ──────────────────────────────────────────────
 
-class TestReindexOrdering:
-    def test_reindex_ordered_by_doc_created_at_from_postgres(self):
-        """Documents with Postgres doc_created_at are enqueued oldest-first."""
-        objects = [
-            ("c.pdf", "etag-c", "2024-03-01T00:00:00+00:00", 512),
-            ("a.pdf", "etag-a", "2024-01-01T00:00:00+00:00", 1024),
-            ("b.pdf", "etag-b", "2024-02-01T00:00:00+00:00", 2048),
+class TestReindexKb:
+    def test_reindex_skips_docs_with_matching_etag(self):
+        """Docs with matching S3 ETag and content_version are skipped."""
+        docs = [
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a"},
         ]
-        pg_docs = [
-            {"doc_source": "a.pdf", "doc_created_at": "2022-06-01T00:00:00+00:00"},
-            {"doc_source": "b.pdf", "doc_created_at": "2021-01-01T00:00:00+00:00"},
-            {"doc_source": "c.pdf", "doc_created_at": "2023-01-01T00:00:00+00:00"},
-        ]
-        enqueued: list[str] = []
 
-        def fake_trigger(kb_id, doc_source, etag, file_size, force=False):
-            enqueued.append(doc_source)
+        enqueued = []
 
         with (
-            patch("infra.s3.list_kb_objects", return_value=objects),
-            patch("infra.postgres.list_docs", return_value=pg_docs),
-            patch("infra.postgres.get_doc_etag", return_value=None),
-            patch("api.routers.docs._trigger_ingest", side_effect=fake_trigger),
+            patch("infra.postgres.list_docs", return_value=docs),
+            patch("infra.s3.get_object_meta", return_value=("etag-a", 1024)),
+            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
-            import asyncio
             from api.routers.docs import reindex_kb
-            asyncio.run(reindex_kb(kb_id="kb-test", force=False))
+            result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
 
-        # b (2021) -> a (2022) -> c (2023)
-        assert enqueued == ["b.pdf", "a.pdf", "c.pdf"]
+        assert result["skipped"] == 1
+        assert result["queued"] == 0
+        assert len(enqueued) == 0
 
-    def test_reindex_fallback_to_s3_last_modified_when_no_postgres(self):
-        """Documents without Postgres doc_created_at use S3 LastModified for ordering."""
-        objects = [
-            ("z.pdf", "etag-z", "2024-12-01T00:00:00+00:00", 300),
-            ("m.pdf", "etag-m", "2024-06-01T00:00:00+00:00", 400),
-            ("a.pdf", "etag-a", "2024-01-01T00:00:00+00:00", 500),
+    def test_reindex_enqueues_docs_with_changed_etag(self):
+        """Docs with different S3 ETag are enqueued."""
+        docs = [
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "old-etag"},
         ]
-        enqueued: list[str] = []
 
-        def fake_trigger(kb_id, doc_source, etag, file_size, force=False):
-            enqueued.append(doc_source)
+        enqueued = []
 
         with (
-            patch("infra.s3.list_kb_objects", return_value=objects),
-            patch("infra.postgres.list_docs", return_value=[]),
-            patch("infra.postgres.get_doc_etag", return_value=None),
-            patch("api.routers.docs._trigger_ingest", side_effect=fake_trigger),
+            patch("infra.postgres.list_docs", return_value=docs),
+            patch("infra.s3.get_object_meta", return_value=("new-etag", 1024)),
+            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
-            import asyncio
             from api.routers.docs import reindex_kb
-            asyncio.run(reindex_kb(kb_id="kb-test", force=False))
+            result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
 
-        assert enqueued == ["a.pdf", "m.pdf", "z.pdf"]
+        assert result["queued"] == 1
+        assert result["skipped"] == 0
+        assert DOC_ID in enqueued
+
+    def test_reindex_force_enqueues_all(self):
+        """force=True enqueues all docs regardless of ETag."""
+        docs = [
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a"},
+        ]
+
+        enqueued = []
+
+        with (
+            patch("infra.postgres.list_docs", return_value=docs),
+            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+        ):
+            from api.routers.docs import reindex_kb
+            result = asyncio.run(reindex_kb(kb_id="kb-test", force=True))
+
+        assert result["queued"] == 1
+        assert DOC_ID in enqueued
+
+    def test_reindex_skips_docs_without_storage_key(self):
+        """Docs with no storage_key are skipped."""
+        docs = [
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": None, "content_version": None},
+        ]
+
+        enqueued = []
+
+        with (
+            patch("infra.postgres.list_docs", return_value=docs),
+            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+        ):
+            from api.routers.docs import reindex_kb
+            result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
+
+        assert result["skipped"] == 1
+        assert result["queued"] == 0

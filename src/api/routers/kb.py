@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from exceptions import ConflictError, NotFoundError
@@ -21,21 +21,30 @@ class KBCreateRequest(BaseModel):
     tags: list[str] = []
 
 
-@router.get("/kb")
-async def list_kbs():
-    from infra.postgres import get_kb_meta, list_kb_ids
+class KBUpdateRequest(BaseModel):
+    kb_name: str | None = None
+    description: str | None = None
+    tags: list[str] | None = None
 
-    kb_ids = list_kb_ids()
-    result = []
-    for kb_id in sorted(kb_ids):
-        meta = get_kb_meta(kb_id)
-        result.append({
-            "kb_id": kb_id,
-            "kb_name": meta.get("kb_name", "") if meta else "",
-            "description": meta.get("description") if meta else None,
-            "tags": meta.get("tags", []) if meta else [],
-        })
-    return {"knowledge_bases": result}
+
+@router.get("/kb")
+async def list_kbs_endpoint(
+    sort_by: str = Query(default="kb_id"),
+    sort_order: str = Query(default="asc"),
+):
+    from infra.postgres import list_kbs
+
+    return {"knowledge_bases": list_kbs(sort_by=sort_by, sort_order=sort_order)}
+
+
+@router.get("/kb/{kb_id}")
+async def get_kb(kb_id: str):
+    from infra.postgres import get_kb_meta
+
+    meta = get_kb_meta(kb_id)
+    if meta is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+    return meta
 
 
 @router.post("/kb", status_code=201)
@@ -50,6 +59,17 @@ async def create_kb(req: KBCreateRequest):
     ensure_collection(req.kb_id)
 
     return {"kb_id": req.kb_id, "status": "created"}
+
+
+@router.patch("/kb/{kb_id}", status_code=200)
+async def update_kb(kb_id: str, req: KBUpdateRequest):
+    from infra.postgres import get_kb_meta, update_kb_meta
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    update_kb_meta(kb_id, req.kb_name, req.description, req.tags)
+    return {"kb_id": kb_id, "status": "updated"}
 
 
 @router.delete("/kb/{kb_id}", status_code=200)
