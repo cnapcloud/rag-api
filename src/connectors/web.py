@@ -196,16 +196,15 @@ class WebConnector:
         )
 
     def _should_process(self, url: str) -> bool:
-        """Return False if URL is outside seed scope, matches an exclude pattern, or is a pagination page."""
+        """Return False if URL is outside seed scope or matches an exclude pattern.
+
+        Pagination pages are NOT filtered here — they are fetched for link discovery
+        but skipped from staging inside _process_page (same pattern as skip_seed_pages).
+        """
         # Exclude patterns always win.
         for pat in self.exclude_patterns:
             if fnmatch(url, pat):
                 return False
-
-        # Skip pagination index pages — they have no standalone content value.
-        if _is_pagination_url(url):
-            logger.debug("Pagination URL skipped: %s", url)
-            return False
 
         # Must fall under at least one seed URL's path scope.
         p = urlparse(url)
@@ -273,6 +272,11 @@ class WebConnector:
             logger.debug("Seed page skipped from staging: source_uri=%s", source_uri)
             return html
 
+        # Pagination pages (/page/2/, ?page=3) are index pages — crawl their links but don't stage.
+        if _is_pagination_url(source_uri):
+            logger.debug("Pagination page skipped from staging: source_uri=%s", source_uri)
+            return html
+
         # Skip pages with insufficient extractable content (nav/index/error pages).
         if not _has_sufficient_content(html, self.min_content_chars):
             logger.debug(
@@ -328,7 +332,6 @@ class WebConnector:
                     "doc-id": doc_id,
                     "kb-id": kb_id,
                     "source-type": "web",
-                    "source": title[:512],
                     "source-uri": source_uri,
                 },
             )

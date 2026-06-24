@@ -472,7 +472,7 @@ curl -X POST http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655
 ### 동기화 상태 확인
 
 ```bash
-curl http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655440000/sync/status
+curl http://localhost:8000/api/connectors/70779147cfc149de/sync/status
 ```
 
 응답:
