@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
-from api.routers import docs, health, internal, kb, search
+from api.routers import docs, health, kb, search
 from exceptions import ConfigError, ConflictError, IngestValidationError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,6 @@ def create_app() -> FastAPI:
     app.include_router(kb.router, prefix="/api", tags=["kb"])
     app.include_router(docs.router, prefix="/api", tags=["docs"])
     app.include_router(search.router, prefix="/api", tags=["search"])
-    app.include_router(internal.router)
 
     _mount_mcp(app)
     _instrument_tracing(app)

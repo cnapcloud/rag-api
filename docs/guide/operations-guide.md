@@ -209,7 +209,59 @@ docker compose run --rm minio-init
 
 ---
 
-## 6. Redis AOF 영속성
+## 6. 오브젝트 스토리지 레이아웃
+
+MinIO에 저장되는 오브젝트의 경로(`storage_key`)와 첨부 메타데이터 구조를 설명한다.
+
+### storage_key 형식
+
+인제스트 경로에 따라 key 형식이 다르다.
+
+| source_type | storage_key 형식 | 예시 |
+|---|---|---|
+| `s3` (파일 업로드) | `{kb_id}/{filename}` | `kb-01/report.pdf` |
+| `web` (크롤러) | `{kb_id}/web/{doc_id}.html` | `kb-01/web/a1b2c3-….html` |
+| `confluence` | `{kb_id}/confluence/{doc_id}.md` | `kb-01/confluence/a1b2c3-….md` |
+| `github` | `{kb_id}/github/{doc_id}.{ext}` | `kb-01/github/a1b2c3-….md` |
+
+파일 업로드는 원본 파일명을 그대로 사용한다.
+커넥터 소스는 URL이나 페이지 ID를 파일 경로로 쓸 수 없으므로 `doc_id`(UUID)를 파일명으로 사용한다.
+
+### 오브젝트 메타데이터
+
+모든 오브젝트는 저장 시 아래 메타데이터(`x-amz-meta-*`)를 함께 기록한다.
+파이프라인이 아닌 운영·복구 목적으로 오브젝트 자체를 self-describing하게 만들기 위함이다.
+
+| 키 | 값 | 예시 |
+|---|---|---|
+| `doc-id` | doc_id UUID | `a1b2c3d4-…` |
+| `kb-id` | KB ID | `kb-01` |
+| `source-type` | 소스 유형 | `web` |
+| `source` | 사용자 표시 이름 | `report.pdf` / `Getting Started` |
+| `source-uri` | 정규화된 원본 URI | `https://example.com/docs/guide` |
+
+MinIO 콘솔 또는 아래 CLI로 확인할 수 있다.
+
+```bash
+docker exec minio mc stat local/rag-api/kb-01/report.pdf
+```
+
+### source_uri 중복 방지 키
+
+`source_uri`는 동일 문서 판별에 사용되는 dedup key다. 웹 소스는 아래 규칙으로 정규화된다.
+
+| 규칙 | 변환 전 | 변환 후 |
+|---|---|---|
+| https 강제 | `http://example.com/page` | `https://example.com/page` |
+| 호스트 소문자 | `https://Example.COM/page` | `https://example.com/page` |
+| 끝 슬래시 제거 | `https://example.com/docs/` | `https://example.com/docs` |
+| fragment 제거 | `https://example.com/page#section` | `https://example.com/page` |
+| 트래킹 파라미터 제거 | `?utm_source=x` | 제거됨 |
+| 쿼리 파라미터 정렬 | `?b=2&a=1` | `?a=1&b=2` |
+
+---
+
+## 7. Redis AOF 영속성
 
 현재 `docker/docker-compose.yml`의 Redis는 기본 RDB 스냅샷 모드로 동작한다.
 Redis 재시작 시 마지막 스냅샷 이후의 미처리 큐 이벤트가 유실될 수 있다.
@@ -232,7 +284,7 @@ docker compose up -d --no-deps redis
 
 ---
 
-## 7. 자격증명 변경
+## 8. 자격증명 변경
 
 `docker/.env`와 `docker/settings.yaml`의 초기값은 개발·테스트용이다. 프로덕션 배포 전에 변경한다.
 
@@ -299,7 +351,7 @@ MinIO 재기동 후 `minio-init`를 재실행해 구독을 다시 등록한다.
 
 ---
 
-## 8. 트러블슈팅
+## 9. 트러블슈팅
 
 | 증상 | 확인 포인트 |
 |---|---|

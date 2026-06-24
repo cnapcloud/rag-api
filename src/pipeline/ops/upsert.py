@@ -1,11 +1,11 @@
-"""upsert Op — Qdrant 기존 청크 삭제 후 신규 청크 배치 삽입."""
+"""upsert Op — delete existing chunks for a doc then batch-insert new ones."""
 
 from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from qdrant_client.http import models as qmodels
 
@@ -18,34 +18,25 @@ logger = logging.getLogger(__name__)
 @dataclass
 class UpsertResult:
     kb_id: str
-    doc_source: str
+    doc_id: str
     chunk_count: int
-    doc_key: str
     doc_created_at: str = ""
 
 
 def upsert(
     kb_id: str,
-    doc_source: str,
+    doc_id: str,
     embedded_nodes: list[EmbeddedNode],
 ) -> UpsertResult:
-    """
-    1. 기존 청크 전체 삭제 (doc_key 필터)
-    2. 신규 청크 배치 삽입 (Dense + Sparse 벡터)
-    """
+    """Delete all existing chunks for doc_id then insert new ones."""
     client = qdrant_infra.get_qdrant_client()
-    doc_key = qdrant_infra.make_doc_key(kb_id, doc_source)
     updated_at = datetime.now(timezone.utc).isoformat()
 
-    # 컬렉션 보장
     qdrant_infra.ensure_collection(kb_id, client)
-
-    # 기존 청크 삭제
-    qdrant_infra.delete_chunks_by_doc(kb_id, doc_source, client)
+    qdrant_infra.delete_chunks_by_doc_id(kb_id, doc_id, client)
 
     doc_created_at = embedded_nodes[0].node.metadata.get("doc_created_at", "") if embedded_nodes else ""
 
-    # Qdrant PointStruct 변환
     points: list[qmodels.PointStruct] = []
     for en in embedded_nodes:
         node = en.node
@@ -53,9 +44,8 @@ def upsert(
 
         payload = {
             "kb_id": kb_id,
-            "doc_key": doc_key,
+            "doc_id": doc_id,
             "doc_type": meta.get("doc_type", ""),
-            "doc_source": doc_source,
             "chunk_index": meta.get("chunk_index", 0),
             "page_num": meta.get("page_label", None),
             "total_chunks": meta.get("total_chunks", len(embedded_nodes)),
@@ -86,11 +76,10 @@ def upsert(
     if points:
         qdrant_infra.upsert_chunks(kb_id, points, client)
 
-    logger.info("Upsert done: kb=%s key=%s chunks=%d", kb_id, doc_source, len(points))
+    logger.info("Upsert done: kb=%s doc_id=%s chunks=%d", kb_id, doc_id, len(points))
     return UpsertResult(
         kb_id=kb_id,
-        doc_source=doc_source,
+        doc_id=doc_id,
         chunk_count=len(points),
-        doc_key=doc_key,
         doc_created_at=doc_created_at,
     )

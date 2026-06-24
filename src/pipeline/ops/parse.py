@@ -1,4 +1,4 @@
-"""parse Op — LlamaIndex SimpleDirectoryReader 기반 문서 파싱."""
+"""parse Op — LlamaIndex SimpleDirectoryReader-based document parsing."""
 
 from __future__ import annotations
 
@@ -10,17 +10,17 @@ from pathlib import Path
 from llama_index.core import Document, SimpleDirectoryReader
 
 from exceptions import IngestValidationError
-from infra.s3 import download_object
+from infra.s3 import download_by_key
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".pdf", ".md", ".docx", ".txt", ".hwp"}
+SUPPORTED_EXTENSIONS = {".pdf", ".md", ".docx", ".txt", ".hwp", ".html", ".htm", ".rst"}
 
 
-def _extract_doc_created_at(file_path: Path, suffix: str, kb_id: str, doc_source: str) -> str:
+def _extract_doc_created_at(file_path: Path, suffix: str, storage_key: str) -> str:
     """Extract document creation date from file metadata.
 
-    Priority: PDF CreationDate / DOCX core_properties.created → S3 LastModified fallback.
+    Priority: PDF CreationDate / DOCX core_properties.created -> S3 LastModified fallback.
     Returns an ISO 8601 UTC string, or empty string if all sources fail.
     """
     dt: datetime | None = None
@@ -48,18 +48,16 @@ def _extract_doc_created_at(file_path: Path, suffix: str, kb_id: str, doc_source
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc).isoformat()
 
-    # Fallback: S3 LastModified
     try:
-        from infra.s3 import get_object_last_modified
+        from infra.s3 import get_object_last_modified_by_key
 
-        return get_object_last_modified(kb_id, doc_source)
+        return get_object_last_modified_by_key(storage_key)
     except Exception as e:
-        logger.debug("S3 LastModified fallback failed: kb=%s key=%s err=%s", kb_id, doc_source, e)
+        logger.debug("S3 LastModified fallback failed: storage_key=%s err=%s", storage_key, e)
         return ""
 
 
 def _get_file_extractor() -> dict:
-    """파일 확장자별 LlamaIndex 리더 매핑."""
     try:
         from llama_index.readers.file import DocxReader, FlatReader, MarkdownReader, PDFReader
         from llama_index.readers.hwp import HWPReader
@@ -67,7 +65,7 @@ def _get_file_extractor() -> dict:
         logger.warning("llama-index-readers-file not installed, using default reader")
         return {}
 
-    return {
+    extractors = {
         ".pdf": PDFReader(),
         ".md": MarkdownReader(),
         ".docx": DocxReader(),
@@ -75,27 +73,38 @@ def _get_file_extractor() -> dict:
         ".hwp": HWPReader(),
     }
 
+    try:
+        from llama_index.readers.file import HTMLTagReader
+        extractors[".html"] = HTMLTagReader()
+        extractors[".htm"] = HTMLTagReader()
+    except ImportError:
+        pass
 
-def parse(kb_id: str, doc_source: str, local_path: Path | None = None) -> list[Document]:
-    """
-    S3에서 파일을 다운로드하고 LlamaIndex Document 리스트로 변환한다.
+    try:
+        from llama_index.readers.file import FlatReader as _FR
+        extractors[".rst"] = _FR()
+    except ImportError:
+        pass
+
+    return extractors
+
+
+def parse(doc_id: str, storage_key: str, local_path: Path | None = None) -> list[Document]:
+    """Download a file from S3 and return a list of LlamaIndex Documents.
 
     Args:
-        kb_id: 지식베이스 ID
-        doc_source: S3 오브젝트 키 (kb_id prefix 제외)
-        local_path: 이미 로컬에 있는 파일 경로 (로컬 테스트용)
-
-    Returns:
-        LlamaIndex Document 리스트
+        doc_id: UUID of the document row (used to tag metadata).
+        storage_key: Full S3 object path (e.g. 'kb-01/report.pdf').
+        local_path: Pre-downloaded local file (for tests / CLI use).
     """
-    suffix = Path(doc_source).suffix.lower()
+    suffix = Path(storage_key).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         raise IngestValidationError(f"Unsupported file format: {suffix}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         if local_path is None:
-            dest = Path(tmpdir) / Path(doc_source).name
-            download_object(kb_id, doc_source, dest)
+            dest = Path(tmpdir) / Path(storage_key).name
+            download_by_key(storage_key, dest)
             file_path = dest
         else:
             file_path = local_path
@@ -107,28 +116,25 @@ def parse(kb_id: str, doc_source: str, local_path: Path | None = None) -> list[D
         )
         documents = reader.load_data()
 
-        doc_created_at = _extract_doc_created_at(file_path, suffix, kb_id, doc_source)
+        doc_created_at = _extract_doc_created_at(file_path, suffix, storage_key)
 
-        # 문서 메타데이터 보강
         for doc in documents:
             doc.metadata.update(
                 {
-                    "kb_id": kb_id,
-                    "doc_key": f"{kb_id}/{doc_source}",
-                    "doc_source": doc_source,
+                    "doc_id": doc_id,
                     "doc_type": suffix.lstrip("."),
                     "doc_created_at": doc_created_at,
                 }
             )
 
         logger.info(
-            "Parsed: kb=%s key=%s documents=%d doc_created_at=%s",
-            kb_id, doc_source, len(documents), doc_created_at or "n/a",
+            "Parsed: doc_id=%s storage_key=%s documents=%d doc_created_at=%s",
+            doc_id, storage_key, len(documents), doc_created_at or "n/a",
         )
         return documents
 
 
-def parse_local(file_path: Path, kb_id: str = "local", doc_source: str | None = None) -> list[Document]:
-    """로컬 파일을 직접 파싱 (CLI / 테스트용)."""
-    key = doc_source or file_path.name
-    return parse(kb_id=kb_id, doc_source=key, local_path=file_path)
+def parse_local(file_path: Path, doc_id: str = "local", storage_key: str | None = None) -> list[Document]:
+    """Parse a local file directly (CLI / test use)."""
+    key = storage_key or file_path.name
+    return parse(doc_id=doc_id, storage_key=key, local_path=file_path)

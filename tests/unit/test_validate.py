@@ -8,64 +8,54 @@ import pytest
 
 from exceptions import IngestValidationError
 
-
-def _patch_postgres(doc_etag=None):
-    """Patch the Postgres ETag lookup used by validate()."""
-    return patch("pipeline.ops.validate.postgres_infra.get_doc_etag", return_value=doc_etag)
+DOC_ID = "11111111-1111-1111-1111-111111111111"
 
 
-def test_validate_new_document():
-    """New document (no ETag in Postgres) -> True."""
-    with _patch_postgres(doc_etag=None):
+def _make_doc(file_size: int = 1024) -> dict:
+    return {"doc_id": DOC_ID, "kb_id": "kb-test", "file_size": file_size, "status": "pending"}
+
+
+def test_validate_normal_doc():
+    """Normal doc within size limit -> True."""
+    with patch("infra.postgres.get_doc_by_id", return_value=_make_doc()):
         from pipeline.ops.validate import validate
+        assert validate(DOC_ID) is True
 
-        assert validate("kb-test", "doc.pdf", "etag-abc") is True
 
-
-def test_validate_same_etag_skips():
-    """Unchanged ETag -> False (skip)."""
-    with _patch_postgres(doc_etag="etag-abc"):
+def test_validate_doc_not_found():
+    """Non-existent doc_id -> IngestValidationError."""
+    with patch("infra.postgres.get_doc_by_id", return_value=None):
         from pipeline.ops.validate import validate
-
-        assert validate("kb-test", "doc.pdf", "etag-abc") is False
-
-
-def test_validate_different_etag_proceeds():
-    """Changed ETag -> True (re-process)."""
-    with _patch_postgres(doc_etag="etag-old"):
-        from pipeline.ops.validate import validate
-
-        assert validate("kb-test", "doc.pdf", "etag-new") is True
+        with pytest.raises(IngestValidationError, match="Document not found"):
+            validate(DOC_ID)
 
 
 def test_validate_file_size_exceeded():
     """File too large -> IngestValidationError."""
-    with _patch_postgres():
+    with patch("infra.postgres.get_doc_by_id", return_value=_make_doc(300 * 1024 * 1024)):
         from pipeline.ops.validate import validate
-
         with pytest.raises(IngestValidationError, match="File too large"):
-            validate("kb-test", "doc.pdf", "etag-abc", file_size=300 * 1024 * 1024)
+            validate(DOC_ID)
 
 
-def test_validate_processing_same_etag_skips():
-    """Re-upload of same file while status=running: ETag still accessible -> skip."""
-    with _patch_postgres(doc_etag="etag-abc"):
+def test_validate_zero_size_passes():
+    """file_size=0 -> no size check, returns True."""
+    with patch("infra.postgres.get_doc_by_id", return_value=_make_doc(0)):
         from pipeline.ops.validate import validate
+        assert validate(DOC_ID) is True
 
-        assert validate("kb-test", "doc.pdf", "etag-abc") is False
 
-
-def test_validate_processing_no_etag_proceeds():
-    """First-ever upload (no prior ETag in DB): get_doc_etag returns None -> proceed."""
-    with _patch_postgres(doc_etag=None):
+def test_validate_none_size_passes():
+    """file_size=None -> no size check, returns True."""
+    doc = _make_doc()
+    doc["file_size"] = None
+    with patch("infra.postgres.get_doc_by_id", return_value=doc):
         from pipeline.ops.validate import validate
+        assert validate(DOC_ID) is True
 
-        assert validate("kb-test", "doc.pdf", "etag-abc") is True
 
-
-def test_validate_force_skips_etag_check():
-    """force=True bypasses ETag check -> True regardless of stored ETag."""
-    with _patch_postgres(doc_etag="etag-abc"):
+def test_validate_force_flag_passes():
+    """force=True -> validate still passes (force does not change size check)."""
+    with patch("infra.postgres.get_doc_by_id", return_value=_make_doc()):
         from pipeline.ops.validate import validate
-
-        assert validate("kb-test", "doc.pdf", "etag-abc", force=True) is True
+        assert validate(DOC_ID, force=True) is True

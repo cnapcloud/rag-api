@@ -13,9 +13,8 @@ PointStruct
 │                             — BM25 FastEmbed sparse embedding
 └── payload
     ├── kb_id              : str      — Knowledge Base ID
-    ├── doc_key            : str      — "{kb_id}::{doc_source}" (doc-level delete filter key)
-    ├── doc_source         : str      — document source identifier (S3 path, URL, Confluence link, etc.)
-    ├── doc_type           : str      — file extension (pdf, docx, txt, md, hwp)
+    ├── doc_id             : str      — UUID of the parent document row (delete filter key)
+    ├── doc_type           : str      — file extension (pdf, docx, txt, md, html, rst, …)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document
     ├── page_num           : str|null — original page number (PDF page_label; null if absent)
@@ -27,19 +26,18 @@ PointStruct
     ├── chunk_overlap      : int      — chunk overlap setting (tokens)
     ├── updated_at         : str      — ISO 8601 UTC, index timestamp
     └── doc_created_at     : str      — ISO 8601 UTC, actual document creation date
-                                        (only present for documents indexed after US-10)
 ```
 
 ### Delete filter pattern
 
 ```python
-# Delete all chunks for a document by doc_key
-Filter(must=[FieldCondition(key="doc_key", match=MatchValue(value=doc_key))])
+# Delete all chunks for a document by doc_id
+Filter(must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))])
 ```
 
 ---
 
-## 2. Postgres — Document metadata (US-11 onwards)
+## 2. Postgres — Document metadata
 
 ### `knowledge_bases` table
 
@@ -57,66 +55,109 @@ knowledge_bases
 Indexes:
 - `idx_kb_tags` on `tags` using GIN
 
-### `documents` table
+### `connectors` table
 
-Replaces Redis `doc:{kb_id}:{doc_source}` hash, `docs:{kb_id}` set, and `etag:{kb_id}:{doc_source}` key.
+```
+connectors
+├── connector_id      TEXT         PRIMARY KEY
+├── kb_id             TEXT         NOT NULL FK knowledge_bases (ON DELETE CASCADE)
+├── name              TEXT         NOT NULL
+├── source_type       TEXT         NOT NULL   -- web | confluence | github
+├── config            JSONB        NOT NULL DEFAULT '{}'
+│                                    web:        {seed_urls[], depth, include_patterns, exclude_patterns, max_pages,
+│                                                 request_timeout_sec, crawler}
+│                                    confluence: {base_url, space_key, auth_token_secret?, exclude_labels[]}
+│                                    github:     {owner, repo, ref, paths[], include_extensions[], auth_token_secret?}
+├── sync_schedule     TEXT         -- cron expression (NULL = no schedule)
+├── schedule_enabled  BOOLEAN      NOT NULL DEFAULT false
+├── sync_status       TEXT         NOT NULL DEFAULT 'idle'   -- idle | running
+├── sync_started_at   TIMESTAMPTZ
+├── last_synced_at    TIMESTAMPTZ
+├── status            TEXT         NOT NULL DEFAULT 'active' -- active | paused | error
+├── created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+└── updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+```
+
+### `documents` table
 
 ```
 documents
-├── kb_id            TEXT NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE
-├── doc_source       TEXT NOT NULL
-├── status           TEXT NOT NULL DEFAULT 'pending'  -- pending | running | indexed | deleting | failed
-├── etag             TEXT                             -- S3 ETag (MD5 hex, quotes stripped)
-├── run_id           TEXT NOT NULL DEFAULT ''         -- Dagster run ID or "direct"
-├── created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()  -- set on INSERT, never updated
-├── updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()  -- updated on every state change
-├── chunk_count      INTEGER                          -- chunk count after indexed
-├── file_size        BIGINT                           -- file size in bytes
-├── doc_type         TEXT                             -- file extension (pdf, docx, …)
-├── embedding_model  TEXT                             -- embedding model name
-├── error            TEXT                             -- failure message (status=failed)
-├── doc_created_at   TIMESTAMPTZ                      -- actual document creation date (US-10)
-├── title_hash       TEXT                             -- SHA-256 of doc_source, for dedup (US-12)
-├── content_simhash  BIGINT                           -- 64-bit SimHash of body, for dedup (US-12)
-└── PRIMARY KEY (kb_id, doc_source)
+├── doc_id              UUID         PRIMARY KEY DEFAULT gen_random_uuid()
+├── kb_id               TEXT         NOT NULL FK knowledge_bases (ON DELETE CASCADE)
+├── source              TEXT         NOT NULL   -- user-visible display name
+│                                                 s3:         original filename (e.g. report.pdf)
+│                                                 web:        page <title> (source_uri used as placeholder before fetch)
+│                                                 confluence: page title from API response
+│                                                 github:     file path (e.g. docs/guide.md)
+├── source_type         TEXT         NOT NULL   -- s3 | web | confluence | github
+├── source_uri          TEXT         NOT NULL   -- canonical dedup key
+│                                                 s3:         {filename}
+│                                                 web:        https://...
+│                                                 confluence: confluence://{space}/{page_id}
+│                                                 github:     github://{owner}/{repo}/{ref}/{path}
+├── storage_key         TEXT                    -- object storage path used by pipeline
+├── content_version     TEXT                    -- S3 ETag | HTTP ETag | Confluence version# | blob SHA
+├── connector_id        TEXT         FK connectors (ON DELETE SET NULL; NULL = direct upload)
+├── status              TEXT         NOT NULL DEFAULT 'pending'
+├── deleted_at          TIMESTAMPTZ             -- set when status -> deleted (NULL otherwise)
+├── run_id              TEXT         NOT NULL DEFAULT ''
+├── error               TEXT
+├── created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+├── updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+├── process_started_at  TIMESTAMPTZ             -- set when status -> running
+├── process_finished_at TIMESTAMPTZ             -- set when status -> indexed or failed
+├── chunk_count         INTEGER
+├── file_size           BIGINT
+├── doc_type            TEXT                    -- s3: original ext | web: html | confluence: md | github: original ext
+├── embedding_model     TEXT
+├── doc_created_at      TIMESTAMPTZ             -- actual document creation date (source-specific)
+├── title_hash          TEXT
+├── content_simhash     BIGINT
+└── UNIQUE(kb_id, source_uri)
 ```
 
 Indexes:
-- `idx_documents_etag` on `(kb_id, etag) WHERE etag IS NOT NULL`
+- `idx_documents_content_version` on `(kb_id, content_version) WHERE content_version IS NOT NULL`
 - `idx_documents_title_hash` on `(kb_id, title_hash) WHERE title_hash IS NOT NULL`
+- `idx_documents_connector` on `(connector_id) WHERE connector_id IS NOT NULL`
+- `idx_documents_status` on `(kb_id, status)`
 
-### `simhash_bands` table (dedup 1단계 준비 — US-12)
+### `simhash_bands` table
 
 ```
 simhash_bands
-├── kb_id        TEXT NOT NULL
-├── band_index   SMALLINT NOT NULL    -- 0-3 (64bit → 16bit × 4 bands)
-├── band_value   INTEGER NOT NULL
-├── doc_source   TEXT NOT NULL
-├── PRIMARY KEY (kb_id, band_index, band_value, doc_source)
-└── FOREIGN KEY (kb_id, doc_source) REFERENCES documents ON DELETE CASCADE
+├── band_id     UUID     PRIMARY KEY DEFAULT gen_random_uuid()
+├── doc_id      UUID     NOT NULL FK documents(doc_id) ON DELETE CASCADE
+├── kb_id       TEXT     NOT NULL   -- denormalized for LSH lookup without JOIN
+├── band_index  SMALLINT NOT NULL   -- 0-3 (64-bit -> 16-bit x 4 bands)
+├── band_value  INTEGER  NOT NULL
+└── UNIQUE(doc_id, band_index, band_value)
 ```
 
-Index: `idx_simhash_bands` on `(kb_id, band_index, band_value)`
+Index:
+- `idx_simhash_bands_lsh` on `(kb_id, band_index, band_value)` — LSH near-duplicate lookup
 
 ### Status field values
 
 | Status | Meaning |
 |--------|---------|
-| `pending` | Queued — event pushed to Redis, waiting for worker pickup |
+| `uploading` | API upload in progress (between row create and object storage write) |
+| `fetching` | Connector acquiring content from external source |
+| `pending` | Queued — event pushed to Redis, waiting for pipeline pickup |
 | `running` | Pipeline processing in progress |
 | `indexed` | Ingest complete, chunks stored in Qdrant |
 | `deleting` | Delete in progress |
+| `deleted` | Soft-deleted — row retained, Qdrant chunks removed |
 | `failed` | Ingest or delete failed — see `error` column |
 
 ---
 
-## 3. Redis — Queue only (US-11 onwards)
+## 3. Redis — Queue only
 
 Redis is used exclusively for the ingest and delete event queues.
 
 ```
-rag:upload:queue   List   -- ingest event queue (lpush/rpop)
+rag:upload:queue   List   -- ingest event queue; payload: {doc_id, force} (lpush/rpop)
 rag:delete:queue   List   -- delete event queue (lpush/rpop)
 ```
 
@@ -130,5 +171,5 @@ rag:delete:queue   List   -- delete event queue (lpush/rpop)
 | doc_created_at extraction | `src/pipeline/ops/parse.py` — `_extract_doc_created_at()` |
 | Postgres KB/doc CRUD | `src/infra/postgres.py` |
 | Document state transitions | `src/pipeline/ops/meta.py` |
-| Schema migrations | `migrations/001_initial_schema.sql` |
+| Schema DDL | `migrations/001_initial_schema.sql` |
 | Redis queue client | `src/infra/redis.py` |

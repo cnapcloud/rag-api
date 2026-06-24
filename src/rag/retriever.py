@@ -16,7 +16,7 @@ class SearchResult:
     chunk_id: str
     kb_id: str
     doc_key: str
-    doc_source: str
+    source: str
     doc_type: str
     chunk_index: int
     page_num: int | None
@@ -60,7 +60,7 @@ def _node_to_result(kb_id: str, node) -> SearchResult:
         chunk_id=node.node_id,
         kb_id=kb_id,
         doc_key=meta.get("doc_key", ""),
-        doc_source=meta.get("doc_source", ""),
+        source=meta.get("doc_source", ""),
         doc_type=meta.get("doc_type", ""),
         chunk_index=int(meta.get("chunk_index", 0)),
         page_num=meta.get("page_num") or meta.get("page_label"),

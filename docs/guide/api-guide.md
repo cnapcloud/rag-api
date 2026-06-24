@@ -36,11 +36,22 @@ curl http://localhost:8000/api/kb
       "kb_id": "kb-99",
       "kb_name": "지식베이스 99",
       "description": "첫 번째 지식베이스입니다.",
-      "tags": []
+      "tags": [],
+      "status": "active",
+      "created_at": "2026-06-19T14:30:00+09:00",
+      "updated_at": "2026-06-19T14:30:00+09:00"
     }
   ]
 }
 ```
+
+### KB 단건 조회
+
+```bash
+curl http://localhost:8000/api/kb/kb-99
+```
+
+존재하지 않는 KB 조회 시 HTTP 404 반환.
 
 ### KB 생성
 
@@ -104,7 +115,7 @@ curl -X PATCH http://localhost:8000/api/kb/kb-99 \
 curl -X DELETE http://localhost:8000/api/kb/kb-99
 ```
 
-Qdrant 컬렉션 → S3 오브젝트 → Postgres 메타데이터 순으로 삭제. 문서 메타데이터는 cascade 삭제.
+Qdrant 컬렉션 → S3 오브젝트 → Postgres 메타데이터 순으로 삭제. 문서 레코드는 cascade 삭제.
 
 응답 (HTTP 200):
 
@@ -119,7 +130,7 @@ Qdrant 컬렉션 → S3 오브젝트 → Postgres 메타데이터 순으로 삭�
 
 ## 3. 문서 인덱싱
 
-PDF, Word(docx), 텍스트(txt), 마크다운(md), 한글(hwp) 형식을 지원합니다.
+PDF, Word(docx), 텍스트(txt), 마크다운(md), 한글(hwp), HTML(html/htm), reStructuredText(rst) 형식을 지원합니다.
 
 ```bash
 # 단일 파일 업로드
@@ -140,21 +151,34 @@ curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=50"
 # 상태 필터 (running / indexed / failed / deleting)
 curl "http://localhost:8000/api/kb/kb-01/docs?status=failed"
 
-# doc_source 부분 문자열 검색 (대소문자 무시)
+# source 부분 문자열 검색 (대소문자 무시)
 curl "http://localhost:8000/api/kb/kb-01/docs?search=report"
 
-# 정렬 (sort_by: updated_at | created_at | doc_source | chunk_count | file_size)
-curl "http://localhost:8000/api/kb/kb-01/docs?sort_by=doc_source&sort_order=asc"
+# 정렬 (sort_by: updated_at | created_at | source | chunk_count | file_size)
+curl "http://localhost:8000/api/kb/kb-01/docs?sort_by=source&sort_order=asc"
 
-# 단일 문서 인덱싱 상태 확인
-curl http://localhost:8000/api/kb/kb-01/docs/doc.pdf/status
+# 단일 문서 인덱싱 상태 확인 ({doc_id}는 업로드 응답의 doc_id)
+curl http://localhost:8000/api/kb/kb-01/docs/{doc_id}/status
 
 # 문서 삭제 (벡터 + 메타데이터 + S3 파일)
-curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/doc.pdf
+curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
 
 # 전체 KB 문서 현황 일괄 조회
 curl http://localhost:8000/api/docs/status
 ```
+
+### 업로드 응답 (HTTP 202)
+
+```json
+{
+  "doc_id": "550e8400-e29b-41d4-a716-446655440000",
+  "source_uri": "s3://doc.pdf",
+  "etag": "d41d8cd98f00b204e9800998ecf8427e",
+  "status_url": "/api/kb/kb-01/docs/550e8400-e29b-41d4-a716-446655440000/status"
+}
+```
+
+`doc_id`는 이후 상태 확인, 삭제, 재인덱싱, 복구 요청에 사용합니다.
 
 ---
 
@@ -170,13 +194,13 @@ curl -X POST http://localhost:8000/api/kb/kb-01/reindex
 curl -X POST "http://localhost:8000/api/kb/kb-01/reindex?force=true"
 
 # 단일 문서 재인덱싱
-curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?source=doc.pdf"
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/reindex"
 
 # 단일 문서 강제 재인덱싱 (failed 상태 등)
-curl -X POST "http://localhost:8000/api/kb/kb-01/docs/reindex?source=doc.pdf&force=true"
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/reindex?force=true"
 
 # stuck 문서 복구 — status=running 인 경우에만 사용
-curl -X POST "http://localhost:8000/api/kb/kb-01/docs/recover?source=doc.pdf"
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/recover"
 ```
 
 ---
@@ -192,8 +216,8 @@ curl -X POST "http://localhost:8000/api/kb/kb-01/docs/recover?source=doc.pdf"
 | `page` | int | 1 | 페이지 번호 (1-based) |
 | `page_size` | int | 20 | 페이지당 항목 수 (최대 100, 초과 시 자동 클램핑) |
 | `status` | str | — | 상태 필터: `running`, `indexed`, `failed`, `deleting` |
-| `search` | str | — | `doc_source` 부분 문자열 검색 (대소문자 무시) |
-| `sort_by` | str | `updated_at` | 정렬 기준: `updated_at`, `created_at`, `doc_source`, `chunk_count`, `file_size` |
+| `search` | str | — | `source` 부분 문자열 검색 (대소문자 무시) |
+| `sort_by` | str | `updated_at` | 정렬 기준: `updated_at`, `created_at`, `source`, `chunk_count`, `file_size` |
 | `sort_order` | str | `desc` | 정렬 방향: `asc`, `desc` |
 
 - `total`은 필터 적용 후 전체 건수 (전체 문서 수가 아님).
@@ -203,8 +227,8 @@ curl -X POST "http://localhost:8000/api/kb/kb-01/docs/recover?source=doc.pdf"
 ### 요청 예시
 
 ```bash
-# 2페이지, 상태=indexed, "report" 검색, doc_source 오름차순
-curl "http://192.168.0.181:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed&search=report&sort_by=doc_source&sort_order=asc"
+# 2페이지, 상태=indexed, "report" 검색, source 오름차순
+curl "http://192.168.0.181:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed&search=report&sort_by=source&sort_order=asc"
 ```
 
 ### 응답 예시
@@ -213,15 +237,20 @@ curl "http://192.168.0.181:8000/api/kb/kb-01/docs?page=2&page_size=10&status=ind
 {
   "items": [
     {
-      "doc_source": "reports/2024/report.pdf",
+      "doc_id": "550e8400-e29b-41d4-a716-446655440000",
+      "kb_id": "kb-01",
+      "source": "reports/2024/report.pdf",
+      "source_type": "s3",
+      "source_uri": "s3://reports/2024/report.pdf",
+      "storage_key": "kb-01/reports/2024/report.pdf",
       "status": "indexed",
       "doc_type": "pdf",
       "chunk_count": 42,
       "file_size": 1258291,
       "embedding_model": "ollama/nomic-embed-text",
       "error": null,
-      "created_at": "2026-06-19T14:30:00+00:00",
-      "updated_at": "2026-06-19T14:32:00+00:00"
+      "created_at": "2026-06-19T14:30:00+09:00",
+      "updated_at": "2026-06-19T14:32:00+09:00"
     }
   ],
   "total": 87,

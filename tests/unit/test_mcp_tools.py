@@ -10,6 +10,8 @@ from mcp_server.tools.docs import get_document_status
 from mcp_server.tools.kb import list_knowledge_bases
 from mcp_server.tools.search import search
 
+DOC_ID = "11111111-1111-1111-1111-111111111111"
+
 
 # ──────────────────────────────────────────────
 # list_knowledge_bases
@@ -48,35 +50,45 @@ def test_list_knowledge_bases_empty():
 # ──────────────────────────────────────────────
 
 def test_get_document_status_indexed():
-    with patch("mcp_server.tools.docs.get_doc_status") as mock_get:
+    with patch("mcp_server.tools.docs.get_doc_by_id") as mock_get:
         mock_get.return_value = {
+            "doc_id": DOC_ID,
+            "kb_id": "kb-a",
             "status": "indexed",
             "updated_at": "2026-06-08T00:00:00Z",
-            "size_bytes": "12345",
-            "etag": "abc123",
+            "file_size": 12345,
+            "content_version": "abc123",
         }
-        result = get_document_status("kb-a", "doc.pdf")
+        result = get_document_status("kb-a", DOC_ID)
 
     assert result["status"] == "indexed"
-    assert result["size_bytes"] == 12345
-    assert result["etag"] == "abc123"
+    assert result["file_size"] == 12345
+    assert result["content_version"] == "abc123"
     assert result["updated_at"] == "2026-06-08T00:00:00Z"
 
 
 def test_get_document_status_not_found():
-    with patch("mcp_server.tools.docs.get_doc_status", return_value=None):
-        result = get_document_status("kb-a", "missing.pdf")
+    with patch("mcp_server.tools.docs.get_doc_by_id", return_value=None):
+        result = get_document_status("kb-a", DOC_ID)
 
-    assert result == {"status": "not_found", "updated_at": None, "size_bytes": None, "etag": None}
+    assert result == {"status": "not_found", "updated_at": None, "file_size": None, "content_version": None}
+
+
+def test_get_document_status_kb_mismatch_is_not_found():
+    with patch("mcp_server.tools.docs.get_doc_by_id") as mock_get:
+        mock_get.return_value = {"doc_id": DOC_ID, "kb_id": "kb-other", "status": "indexed", "file_size": None}
+        result = get_document_status("kb-a", DOC_ID)
+
+    assert result["status"] == "not_found"
 
 
 def test_get_document_status_no_size():
-    with patch("mcp_server.tools.docs.get_doc_status") as mock_get:
-        mock_get.return_value = {"status": "running", "updated_at": None}
-        result = get_document_status("kb-a", "doc.pdf")
+    with patch("mcp_server.tools.docs.get_doc_by_id") as mock_get:
+        mock_get.return_value = {"doc_id": DOC_ID, "kb_id": "kb-a", "status": "running", "updated_at": None, "file_size": None, "content_version": None}
+        result = get_document_status("kb-a", DOC_ID)
 
     assert result["status"] == "running"
-    assert result["size_bytes"] is None
+    assert result["file_size"] is None
 
 
 # ──────────────────────────────────────────────
@@ -89,7 +101,7 @@ def _make_result(text="hello", kb_id="kb-a", doc_key="doc.pdf", score=0.9):
         chunk_id="chunk-1",
         kb_id=kb_id,
         doc_key=doc_key,
-        doc_source="doc.pdf",
+        source="doc.pdf",
         doc_type="pdf",
         chunk_index=0,
         page_num=1,

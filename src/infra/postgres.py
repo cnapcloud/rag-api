@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import psycopg
 import psycopg_pool
@@ -24,13 +25,32 @@ def _to_local_iso(dt: datetime | None) -> str:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone().isoformat()
 
-_ALLOWED_DOC_FIELDS = frozenset({
-    "status", "etag", "run_id", "updated_at", "chunk_count",
-    "file_size", "doc_type", "embedding_model", "error", "doc_created_at",
+
+# Fields allowed in update_doc_fields() to prevent SQL injection via dict keys.
+_ALLOWED_UPDATE_FIELDS = frozenset({
+    "source", "storage_key", "content_version", "connector_id", "status",
+    "deleted_at", "run_id", "error", "process_started_at", "process_finished_at",
+    "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
+    "title_hash", "content_simhash",
 })
 
-_ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "doc_source", "chunk_count", "file_size"})
+_ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "source", "chunk_count", "file_size"})
 _NULL_LAST_FIELDS = frozenset({"chunk_count", "file_size"})
+
+# Column order for all documents SELECT queries — must match CREATE TABLE order.
+_DOC_COLS = (
+    "doc_id", "kb_id", "source", "source_type", "source_uri", "storage_key",
+    "content_version", "connector_id", "status", "deleted_at", "run_id", "error",
+    "created_at", "updated_at", "process_started_at", "process_finished_at",
+    "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
+    "title_hash", "content_simhash",
+)
+_DOC_SELECT = "SELECT " + ", ".join(_DOC_COLS) + " FROM documents"
+
+_DATETIME_COLS = frozenset({
+    "deleted_at", "created_at", "updated_at",
+    "process_started_at", "process_finished_at", "doc_created_at",
+})
 
 
 def get_pool() -> psycopg_pool.ConnectionPool:
@@ -170,129 +190,113 @@ def delete_kb_meta(kb_id: str) -> None:
 # Document metadata
 # ──────────────────────────────────────────────
 
-def set_doc_status(kb_id: str, doc_source: str, fields: dict) -> None:
-    """UPSERT a document row; created_at is set on INSERT and never overwritten."""
-    safe = {k: v for k, v in fields.items() if k in _ALLOWED_DOC_FIELDS}
-    if not safe:
-        return
-    col_names = list(safe.keys())
-    values = list(safe.values())
-    col_list = ", ".join(col_names)
-    placeholders = ", ".join(["%s"] * len(values))
-    set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in col_names)
-    sql = (
-        f"INSERT INTO documents (kb_id, doc_source, {col_list}) "
-        f"VALUES (%s, %s, {placeholders}) "
-        f"ON CONFLICT (kb_id, doc_source) DO UPDATE SET {set_clause}"
-    )
-    with get_pool().connection() as conn:
-        conn.execute(sql, [kb_id, doc_source] + values)
-        conn.commit()
-
-
 def _row_to_doc(row: tuple) -> dict:
-    """Convert a documents SELECT row to a dict matching the old Redis hash schema."""
-    status, etag, run_id, created_at, updated_at, chunk_count, file_size, doc_type, embedding_model, error, doc_created_at = row
-    return {
-        "status": status or "",
-        "etag": etag or "",
-        "run_id": run_id or "",
-        "created_at": created_at.isoformat() if created_at else "",
-        "updated_at": updated_at.isoformat() if updated_at else "",
-        "chunk_count": str(chunk_count) if chunk_count is not None else "",
-        "file_size": str(file_size) if file_size is not None else "",
-        "doc_type": doc_type or "",
-        "embedding_model": embedding_model or "",
-        "error": error or "",
-        "doc_created_at": doc_created_at.isoformat() if doc_created_at else "",
-    }
+    d = dict(zip(_DOC_COLS, row))
+    d["doc_id"] = str(d["doc_id"]) if d["doc_id"] is not None else None
+    for col in _DATETIME_COLS:
+        if d[col] is not None:
+            d[col] = _to_local_iso(d[col])
+    return d
 
 
-_DOC_SELECT = """
-    SELECT status, etag, run_id, created_at, updated_at,
-           chunk_count, file_size, doc_type, embedding_model, error, doc_created_at
-    FROM documents
-"""
+def create_doc(
+    kb_id: str,
+    source_uri: str,
+    source: str,
+    source_type: str,
+    *,
+    status: str = "pending",
+    storage_key: str | None = None,
+    content_version: str | None = None,
+    connector_id: str | None = None,
+    file_size: int | None = None,
+    doc_type: str | None = None,
+) -> dict:
+    """INSERT a new document row and return it as a dict.
 
-
-def get_doc_status(kb_id: str, doc_source: str) -> dict | None:
+    Raises psycopg.errors.UniqueViolation if (kb_id, source_uri) already exists.
+    """
+    returning = ", ".join(_DOC_COLS)
     with get_pool().connection() as conn:
         row = conn.execute(
-            _DOC_SELECT + "WHERE kb_id = %s AND doc_source = %s",
-            [kb_id, doc_source],
+            f"INSERT INTO documents "
+            f"(kb_id, source_uri, source, source_type, status, "
+            f"storage_key, content_version, connector_id, file_size, doc_type) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            f"RETURNING {returning}",
+            [kb_id, source_uri, source, source_type, status,
+             storage_key, content_version, connector_id, file_size, doc_type],
+        ).fetchone()
+        conn.commit()
+    return _row_to_doc(row)
+
+
+def get_doc_by_id(doc_id: str) -> dict | None:
+    with get_pool().connection() as conn:
+        row = conn.execute(
+            _DOC_SELECT + " WHERE doc_id = %s",
+            [doc_id],
         ).fetchone()
     return _row_to_doc(row) if row else None
 
 
-def list_docs(kb_id: str) -> list[dict]:
-    with get_pool().connection() as conn:
-        rows = conn.execute(
-            "SELECT doc_source, status, etag, run_id, created_at, updated_at, "
-            "chunk_count, file_size, doc_type, embedding_model, error, doc_created_at "
-            "FROM documents WHERE kb_id = %s ORDER BY created_at",
-            [kb_id],
-        ).fetchall()
-    result = []
-    for row in rows:
-        doc_source = row[0]
-        d = _row_to_doc(row[1:])
-        d["doc_source"] = doc_source
-        result.append(d)
-    return result
-
-
-def list_docs_by_status(kb_id: str, status: str) -> list[dict]:
-    with get_pool().connection() as conn:
-        rows = conn.execute(
-            "SELECT doc_source, status, etag, run_id, created_at, updated_at, "
-            "chunk_count, file_size, doc_type, embedding_model, error, doc_created_at "
-            "FROM documents WHERE kb_id = %s AND status = %s ORDER BY created_at",
-            [kb_id, status],
-        ).fetchall()
-    result = []
-    for row in rows:
-        doc_source = row[0]
-        d = _row_to_doc(row[1:])
-        d["doc_source"] = doc_source
-        result.append(d)
-    return result
-
-
-def get_doc_etag(kb_id: str, doc_source: str) -> str | None:
-    """Return the stored ETag for a document regardless of its current status.
-
-    set_processing() does not clear the etag column, so the previous ETag remains
-    accessible even while status='running', enabling ETag-based dedup during re-uploads.
-    """
+def get_doc_by_source_uri(kb_id: str, source_uri: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(
-            "SELECT etag FROM documents WHERE kb_id = %s AND doc_source = %s",
-            [kb_id, doc_source],
+            _DOC_SELECT + " WHERE kb_id = %s AND source_uri = %s",
+            [kb_id, source_uri],
         ).fetchone()
-    return row[0] if row and row[0] else None
+    return _row_to_doc(row) if row else None
 
 
-def set_doc_etag(kb_id: str, doc_source: str, etag: str) -> None:
-    set_doc_status(kb_id, doc_source, {"etag": etag, "updated_at": datetime.now(timezone.utc).isoformat()})
-
-
-def delete_doc_etag(kb_id: str, doc_source: str) -> None:
+def update_doc_fields(doc_id: str, fields: dict[str, Any]) -> None:
+    """UPDATE arbitrary document fields by doc_id. Always sets updated_at = NOW()."""
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED_UPDATE_FIELDS}
+    if not safe:
+        return
+    set_parts = [f"{k} = %s" for k in safe]
+    set_parts.append("updated_at = NOW()")
     with get_pool().connection() as conn:
         conn.execute(
-            "UPDATE documents SET etag = NULL WHERE kb_id = %s AND doc_source = %s",
-            [kb_id, doc_source],
+            f"UPDATE documents SET {', '.join(set_parts)} WHERE doc_id = %s",
+            list(safe.values()) + [doc_id],
         )
         conn.commit()
 
 
-def delete_doc_meta(kb_id: str, doc_source: str) -> None:
+def soft_delete_doc(doc_id: str) -> None:
+    """Set status=deleted and deleted_at=NOW(). Row is retained; Qdrant chunks must be removed separately."""
     with get_pool().connection() as conn:
         conn.execute(
-            "DELETE FROM documents WHERE kb_id = %s AND doc_source = %s",
-            [kb_id, doc_source],
+            "UPDATE documents SET status = 'deleted', deleted_at = NOW(), updated_at = NOW() WHERE doc_id = %s",
+            [doc_id],
         )
         conn.commit()
-    logger.info("Doc meta deleted: kb=%s key=%s", kb_id, doc_source)
+    logger.info("Doc soft-deleted: doc_id=%s", doc_id)
+
+
+def list_docs(
+    kb_id: str,
+    *,
+    include_deleted: bool = False,
+    status_filter: str | None = None,
+) -> list[dict]:
+    conditions = ["kb_id = %s"]
+    params: list[Any] = [kb_id]
+
+    if not include_deleted:
+        conditions.append("status != 'deleted'")
+    if status_filter is not None:
+        conditions.append("status = %s")
+        params.append(status_filter)
+
+    where = " AND ".join(conditions)
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            f"{_DOC_SELECT} WHERE {where} ORDER BY created_at DESC",
+            params,
+        ).fetchall()
+    return [_row_to_doc(r) for r in rows]
 
 
 def list_docs_paginated(
@@ -303,6 +307,7 @@ def list_docs_paginated(
     search: str | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
+    include_deleted: bool = False,
 ) -> tuple[list[dict], int]:
     """Paginated, filtered, and sorted document list for a KB.
 
@@ -312,14 +317,15 @@ def list_docs_paginated(
     NULL values for chunk_count / file_size sort last regardless of direction.
     """
     conditions = ["kb_id = %s"]
-    params: list = [kb_id]
+    params: list[Any] = [kb_id]
 
+    if not include_deleted:
+        conditions.append("status != 'deleted'")
     if status:
         conditions.append("status = %s")
         params.append(status)
-
     if search:
-        conditions.append("doc_source ILIKE %s")
+        conditions.append("source ILIKE %s")
         params.append(f"%{search}%")
 
     where = " AND ".join(conditions)
@@ -327,32 +333,14 @@ def list_docs_paginated(
     nulls_clause = "NULLS LAST" if sort_by in _NULL_LAST_FIELDS else ""
     order_clause = f"{sort_by} {order_dir} {nulls_clause}".strip()
 
-    count_sql = f"SELECT COUNT(*) FROM documents WHERE {where}"
-    data_sql = (
-        "SELECT doc_source, status, doc_type, chunk_count, file_size, "
-        "embedding_model, error, created_at, updated_at, etag "
-        f"FROM documents WHERE {where} ORDER BY {order_clause} "
-        "LIMIT %s OFFSET %s"
-    )
     offset = (page - 1) * page_size
-
     with get_pool().connection() as conn:
-        total: int = conn.execute(count_sql, params).fetchone()[0]
-        rows = conn.execute(data_sql, params + [page_size, offset]).fetchall()
+        total: int = conn.execute(
+            f"SELECT COUNT(*) FROM documents WHERE {where}", params
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"{_DOC_SELECT} WHERE {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
+            params + [page_size, offset],
+        ).fetchall()
 
-    items = []
-    for row in rows:
-        doc_source, status_val, doc_type, chunk_count, file_size, embedding_model, error, created_at, updated_at, etag = row
-        items.append({
-            "doc_source": doc_source,
-            "status": status_val or "",
-            "doc_type": doc_type or "",
-            "chunk_count": chunk_count,
-            "file_size": file_size,
-            "embedding_model": embedding_model or "",
-            "etag": etag or "",
-            "error": error,
-            "created_at": created_at.isoformat() if created_at else "",
-            "updated_at": updated_at.isoformat() if updated_at else "",
-        })
-    return items, total
+    return [_row_to_doc(r) for r in rows], total

@@ -2,7 +2,7 @@
 
 LlamaIndex + Dagster 기반 문서 인제스트 및 하이브리드 검색 파이프라인.
 
-- 문서 신규 / 변경 / 삭제를 자동 감지하여 벡터 인덱스에 반영
+- API를 통한 문서 업로드 및 삭제, 자동 벡터 인덱스 반영
 - 대용량 문서 배치 처리 및 병렬 임베딩 지원
 - 파이프라인 단계별 분리 구조로 재처리 및 확장이 용이
 - Ollama(로컬) / OpenAI 임베딩 모델 선택 지원
@@ -37,7 +37,7 @@ knowledge_bases:
     description: "첫 번째 지식베이스"
 ```
 
-`docker/.env`에서 자격증명을 확인한다. 기본값은 개발용이며 프로덕션 배포 전에 변경한다.
+`docker/.env`에서 MinIO / Redis 자격증명을 확인한다. 기본값은 개발용이며 프로덕션 배포 전에 변경한다.
 
 ```bash
 REDIS_PASSWORD=redis
@@ -45,12 +45,17 @@ MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=minioadmin
 ```
 
-Postgres 패스워드는 `docker/docker-compose.yml`에 직접 정의되어 있다. 프로덕션 배포 전에 함께 변경한다.
+Postgres 자격증명은 `docker/docker-compose.yml`과 `docker/settings.yaml` 두 곳에 있다. 프로덕션 배포 전에 함께 변경한다.
 
 ```yaml
+# docker-compose.yml
 postgresql:
   environment:
     POSTGRES_PASSWORD: password   # 변경 필요
+
+# settings.yaml
+postgres:
+  password: "password"           # 변경 필요 (동일한 값으로 맞춤)
 ```
 
 ### 3. 기동
@@ -60,7 +65,7 @@ cd docker
 docker compose up -d --build
 ```
 
-`minio-init` 컨테이너가 버킷과 webhook 구독을 초기화한다. 정상 종료 여부를 확인한다.
+`minio-init` 컨테이너가 스토리지 버킷을 초기화한다. 정상 종료 여부를 확인한다.
 
 ```bash
 docker compose ps
@@ -74,18 +79,19 @@ docker compose ps
 PDF, Word(docx), 텍스트(txt), 마크다운(md), 한글(hwp) 형식을 지원한다.
 
 ```bash
-# 문서 업로드
+# 문서 업로드 — 응답에서 doc_id를 확인한다
 curl -X POST http://localhost:8000/api/kb/kb-01/docs/upload \
   -F "file=@./data/sample.pdf"
+# {"doc_id": "87131b1a-...", "source_uri": "sample.pdf", ...}
 
-# 인덱싱 상태 확인
-curl http://localhost:8000/api/kb/kb-01/docs/sample.pdf/status
+# 인덱싱 상태 확인 (업로드 응답의 doc_id 사용)
+curl http://localhost:8000/api/kb/kb-01/docs/87131b1a-.../status
 
 # KB 전체 문서 조회
 curl http://localhost:8000/api/kb/kb-01/docs
 
-# 문서 삭제
-curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/sample.pdf
+# 문서 삭제 — 비동기 처리 (202), pending → deleting 순서로 진행됨
+curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/87131b1a-...
 ```
 
 ---
@@ -153,6 +159,7 @@ Claude Desktop `claude_desktop_config.json`:
 
 | 서비스 | 주소 | 용도 |
 |---|---|---|
+| RAG Admin | http://localhost:8080 | 문서 관리 및 검색 UI |
 | MinIO Console | http://localhost:9001 | 업로드된 문서 파일 확인 |
 | Qdrant Dashboard | http://localhost:6333/dashboard | 컬렉션 및 임베딩 벡터 현황 확인 |
-| Dagster UI | http://localhost:3000 | 인제스트 파이프라인 실행 현황 (Dagster가 파이프라인을 처리하는 경우: `queue_worker.enabled: false`) |
+| Dagster UI | http://localhost:3000 | 인제스트 파이프라인 실행 현황 (`queue_worker.enabled: false` 인 경우) |

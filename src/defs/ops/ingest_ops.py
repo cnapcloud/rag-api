@@ -1,23 +1,21 @@
-"""Dagster @op 래퍼 — pipeline/ops 순수 함수를 Dagster Op으로 감싼다."""
+"""Dagster @op wrappers — wrap pipeline/ops pure functions as Dagster Ops."""
 
 from dagster import Config, HookContext, OpExecutionContext, Out, Output, failure_hook, op
 
 
 @failure_hook
 def ingest_failure_hook(context: HookContext) -> None:
-    """Mark document as failed in Redis when any ingest op fails."""
+    """Mark document as failed in Postgres when any ingest op fails."""
     try:
-        op_config = context.op_config or {}
         dagster_run = context.instance.get_run_by_id(context.run_id)
         run_tags = dagster_run.tags if dagster_run else {}
-        kb_id: str = op_config.get("kb_id", "") or run_tags.get("kb_id", "")
-        doc_source: str = op_config.get("doc_source", "") or run_tags.get("doc_source", "")
-        if not kb_id or not doc_source:
-            context.log.info("ingest_failure_hook: kb_id or doc_source not found, skip set_failed")
+        doc_id: str = run_tags.get("doc_id", "")
+        if not doc_id:
+            context.log.info("ingest_failure_hook: doc_id not found in run tags, skip set_failed")
             return
         from pipeline.ops.meta import set_failed
-        set_failed(kb_id, doc_source, f"ingest_job op failed: {context.step_key}", run_id=context.run_id)
-        context.log.info("ingest_failure_hook: set_failed kb=%s key=%s op=%s", kb_id, doc_source, context.step_key)
+        set_failed(doc_id, f"ingest_job op failed: {context.step_key}", run_id=context.run_id)
+        context.log.info("ingest_failure_hook: set_failed doc_id=%s op=%s", doc_id, context.step_key)
     except Exception as e:
         context.log.error("ingest_failure_hook error: %s", e)
 
@@ -27,10 +25,7 @@ def ingest_failure_hook(context: HookContext) -> None:
 # ──────────────────────────────────────────────
 
 class IngestConfig(Config):
-    kb_id: str
-    doc_source: str
-    etag: str
-    file_size: int = 0
+    doc_id: str
     force: bool = False
 
 
@@ -40,55 +35,50 @@ class IngestConfig(Config):
 
 @op(out={"valid_config": Out(dagster_type=dict, is_required=False)})
 def validate_op(context: OpExecutionContext, config: IngestConfig):
-    """ETag 중복·크기 검증. 중복이면 Output 미발행 → 이후 Op 자동 스킵."""
+    """File size validation. Emits valid_config dict on success."""
     from pipeline.ops.meta import set_failed, set_processing
     from pipeline.ops.validate import validate
 
-    set_processing(config.kb_id, config.doc_source, run_id=context.run_id)
+    set_processing(config.doc_id, run_id=context.run_id)
 
     try:
-        should_process = validate(
-            kb_id=config.kb_id,
-            doc_source=config.doc_source,
-            etag=config.etag,
-            file_size=config.file_size,
-            force=config.force,
-        )
+        validate(doc_id=config.doc_id, force=config.force)
     except Exception as e:
-        set_failed(config.kb_id, config.doc_source, str(e), run_id=context.run_id)
+        set_failed(config.doc_id, str(e), run_id=context.run_id)
         raise
 
-    if should_process:
-        context.log.info("Validation passed: %s/%s", config.kb_id, config.doc_source)
-        yield Output(
-            {
-                "kb_id": config.kb_id,
-                "doc_source": config.doc_source,
-                "etag": config.etag,
-                "file_size": config.file_size,
-                "run_id": context.run_id,
-            },
-            output_name="valid_config",
-        )
-    else:
-        from pipeline.ops.meta import restore_indexed
-        restore_indexed(config.kb_id, config.doc_source, etag=config.etag)
-        context.log.info("ETag unchanged, skipping: %s/%s", config.kb_id, config.doc_source)
+    context.log.info("Validation passed: doc_id=%s", config.doc_id)
+
+    from infra.postgres import get_doc_by_id
+    doc = get_doc_by_id(config.doc_id)
+    kb_id = doc["kb_id"] if doc else ""
+    storage_key = doc.get("storage_key", "") if doc else ""
+
+    yield Output(
+        {
+            "doc_id": config.doc_id,
+            "kb_id": kb_id,
+            "storage_key": storage_key,
+            "force": config.force,
+            "run_id": context.run_id,
+        },
+        output_name="valid_config",
+    )
 
 
 @op
 def parse_op(context: OpExecutionContext, valid_config: dict):
-    """S3에서 파일 다운로드 후 LlamaIndex Document 변환."""
+    """Download file from S3 and convert to LlamaIndex Documents."""
     from pipeline.ops.parse import parse
 
-    documents = parse(kb_id=valid_config["kb_id"], doc_source=valid_config["doc_source"])
+    documents = parse(doc_id=valid_config["doc_id"], storage_key=valid_config["storage_key"])
     context.log.info("Parse done: %d documents", len(documents))
     return documents
 
 
 @op
 def chunk_op(context: OpExecutionContext, documents):
-    """Document → Node 청킹."""
+    """Document -> Node chunking."""
     from exceptions import IngestValidationError
     from pipeline.ops.chunk import chunk
 
@@ -101,7 +91,7 @@ def chunk_op(context: OpExecutionContext, documents):
 
 @op
 def embed_op(context: OpExecutionContext, nodes):
-    """Node → Dense + Sparse 벡터 임베딩 (asyncio 병렬)."""
+    """Node -> Dense + Sparse vector embedding (asyncio parallel)."""
     from pipeline.ops.embed import embed
 
     embedded = embed(nodes)
@@ -111,12 +101,12 @@ def embed_op(context: OpExecutionContext, nodes):
 
 @op
 def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
-    """Qdrant 기존 청크 삭제 → 신규 삽입."""
+    """Delete existing Qdrant chunks then insert new ones."""
     from pipeline.ops.upsert import upsert
 
     result = upsert(
         kb_id=valid_config["kb_id"],
-        doc_source=valid_config["doc_source"],
+        doc_id=valid_config["doc_id"],
         embedded_nodes=embedded_nodes,
     )
     context.log.info("Upsert done: %d chunks", result.chunk_count)
@@ -125,25 +115,24 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
 
 @op
 def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
-    """Redis 메타데이터 갱신 (status=indexed)."""
+    """Update Postgres document metadata to status=indexed."""
     from config.settings import get_settings
     from pipeline.ops.meta import update_meta
 
+    storage_key = valid_config.get("storage_key", "")
+    doc_type = storage_key.rsplit(".", 1)[-1] if "." in storage_key else ""
+
     cfg = get_settings().embedding
     update_meta(
-        kb_id=valid_config["kb_id"],
-        doc_source=valid_config["doc_source"],
+        doc_id=valid_config["doc_id"],
         upsert_result=upsert_result,
-        etag=valid_config.get("etag", ""),
         run_id=valid_config.get("run_id", context.run_id),
-        file_size=valid_config.get("file_size", 0),
-        doc_type=valid_config["doc_source"].rsplit(".", 1)[-1],
+        doc_type=doc_type,
         embedding_model=cfg.model,
         doc_created_at=upsert_result.doc_created_at,
     )
     context.log.info(
-        "ingest_job completed: kb=%s key=%s chunks=%d",
-        valid_config["kb_id"],
-        valid_config["doc_source"],
+        "ingest_job completed: doc_id=%s chunks=%d",
+        valid_config["doc_id"],
         upsert_result.chunk_count,
     )

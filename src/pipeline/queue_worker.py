@@ -1,6 +1,6 @@
 """pipeline/queue_worker.py — Background Redis queue consumer (non-Dagster mode).
 
-Runs as an asyncio background task inside FastAPI unless ingestion.queue_worker_enabled is false.
+Runs as an asyncio background task inside FastAPI unless queue_worker.enabled is false.
 Polls rag:upload:queue and rag:delete:queue, executes pipeline functions in a
 ThreadPoolExecutor, and limits concurrency via asyncio.Semaphore.
 """
@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pipeline.enqueue import DELETE_QUEUE_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
+
 
 class QueueWorker:
     def __init__(self, max_workers: int = 4, poll_interval_sec: int = 5, max_per_poll: int = 5) -> None:
@@ -58,29 +59,29 @@ class QueueWorker:
                 logger.warning("Invalid upload event (skipped): %s", raw)
                 continue
 
-            kb_id = event.get("kb_id", "")
-            doc_source = event.get("doc_source", "")
-            etag = event.get("etag", "")
+            doc_id = event.get("doc_id", "")
+            force = event.get("force", False)
+            if not doc_id:
+                logger.warning("Upload event missing doc_id (skipped): %s", raw)
+                continue
 
-            from infra import postgres as postgres_infra
+            from infra.postgres import get_doc_by_id
             from pipeline.ops.meta import set_processing
 
-            doc = postgres_infra.get_doc_status(kb_id, doc_source)
+            doc = get_doc_by_id(doc_id)
             if doc:
                 s = doc.get("status", "")
                 if s == "deleting":
-                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw))
-                    logger.info("Upload event delayed (deleting): kb=%s key=%s", kb_id, doc_source)
+                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw, doc_id))
+                    logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
                     continue
                 elif s == "running":
-                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw))
-                    logger.info("Upload event delayed (running): kb=%s key=%s", kb_id, doc_source)
+                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw, doc_id))
+                    logger.info("Upload event delayed (running): doc_id=%s", doc_id)
                     continue
 
-            set_processing(kb_id, doc_source)
-            logger.info(
-                "Dequeued upload event, scheduling ingest: kb=%s key=%s", kb_id, doc_source
-            )
+            set_processing(doc_id)
+            logger.info("Dequeued upload event, scheduling ingest: doc_id=%s", doc_id)
             asyncio.create_task(self._run_ingest(event))
             upload_count += 1
 
@@ -95,29 +96,28 @@ class QueueWorker:
                 logger.warning("Invalid delete event (skipped): %s", raw)
                 continue
 
-            kb_id = event.get("kb_id", "")
-            doc_source = event.get("doc_source", "")
-
-            from infra import postgres as postgres_infra
-            from pipeline.ops.meta import set_deleting
-
-            doc = postgres_infra.get_doc_status(kb_id, doc_source)
-            if doc and doc.get("status") in ("running", "deleting"):
-                asyncio.create_task(self._requeue_after_delay(DELETE_QUEUE_KEY, raw))
-                logger.info("Delete event delayed (busy): kb=%s key=%s", kb_id, doc_source)
+            doc_id = event.get("doc_id", "")
+            if not doc_id:
+                logger.warning("Delete event missing doc_id (skipped): %s", raw)
                 continue
 
-            set_deleting(kb_id, doc_source)
+            from infra.postgres import get_doc_by_id
+            from pipeline.ops.meta import set_deleting
 
-            logger.info(
-                "Dequeued delete event, scheduling delete: kb=%s key=%s", kb_id, doc_source
-            )
+            doc = get_doc_by_id(doc_id)
+            if doc and doc.get("status") in ("running", "deleting"):
+                asyncio.create_task(self._requeue_after_delay(DELETE_QUEUE_KEY, raw, doc_id))
+                logger.info("Delete event delayed (busy): doc_id=%s", doc_id)
+                continue
+
+            set_deleting(doc_id)
+            logger.info("Dequeued delete event, scheduling delete: doc_id=%s", doc_id)
             asyncio.create_task(self._run_delete(event))
             delete_count += 1
 
         return upload_count >= self._max_per_poll or delete_count >= self._max_per_poll
 
-    async def _requeue_after_delay(self, queue_key: str, raw: str) -> None:
+    async def _requeue_after_delay(self, queue_key: str, raw: str, doc_id: str) -> None:
         from config.settings import get_settings
         from infra.redis import get_redis_client
 
@@ -125,64 +125,46 @@ class QueueWorker:
         await asyncio.sleep(delay)
 
         try:
-            event = json.loads(raw)
-            kb_id = event.get("kb_id", "")
-            doc_source = event.get("doc_source", "")
-            if kb_id and doc_source:
-                from infra import postgres as pg
-                from pipeline.ops.meta import set_pending
-                doc = pg.get_doc_status(kb_id, doc_source)
-                current = doc.get("status", "") if doc else ""
-                if current not in ("running", "deleting"):
-                    set_pending(kb_id, doc_source)
+            from infra.postgres import get_doc_by_id, update_doc_fields
+            doc = get_doc_by_id(doc_id)
+            current = doc.get("status", "") if doc else ""
+            if current not in ("running", "deleting"):
+                update_doc_fields(doc_id, {"status": "pending"})
         except Exception as e:
-            logger.warning("_requeue_after_delay status check failed: %s", e)
+            logger.warning("_requeue_after_delay status check failed: doc_id=%s err=%s", doc_id, e)
 
         get_redis_client().lpush(queue_key, raw)
-        logger.debug("Re-queued delayed event to %s", queue_key)
+        logger.debug("Re-queued delayed event to %s doc_id=%s", queue_key, doc_id)
 
     async def _run_ingest(self, event: dict) -> None:
         assert self._semaphore is not None
-        kb_id = event.get("kb_id", "")
-        doc_source = event.get("doc_source", "")
+        doc_id = event.get("doc_id", "")
+        force = event.get("force", False)
         async with self._semaphore:
             from pipeline.ops.runner import run_ingest_pipeline
             loop = asyncio.get_running_loop()
-            logger.info("ingest_job started: kb=%s key=%s", kb_id, doc_source)
+            logger.info("ingest_job started: doc_id=%s", doc_id)
             try:
                 chunk_count = await loop.run_in_executor(
                     self._executor,
-                    lambda: run_ingest_pipeline(
-                        kb_id=kb_id,
-                        doc_source=doc_source,
-                        etag=event.get("etag", ""),
-                        file_size=event.get("file_size", 0),
-                        force=event.get("force", False),
-                    ),
+                    lambda: run_ingest_pipeline(doc_id=doc_id, force=force),
                 )
-                logger.info(
-                    "ingest_job completed: kb=%s key=%s chunks=%d",
-                    kb_id, doc_source, chunk_count,
-                )
+                logger.info("ingest_job completed: doc_id=%s chunks=%d", doc_id, chunk_count)
             except Exception as e:
-                logger.error("ingest_job failed: kb=%s key=%s err=%s", kb_id, doc_source, e)
+                logger.error("ingest_job failed: doc_id=%s err=%s", doc_id, e)
 
     async def _run_delete(self, event: dict) -> None:
         assert self._semaphore is not None
-        kb_id = event.get("kb_id", "")
-        doc_source = event.get("doc_source", "")
+        doc_id = event.get("doc_id", "")
         async with self._semaphore:
             from pipeline.ops.runner import run_delete_pipeline
             loop = asyncio.get_running_loop()
-            logger.info("delete_job started: kb=%s key=%s", kb_id, doc_source)
+            logger.info("delete_job started: doc_id=%s", doc_id)
             try:
                 await loop.run_in_executor(
                     self._executor,
-                    lambda: run_delete_pipeline(
-                        kb_id=kb_id,
-                        doc_source=doc_source,
-                    ),
+                    lambda: run_delete_pipeline(doc_id=doc_id),
                 )
-                logger.info("delete_job completed: kb=%s key=%s", kb_id, doc_source)
+                logger.info("delete_job completed: doc_id=%s", doc_id)
             except Exception as e:
-                logger.error("delete_job failed: kb=%s key=%s err=%s", kb_id, doc_source, e)
+                logger.error("delete_job failed: doc_id=%s err=%s", doc_id, e)
