@@ -182,7 +182,7 @@ _SORT_ORDERS = Literal["asc", "desc"]
 async def list_docs(
     kb_id: str,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1),
+    page_size: int = Query(default=20, ge=1),
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
     sort_by: _SORT_FIELDS = Query(default="updated_at"),
@@ -326,7 +326,7 @@ async def recover_doc(kb_id: str, doc_id: str):
 @router.get("/docs")
 async def list_all_docs(
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1),
+    page_size: int = Query(default=20, ge=1),
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
     sort_by: _SORT_FIELDS = Query(default="updated_at"),

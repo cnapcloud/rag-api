@@ -17,8 +17,6 @@ class SearchResult:
     kb_id: str
     doc_key: str
     source: str
-    source_type: str
-    source_uri: str
     doc_type: str
     chunk_index: int
     page_num: int | None
@@ -26,6 +24,8 @@ class SearchResult:
     score: float
     rerank_score: float | None
     updated_at: str
+    source_type: str = ""
+    source_uri: str = ""
 
 
 def _build_vector_store(kb_id: str, qdrant_client=None):
