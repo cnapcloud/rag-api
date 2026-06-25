@@ -152,12 +152,14 @@ class WebConnector:
     def sync(self, kb_id: str, connector_id: str) -> None:
         """Run Flow B for all pages reachable from seed_urls."""
         visited: set[str] = set()
+        queued: set[str] = set()
         queue: deque[tuple[str, int]] = deque()
         max_queue_size = self.max_pages * _QUEUE_SIZE_MULTIPLIER
 
         for url in self.seed_urls:
             norm = normalize_source_uri("web", url)
             queue.append((norm, 0))
+            queued.add(norm)
 
         pages_processed = 0
 
@@ -186,8 +188,9 @@ class WebConnector:
                 if html is not None and current_depth < self.depth:
                     for link in _discover_links(html, source_uri):
                         norm_link = normalize_source_uri("web", link)
-                        if norm_link not in visited and len(queue) < max_queue_size:
+                        if norm_link not in queued and len(queue) < max_queue_size:
                             queue.append((norm_link, current_depth + 1))
+                            queued.add(norm_link)
 
         logger.info(
             "Web connector sync done: connector_id=%s pages_processed=%d",
