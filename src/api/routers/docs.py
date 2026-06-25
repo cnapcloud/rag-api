@@ -9,6 +9,7 @@ from typing import Literal
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from exceptions import ConflictError, IngestValidationError, NotFoundError
 
@@ -343,6 +344,46 @@ async def list_all_docs(
         sort_order=sort_order,
     )
     return {"items": items, "total": total, "page": page, "page_size": clamped_size}
+
+
+@router.get("/kb/{kb_id}/docs/{doc_id}/download")
+async def download_doc(kb_id: str, doc_id: str):
+    """Stream the raw file for a document from S3."""
+    import mimetypes
+
+    from infra.postgres import get_doc_by_id
+    from infra.s3 import get_s3_client
+    from config.settings import get_settings
+
+    doc = get_doc_by_id(doc_id)
+    if doc is None or doc.get("kb_id") != kb_id:
+        raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
+
+    storage_key = doc.get("storage_key") or ""
+    if not storage_key:
+        raise NotFoundError(f"Document has no stored file: doc_id={doc_id}")
+
+    cfg = get_settings().s3
+    client = get_s3_client()
+
+    try:
+        resp = client.get_object(Bucket=cfg.rag_bucket, Key=storage_key)
+    except ClientError as e:
+        raise NotFoundError(f"File not found in storage: {storage_key}") from e
+
+    filename = Path(storage_key).name
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+    def _iter():
+        for chunk in resp["Body"].iter_chunks(chunk_size=65536):
+            yield chunk
+
+    logger.info("Download doc: kb=%s doc_id=%s key=%s", kb_id, doc_id, storage_key)
+    return StreamingResponse(
+        _iter(),
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/docs/status")
