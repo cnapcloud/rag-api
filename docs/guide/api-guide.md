@@ -329,10 +329,14 @@ curl -X POST http://localhost:8000/api/connectors \
 
 // confluence
 {
-  "base_url": "https://company.atlassian.net",
-  "space_key": "DEV",
-  "auth_token_secret": "CONFLUENCE_TOKEN",
-  "exclude_labels": ["draft", "archived"]
+  "base_url": "https://company.atlassian.net",  // Atlassian Cloud 또는 Server/Data Center URL
+  "space_key": "DEV",                            // 수집할 스페이스 키 (필수)
+  "auth_token_secret": "CONFLUENCE_TOKEN",       // 환경변수 키 이름 (선택, 공개 사이트는 생략)
+  "exclude_labels": ["draft", "archived"],       // 이 레이블을 가진 페이지(+첨부파일) 제외
+  "max_pages": 50,                               // sync 1회당 처리 페이지 상한 (기본값: 50)
+  "max_attachment_mb": 10,                       // 첨부파일 최대 크기 MB (기본값: 10)
+  "request_delay_ms": 100,                       // API 호출 간격 ms (기본값: 100)
+  "request_timeout_sec": 30                      // HTTP 타임아웃 초 (기본값: 30)
 }
 
 // github
@@ -358,6 +362,34 @@ curl -X POST http://localhost:8000/api/connectors \
 | `request_delay_ms` | `0` | 페이지 요청 간 대기 시간(밀리초). 서버 부하 방지용 |
 
 > **주의**: 포털 루트 URL처럼 수만 개 페이지를 보유한 사이트에 `include_patterns` 없이 `depth >= 2`를 설정하면 queue가 대량 누적될 수 있습니다. `include_patterns`로 경로를 명시하거나 `depth=1` + `max_pages` 조합으로 범위를 제한하세요.
+
+**confluence config 동작 규칙**
+
+| 설정 | 기본값 | 동작 |
+|------|--------|------|
+| `base_url` | (필수) | Cloud: `https://company.atlassian.net` / Server: `https://confluence.company.com` |
+| `space_key` | (필수) | 수집할 Confluence 스페이스 키 (대소문자 구분) |
+| `auth_token_secret` | `null` | 환경변수 키 이름. Cloud: `email:api_token` 형식 → Basic auth. Server: PAT → Bearer auth. 공개 사이트는 생략 가능 |
+| `exclude_labels` | `[]` | 지정한 레이블을 가진 페이지와 해당 페이지의 첨부파일을 모두 건너뜀 |
+| `max_pages` | `50` | sync 1회당 처리 페이지 상한. 초과 시 중단 |
+| `max_attachment_mb` | `10` | 첨부파일 수집 크기 상한(MB). 초과 파일은 건너뜀 |
+| `request_delay_ms` | `100` | API 호출 간 대기 시간(밀리초). Confluence 서버 부하 방지용 |
+| `request_timeout_sec` | `30` | HTTP 타임아웃(초) |
+
+**수집 대상**
+
+- **페이지**: 스페이스 내 모든 페이지를 Confluence REST API로 열거. 각 페이지 본문(`body.view` HTML)을 `.html`로 스테이징.
+- **첨부파일**: 각 페이지에 첨부된 파일 중 지원 포맷이고 크기가 `max_attachment_mb` 미만인 파일만 수집.
+
+지원 첨부파일 포맷: `.pdf` `.docx` `.txt` `.md` `.html` `.htm` `.rst` `.hwp`
+
+**content_version과 증분 수집**
+
+페이지와 첨부파일 모두 Confluence 버전 번호를 `content_version`으로 저장합니다. 재sync 시 버전이 동일하면 재인제스트를 건너뜁니다. 단, 페이지 버전이 변경 없더라도 첨부파일은 항상 순회합니다(첨부파일만 추가됐을 수 있으므로).
+
+**Cloud vs Server 자동 감지**
+
+`base_url`에 `.atlassian.net`이 포함되면 Cloud API 경로(`/wiki/rest/api`)를 사용하고, 그 외에는 Server/Data Center 경로(`/rest/api`)를 사용합니다.
 
 `auth_token_secret`은 토큰 값이 아닌 **환경변수 키 이름**입니다. 실제 토큰은 DB에 저장되지 않으며 런타임에 환경변수에서 읽습니다. 퍼블릭 사이트/저장소는 생략 가능합니다.
 

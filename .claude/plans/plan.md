@@ -16,3 +16,4 @@
 | [17](17-html-clean-reader.md) | HTML Clean Reader — strip nav/footer/script (R-08) | US-17 | done |
 | [18](18-web-connector.md) | WebConnector implementation (R-09) | US-18 | done |
 | [19](19-connector-dagster-schedule.md) | Connector Dagster Schedule dynamic registration (R-12) | US-19 | done |
+| [20](20-confluence-connector.md) | ConfluenceConnector implementation (R-10) | US-20 | done |

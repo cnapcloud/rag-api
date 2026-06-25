@@ -220,6 +220,12 @@ def _dispatch_sync(connector: dict) -> None:
         WebConnector(connector.get("config") or {}).sync(
             connector["kb_id"], connector["connector_id"]
         )
+    elif source_type == "confluence":
+        from connectors.confluence import ConfluenceConnector
+
+        ConfluenceConnector(connector.get("config") or {}).sync(
+            connector["kb_id"], connector["connector_id"]
+        )
     else:
         logger.info("Sync skipped: connector type not yet implemented: connector_id=%s source_type=%s", connector["connector_id"], source_type)
 
