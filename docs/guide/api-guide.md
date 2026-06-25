@@ -324,7 +324,11 @@ curl -X POST http://localhost:8000/api/connectors \
   "exclude_patterns": ["*/blog/*", "*.pdf"],      // 제외할 URL 패턴 (최우선 적용)
   "max_pages": 50,                             // 페이지 처리 상한 (기본값: 50)
   "request_timeout_sec": 30,                   // HTTP 타임아웃 (기본값: 30)
-  "request_delay_ms": 0                        // 요청 간 딜레이 ms (기본값: 0)
+  "request_delay_ms": 100,                     // 요청 간 딜레이 ms (기본값: 100)
+
+  // 인증 — 둘 다 설정된 경우 auth_headers 우선, 둘 다 없으면 인증 없이 요청
+  "auth_headers": { "Authorization": "Bearer eyJ..." },  // Bearer 토큰 / API 키 등 커스텀 헤더
+  "auth_basic": { "username": "user", "password": "pass" }  // HTTP Basic Auth
 }
 
 // confluence
@@ -359,7 +363,9 @@ curl -X POST http://localhost:8000/api/connectors \
 | `max_pages` | `50` | sync 1회당 처리 페이지 상한. BFS queue도 `max_pages × 20`으로 상한 제한 |
 | `include_patterns` | `[]` | 수집할 URL 패턴 (fnmatch). 예: `["*/guide/*"]` |
 | `exclude_patterns` | `[]` | 제외할 URL 패턴 (fnmatch, 최우선). 예: `["*/blog/*", "*.pdf"]` |
-| `request_delay_ms` | `0` | 페이지 요청 간 대기 시간(밀리초). 서버 부하 방지용 |
+| `request_delay_ms` | `100` | 페이지 요청 간 대기 시간(밀리초). 서버 부하 방지용 |
+| `auth_headers` | `{}` | 모든 요청에 추가할 HTTP 헤더. Bearer 토큰(`Authorization: Bearer ...`) 또는 API 키(`X-API-Key: ...`) 등 |
+| `auth_basic` | 없음 | HTTP Basic Auth. `auth_headers`가 설정되어 있으면 무시됨 |
 
 > **주의**: 포털 루트 URL처럼 수만 개 페이지를 보유한 사이트에 `include_patterns` 없이 `depth >= 2`를 설정하면 queue가 대량 누적될 수 있습니다. `include_patterns`로 경로를 명시하거나 `depth=1` + `max_pages` 조합으로 범위를 제한하세요.
 

@@ -138,9 +138,15 @@ class WebConnector:
         self.exclude_patterns: list[str] = config.get("exclude_patterns", [])
         self.max_pages: int = int(config.get("max_pages", 50))
         self.timeout: int = int(config.get("request_timeout_sec", 30))
-        self.request_delay_ms: int = int(config.get("request_delay_ms", 0))
+        self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.skip_seed_pages: bool = bool(config.get("skip_seed_pages", True))
         self.min_content_chars: int = int(config.get("min_content_chars", 200))
+        self.auth_headers: dict[str, str] = config.get("auth_headers") or {}
+        self.auth_basic: tuple[str, str] | None = (
+            (str(cfg["username"]), str(cfg["password"]))
+            if (cfg := config.get("auth_basic"))
+            else None
+        )
 
         # Scope is derived from the full path of each seed URL.
         # https://example.com/docs → only https://example.com/docs/* is crawled.
@@ -163,11 +169,17 @@ class WebConnector:
 
         pages_processed = 0
 
-        with httpx.Client(
-            timeout=self.timeout,
-            follow_redirects=True,
-            headers={"User-Agent": _USER_AGENT},
-        ) as client:
+        client_kwargs: dict = {
+            "timeout": self.timeout,
+            "follow_redirects": True,
+            "headers": {"User-Agent": _USER_AGENT},
+        }
+        if self.auth_headers:
+            client_kwargs["headers"] = {"User-Agent": _USER_AGENT, **self.auth_headers}
+        elif self.auth_basic:
+            client_kwargs["auth"] = self.auth_basic
+
+        with httpx.Client(**client_kwargs) as client:
             while queue and pages_processed < self.max_pages:
                 source_uri, current_depth = queue.popleft()
 

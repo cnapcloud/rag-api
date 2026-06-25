@@ -669,6 +669,74 @@ class TestSync:
 
 
 # ──────────────────────────────────────────────
+# Auth config — httpx.Client kwargs
+# ──────────────────────────────────────────────
+
+class TestAuthConfig:
+
+    def _captured_client_kwargs(self, config: dict) -> dict:
+        """Run sync() with a no-op _process_page and capture httpx.Client kwargs."""
+        from connectors.web import WebConnector
+
+        captured: dict = {}
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                pass
+            def get(self, *_, **__):
+                return MagicMock()
+
+        with patch("connectors.web.httpx.Client", FakeClient):
+            with patch.object(WebConnector, "_process_page", return_value=None):
+                WebConnector(config).sync(KB_ID, CONNECTOR_ID)
+
+        return captured
+
+    def test_no_auth_omits_auth_key(self):
+        kwargs = self._captured_client_kwargs({"seed_urls": [_URL]})
+        assert "auth" not in kwargs
+        assert kwargs["headers"] == {"User-Agent": "RAG-WebConnector/1.0"}
+
+    def test_auth_headers_merged_into_headers(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_headers": {"Authorization": "Bearer token123"},
+        })
+        assert "auth" not in kwargs
+        assert kwargs["headers"]["Authorization"] == "Bearer token123"
+        assert kwargs["headers"]["User-Agent"] == "RAG-WebConnector/1.0"
+
+    def test_auth_basic_sets_auth_tuple(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_basic": {"username": "user", "password": "pass"},
+        })
+        assert kwargs["auth"] == ("user", "pass")
+        assert kwargs["headers"] == {"User-Agent": "RAG-WebConnector/1.0"}
+
+    def test_auth_headers_takes_priority_over_auth_basic(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_headers": {"Authorization": "Bearer token123"},
+            "auth_basic": {"username": "user", "password": "pass"},
+        })
+        assert "auth" not in kwargs
+        assert kwargs["headers"]["Authorization"] == "Bearer token123"
+
+    def test_empty_auth_headers_falls_through_to_auth_basic(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_headers": {},
+            "auth_basic": {"username": "u", "password": "p"},
+        })
+        assert kwargs["auth"] == ("u", "p")
+
+
+# ──────────────────────────────────────────────
 # _dispatch_sync wiring
 # ──────────────────────────────────────────────
 
