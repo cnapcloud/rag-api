@@ -67,6 +67,8 @@ class ChunkingSettings(BaseModel):
     chunk_overlap: int = 128
     semantic_threshold: float = 0.8
     min_chunk_chars: int = 30
+    code_chunk_lines: int = 40
+    code_chunk_lines_overlap: int = 5
 
 
 class EmbeddingSettings(BaseModel):

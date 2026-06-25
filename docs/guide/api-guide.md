@@ -389,6 +389,38 @@ curl -X POST http://localhost:8000/api/connectors \
 
 지원 첨부파일 포맷: `.pdf` `.docx` `.txt` `.md` `.html` `.htm` `.rst` `.hwp`
 
+---
+
+**github config 동작 규칙**
+
+| 설정 | 기본값 | 동작 |
+|------|--------|------|
+| `owner` | (필수) | 레포지토리 소유자 (user 또는 org) |
+| `repo` | (필수) | 레포지토리 이름 |
+| `branch` | `"main"` | 수집할 브랜치 |
+| `path_prefix` | `""` | 지정 시 해당 경로 하위 파일만 수집. 예: `"src/"` |
+| `auth_token_secret` | `null` | 환경변수 키 이름. GitHub PAT → Bearer auth. 공개 레포는 생략 가능 |
+| `max_file_size_mb` | `5` | 수집 파일 크기 상한(MB). 초과 파일은 건너뜀 |
+| `request_delay_ms` | `100` | API 호출 간 대기 시간(밀리초). GitHub rate limit 방지용 |
+| `request_timeout_sec` | `30` | HTTP 타임아웃(초) |
+
+**수집 대상**
+
+- 레포지토리의 recursive git tree에서 지원 확장자 파일만 수집. `path_prefix` 설정 시 해당 경로 하위로 범위 제한.
+- 소스코드 파일(`.py` `.ts` `.js` `.go` 등)은 chunking 시 CodeSplitter(언어별 AST 분할) 자동 적용.
+
+지원 포맷: `.py` `.ts` `.tsx` `.js` `.jsx` `.go` `.java` `.rs` `.cpp` `.cc` `.c` `.cs` `.rb` `.php` `.swift` `.kt` `.scala` `.sh` `.md` `.txt` `.rst`
+
+---
+
+**content_version과 증분 수집**
+
+파일의 git blob SHA를 `content_version`으로 저장합니다. 재sync 시 SHA가 동일하면 재인제스트를 건너뜁니다. 파일이 변경되면 SHA가 달라지므로 자동으로 재수집됩니다.
+
+**source_uri 형식**
+
+`github://{owner}/{repo}/{branch}/{file_path}`
+
 **content_version과 증분 수집**
 
 페이지와 첨부파일 모두 Confluence 버전 번호를 `content_version`으로 저장합니다. 재sync 시 버전이 동일하면 재인제스트를 건너뜁니다. 단, 페이지 버전이 변경 없더라도 첨부파일은 항상 순회합니다(첨부파일만 추가됐을 수 있으므로).

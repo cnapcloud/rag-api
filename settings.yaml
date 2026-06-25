@@ -45,6 +45,8 @@ chunking:
   chunk_overlap: 128
   min_chunk_chars: 30
   semantic_threshold: 0.8
+  code_chunk_lines: 40
+  code_chunk_lines_overlap: 5
 
 embedding:
   provider: "ollama"            # ollama / openai

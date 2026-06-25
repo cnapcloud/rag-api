@@ -28,7 +28,7 @@ redis:
   db: 0
 
 ingestion:
-  max_file_size_mb: 200
+  max_file_size_mb: 10
 
 queue_worker:
   enabled: false # true이면 dagster가 비활성화됨

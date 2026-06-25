@@ -226,6 +226,12 @@ def _dispatch_sync(connector: dict) -> None:
         ConfluenceConnector(connector.get("config") or {}).sync(
             connector["kb_id"], connector["connector_id"]
         )
+    elif source_type == "github":
+        from connectors.github import GitHubConnector
+
+        GitHubConnector(connector.get("config") or {}).sync(
+            connector["kb_id"], connector["connector_id"]
+        )
     else:
         logger.info("Sync skipped: connector type not yet implemented: connector_id=%s source_type=%s", connector["connector_id"], source_type)
 

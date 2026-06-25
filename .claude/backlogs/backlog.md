@@ -20,3 +20,4 @@
 | [US-18](US-18-web-connector.md) | WebConnector implementation (R-09) | done |
 | [US-19](US-19-connector-dagster-schedule.md) | Connector Dagster Schedule dynamic registration (R-12) | done |
 | [US-20](US-20-confluence-connector.md) | ConfluenceConnector implementation (R-10) | done |
+| [US-21](todo/US-21-github-connector.md) | GitHubConnector implementation (R-11) | done |

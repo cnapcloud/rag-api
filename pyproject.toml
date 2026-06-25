@@ -33,6 +33,9 @@ dependencies = [
     "httpx>=0.27.0",
     # 웹 커넥터
     "trafilatura>=0.9.0",
+    # GitHub 커넥터 — CodeSplitter
+    "tree-sitter>=0.21",
+    "tree-sitter-languages>=1.10",
     # 설정
     "pydantic-settings>=2.2.0",
     "pyyaml>=6.0",

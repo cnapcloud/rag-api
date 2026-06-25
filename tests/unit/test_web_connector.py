@@ -757,18 +757,25 @@ class TestDispatchSync:
 
         mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
 
-    def test_unimplemented_source_type_logs_and_returns(self):
+    def test_github_connector_dispatched(self):
+        from unittest.mock import MagicMock, patch
+
         from api.routers.connectors import _dispatch_sync
 
         connector = {
             "connector_id": CONNECTOR_ID,
             "kb_id": KB_ID,
             "source_type": "github",
-            "config": {},
+            "config": {"owner": "my-org", "repo": "my-repo"},
         }
 
-        # Should not raise — just logs info.
-        _dispatch_sync(connector)
+        with patch("connectors.github.GitHubConnector") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+            _dispatch_sync(connector)
+
+        mock_cls.assert_called_once_with(connector["config"])
+        mock_instance.sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
 
 
 # ──────────────────────────────────────────────
