@@ -30,6 +30,7 @@ class GitHubConnector:
       auth_token_secret   str  Optional. Env var name holding a GitHub PAT.
       max_file_size_mb    int  Max file size to download in MB (default 5).
       request_delay_ms    int  Milliseconds to sleep between API calls (default 100).
+      max_files           int  Max number of files to sync per run (default 200).
       request_timeout_sec int  HTTP timeout in seconds (default 30).
     """
 
@@ -43,6 +44,7 @@ class GitHubConnector:
 
         self.branch: str = config.get("branch", "main").strip()
         self.path_prefix: str = config.get("path_prefix", "").lstrip("/")
+        self.max_files: int = int(config.get("max_files", 200))
         self.max_file_bytes: int = int(config.get("max_file_size_mb", _MAX_FILE_SIZE_DEFAULT_MB)) * 1024 * 1024
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.timeout: int = int(config.get("request_timeout_sec", 30))
@@ -81,12 +83,13 @@ class GitHubConnector:
         )
         assert isinstance(data, dict)
         items: list[dict] = data.get("tree", [])
-        return [
+        blobs = [
             item for item in items
             if item.get("type") == "blob"
             and (not self.path_prefix or item["path"].startswith(self.path_prefix))
             and Path(item["path"]).suffix.lower() in SUPPORTED_EXTENSIONS
         ]
+        return blobs[: self.max_files]
 
     def _download_file(self, client: httpx.Client, path: str) -> bytes:
         if self.request_delay_ms > 0:

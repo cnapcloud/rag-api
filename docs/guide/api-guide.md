@@ -400,6 +400,7 @@ curl -X POST http://localhost:8000/api/connectors \
 | `branch` | `"main"` | 수집할 브랜치 |
 | `path_prefix` | `""` | 지정 시 해당 경로 하위 파일만 수집. 예: `"src/"` |
 | `auth_token_secret` | `null` | 환경변수 키 이름. GitHub PAT → Bearer auth. 공개 레포는 생략 가능 |
+| `max_files` | `200` | sync 1회당 수집 파일 수 상한. 초과 시 중단 |
 | `max_file_size_mb` | `5` | 수집 파일 크기 상한(MB). 초과 파일은 건너뜀 |
 | `request_delay_ms` | `100` | API 호출 간 대기 시간(밀리초). GitHub rate limit 방지용 |
 | `request_timeout_sec` | `30` | HTTP 타임아웃(초) |

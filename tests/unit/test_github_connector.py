@@ -148,6 +148,16 @@ class TestIterBlobs:
         assert paths == [_FILE_PATH]
         assert "README.md" not in paths
 
+    def test_max_files_limits_result(self):
+        """max_files=1 returns only the first matching blob."""
+        connector = _make_connector({"max_files": 1})
+
+        with patch.object(connector, "_api_get") as mock_get:
+            mock_get.side_effect = [_BRANCH_RESPONSE, _TREE_RESPONSE]
+            blobs = connector._iter_blobs(MagicMock())
+
+        assert len(blobs) == 1
+
 
 # ─── _process_file ────────────────────────────────────────────────────────────
 
