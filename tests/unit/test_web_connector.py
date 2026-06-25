@@ -763,7 +763,7 @@ class TestDispatchSync:
         connector = {
             "connector_id": CONNECTOR_ID,
             "kb_id": KB_ID,
-            "source_type": "confluence",
+            "source_type": "github",
             "config": {},
         }
 

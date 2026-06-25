@@ -13,7 +13,6 @@ import httpx
 
 from exceptions import ConfigError
 from pipeline.ops.parse import SUPPORTED_EXTENSIONS
-from pipeline.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +76,13 @@ class ConfluenceConnector:
             return f"{self.base_url}/wiki{relative_url}"
         return f"{self.base_url}{relative_url}"
 
+    def _page_url(self, page: dict) -> str:
+        webui = page.get("_links", {}).get("webui", "")
+        if webui:
+            return f"{self.base_url}{webui}"
+        page_id = page["id"]
+        return f"{self.base_url}/spaces/{self.space_key}/pages/{page_id}"
+
     def _headers(self) -> dict[str, str]:
         h: dict[str, str] = {"Accept": "application/json"}
         if self._auth_header:
@@ -122,7 +128,7 @@ class ConfluenceConnector:
                 {
                     "spaceKey": self.space_key,
                     "type": "page",
-                    "expand": "version,metadata.labels,body.view,ancestors",
+                    "expand": "version,metadata.labels,body.view,ancestors,_links",
                     "limit": batch,
                     "start": start,
                 },
@@ -155,9 +161,7 @@ class ConfluenceConnector:
         page_id: str = page["id"]
         title: str = page["title"]
         version: str = str(page["version"]["number"])
-        source_uri = normalize_source_uri(
-            "confluence", f"confluence://{self.space_key}/{page_id}"
-        )
+        source_uri = self._page_url(page)
 
         if self.depth is not None:
             ancestor_count = len(page.get("ancestors", []))
@@ -308,7 +312,9 @@ class ConfluenceConnector:
 
         att_id: str = attachment["id"]
         version: str = str(attachment["version"]["number"])
-        source_uri = f"confluence://{self.space_key.lower()}/attachments/{att_id}"
+        download_path: str = attachment.get("_links", {}).get("download", "")
+        download_url = self._make_download_url(download_path)
+        source_uri = download_url if download_url else f"confluence://{self.space_key.lower()}/attachments/{att_id}"
 
         doc = get_doc_by_source_uri(kb_id, source_uri)
 
@@ -331,8 +337,6 @@ class ConfluenceConnector:
             update_doc_fields(doc["doc_id"], {"status": "fetching", "connector_id": connector_id})
 
         doc_id: str = doc["doc_id"]
-        download_path: str = attachment.get("_links", {}).get("download", "")
-        download_url = self._make_download_url(download_path)
 
         try:
             if self.request_delay_ms > 0:
