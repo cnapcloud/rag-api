@@ -17,6 +17,8 @@ class SearchResult:
     kb_id: str
     doc_key: str
     source: str
+    source_type: str
+    source_uri: str
     doc_type: str
     chunk_index: int
     page_num: int | None
@@ -56,11 +58,14 @@ def _build_index(kb_id: str, embed_model=None):
 
 def _node_to_result(kb_id: str, node) -> SearchResult:
     meta = node.metadata
+    source_uri = meta.get("source_uri", "")
     return SearchResult(
         chunk_id=node.node_id,
         kb_id=kb_id,
-        doc_key=meta.get("doc_key", ""),
-        source=meta.get("doc_source", ""),
+        doc_key=source_uri,
+        source=meta.get("source", ""),
+        source_type=meta.get("source_type", ""),
+        source_uri=source_uri,
         doc_type=meta.get("doc_type", ""),
         chunk_index=int(meta.get("chunk_index", 0)),
         page_num=meta.get("page_num") or meta.get("page_label"),

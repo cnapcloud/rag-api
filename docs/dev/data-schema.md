@@ -14,6 +14,9 @@ PointStruct
 └── payload
     ├── kb_id              : str      — Knowledge Base ID
     ├── doc_id             : str      — 16-char hex ID of the parent document row (delete filter key)
+    ├── source             : str      — user-visible display name (mirrors documents.source)
+    ├── source_type        : str      — s3 | web | confluence | github
+    ├── source_uri         : str      — canonical dedup key (mirrors documents.source_uri)
     ├── doc_type           : str      — file extension (pdf, docx, txt, md, html, rst, …)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document

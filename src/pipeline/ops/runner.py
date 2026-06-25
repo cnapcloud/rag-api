@@ -34,6 +34,9 @@ def run_ingest_pipeline(
 
     kb_id: str = doc["kb_id"]
     storage_key: str = doc.get("storage_key") or ""
+    source: str = doc.get("source") or ""
+    source_type: str = doc.get("source_type") or ""
+    source_uri: str = doc.get("source_uri") or ""
 
     try:
         validate(doc_id, force=force)
@@ -50,7 +53,10 @@ def run_ingest_pipeline(
         if not nodes:
             raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
         embedded_nodes = embed(nodes)
-        upsert_result = upsert(kb_id, doc_id, embedded_nodes)
+        upsert_result = upsert(
+            kb_id, doc_id, embedded_nodes,
+            source=source, source_type=source_type, source_uri=source_uri,
+        )
 
         cfg = get_settings().embedding
         doc_type = storage_key.rsplit(".", 1)[-1] if "." in storage_key else ""

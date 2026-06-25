@@ -181,7 +181,7 @@ _SORT_ORDERS = Literal["asc", "desc"]
 async def list_docs(
     kb_id: str,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1),
+    page_size: int = Query(default=10, ge=1),
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
     sort_by: _SORT_FIELDS = Query(default="updated_at"),
@@ -200,6 +200,15 @@ async def list_docs(
         sort_order=sort_order,
     )
     return {"items": items, "total": total, "page": page, "page_size": clamped_size}
+
+
+@router.get("/kb/{kb_id}/docs/status")
+async def get_kb_doc_counts(kb_id: str):
+    from infra.postgres import get_kb_meta, get_kb_doc_counts as pg_get_kb_doc_counts
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+    return {"kb_id": kb_id, "doc_counts": pg_get_kb_doc_counts(kb_id)}
 
 
 @router.get("/kb/{kb_id}/docs/{doc_id}/status")
@@ -313,12 +322,36 @@ async def recover_doc(kb_id: str, doc_id: str):
     return {"kb_id": kb_id, "doc_id": doc_id, "queued": True}
 
 
+@router.get("/docs")
+async def list_all_docs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1),
+    status: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    sort_by: _SORT_FIELDS = Query(default="updated_at"),
+    sort_order: _SORT_ORDERS = Query(default="desc"),
+):
+    from infra.postgres import list_all_docs_paginated
+
+    clamped_size = min(page_size, 100)
+    items, total = list_all_docs_paginated(
+        page=page,
+        page_size=clamped_size,
+        status=status,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    return {"items": items, "total": total, "page": page, "page_size": clamped_size}
+
+
 @router.get("/docs/status")
 async def all_docs_status():
-    from infra.postgres import list_docs as pg_list_docs, list_kb_ids
+    from infra.postgres import list_kb_ids, get_kb_doc_counts as pg_get_kb_doc_counts
 
     kb_ids = list_kb_ids()
-    all_docs = {}
-    for kb_id in kb_ids:
-        all_docs[kb_id] = pg_list_docs(kb_id)
-    return {"knowledge_bases": all_docs}
+    return {
+        "knowledge_bases": {
+            kb_id: {"doc_counts": pg_get_kb_doc_counts(kb_id)} for kb_id in kb_ids
+        }
+    }

@@ -264,6 +264,17 @@ def create_doc(
     return _row_to_doc(row)
 
 
+def get_pending_doc_count_for_connector(connector_id: str) -> int:
+    """Count docs owned by connector_id that have not yet reached a terminal status."""
+    with get_pool().connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM documents "
+            "WHERE connector_id = %s AND status NOT IN ('indexed', 'failed', 'deleted', 'deleting')",
+            [connector_id],
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def get_doc_by_id(doc_id: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(
@@ -373,6 +384,46 @@ def list_docs_paginated(
         ).fetchone()[0]
         rows = conn.execute(
             f"{_DOC_SELECT} WHERE {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
+            params + [page_size, offset],
+        ).fetchall()
+
+    return [_row_to_doc(r) for r in rows], total
+
+
+def list_all_docs_paginated(
+    page: int,
+    page_size: int,
+    status: str | None = None,
+    search: str | None = None,
+    sort_by: str = "updated_at",
+    sort_order: str = "desc",
+    include_deleted: bool = False,
+) -> tuple[list[dict], int]:
+    """Paginated, filtered, and sorted document list across all KBs."""
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if not include_deleted:
+        conditions.append("status != 'deleted'")
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+    if search:
+        conditions.append("source ILIKE %s")
+        params.append(f"%{search}%")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    order_dir = "DESC" if sort_order == "desc" else "ASC"
+    nulls_clause = "NULLS LAST" if sort_by in _NULL_LAST_FIELDS else ""
+    order_clause = f"{sort_by} {order_dir} {nulls_clause}".strip()
+
+    offset = (page - 1) * page_size
+    with get_pool().connection() as conn:
+        total: int = conn.execute(
+            f"SELECT COUNT(*) FROM documents {where}", params
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"{_DOC_SELECT} {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
             params + [page_size, offset],
         ).fetchall()
 
@@ -615,6 +666,20 @@ def get_connector_doc_counts(connector_id: str) -> dict[str, int]:
         rows = conn.execute(
             "SELECT status, COUNT(*) FROM documents WHERE connector_id = %s GROUP BY status",
             [connector_id],
+        ).fetchall()
+    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
+    for status, n in rows:
+        counts[status] = int(n)
+    counts["total"] = sum(v for k, v in counts.items() if k != "total")
+    return counts
+
+
+def get_kb_doc_counts(kb_id: str) -> dict[str, int]:
+    """Return {status: count, ..., "total": n} for all documents in a KB."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) FROM documents WHERE kb_id = %s GROUP BY status",
+            [kb_id],
         ).fetchall()
     counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
     for status, n in rows:

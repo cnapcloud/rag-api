@@ -53,12 +53,18 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
     doc = get_doc_by_id(config.doc_id)
     kb_id = doc["kb_id"] if doc else ""
     storage_key = doc.get("storage_key", "") if doc else ""
+    source = doc.get("source", "") if doc else ""
+    source_type = doc.get("source_type", "") if doc else ""
+    source_uri = doc.get("source_uri", "") if doc else ""
 
     yield Output(
         {
             "doc_id": config.doc_id,
             "kb_id": kb_id,
             "storage_key": storage_key,
+            "source": source,
+            "source_type": source_type,
+            "source_uri": source_uri,
             "force": config.force,
             "run_id": context.run_id,
         },
@@ -108,6 +114,9 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
         kb_id=valid_config["kb_id"],
         doc_id=valid_config["doc_id"],
         embedded_nodes=embedded_nodes,
+        source=valid_config.get("source", ""),
+        source_type=valid_config.get("source_type", ""),
+        source_uri=valid_config.get("source_uri", ""),
     )
     context.log.info("Upsert done: %d chunks", result.chunk_count)
     return result

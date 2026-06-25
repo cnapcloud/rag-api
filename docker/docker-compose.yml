@@ -39,6 +39,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: dagster-rag-api
+    stop_grace_period: 120s
     command: dagster api grpc -h 0.0.0.0 -p 4000 -f src/defs/definitions.py
     environment:
       PYTHONPATH: /app/src

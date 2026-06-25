@@ -170,6 +170,7 @@ def serve(
         port=port,
         reload=reload,
         factory=True,
+        log_config=None,
     )
 
 

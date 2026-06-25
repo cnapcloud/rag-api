@@ -1,9 +1,11 @@
 # API Guide
 
-API 사용자 및 운영자를 위한 엔드포인트 사용 가이드.
-스키마 및 내부 데이터 구조는 [api-spec.md](api-spec.md) 참고.
+API 사용자 및 운영자를 위한 엔드포인트 사용 가이드이다
+스키마 및 내부 데이터 구조는 [api-spec.md](api-spec.md)를 참고한다.
 
 Base URL: `http://localhost:8000`
+
+대화형 API 문서 (Swagger UI): `http://localhost:8000/docs`
 
 ---
 
@@ -162,19 +164,16 @@ curl http://localhost:8000/api/kb/kb-01/docs/{doc_id}/status
 
 # 문서 삭제 (벡터 + 메타데이터 + S3 파일)
 curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
-
-# 전체 KB 문서 현황 일괄 조회
-curl http://localhost:8000/api/docs/status
 ```
 
 ### 업로드 응답 (HTTP 202)
 
 ```json
 {
-  "doc_id": "550e8400-e29b-41d4-a716-446655440000",
+  "doc_id": "b59168c41e5e4a0d",
   "source_uri": "report.pdf",
   "etag": "d41d8cd98f00b204e9800998ecf8427e",
-  "status_url": "/api/kb/kb-01/docs/550e8400-e29b-41d4-a716-446655440000/status"
+  "status_url": "/api/kb/kb-01/docs/b59168c41e5e4a0d/status"
 }
 ```
 
@@ -251,7 +250,7 @@ curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed
 {
   "items": [
     {
-      "doc_id": "550e8400-e29b-41d4-a716-446655440000",
+      "doc_id": "b59168c41e5e4a0d",
       "kb_id": "kb-01",
       "source": "report.pdf",
       "source_type": "s3",
@@ -384,7 +383,7 @@ curl "http://localhost:8000/api/connectors?sort_by=name&sort_order=asc"
 {
   "items": [
     {
-      "connector_id": "550e8400-e29b-41d4-a716-446655440000",
+      "connector_id": "b59168c41e5e4a0d",
       "kb_id": "kb-01",
       "name": "Product Docs",
       "source_type": "web",
@@ -413,7 +412,7 @@ curl http://localhost:8000/api/connectors/02ec3eccc6814577
 `source_type`과 `kb_id`는 변경할 수 없습니다. `status`는 `active` / `paused`만 직접 설정 가능하며, `error`는 시스템이 자동으로 설정합니다.
 
 ```bash
-curl -X PATCH http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655440000 \
+curl -X PATCH http://localhost:8000/api/connectors/b59168c41e5e4a0d \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Product Docs v2",
@@ -436,13 +435,13 @@ curl -X PATCH http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-44665
 커넥터와 커넥터가 수집한 **모든 문서를 함께 삭제**합니다 (Qdrant 청크 + S3 파일 + Postgres 행). 즉시 202를 반환하고 백그라운드에서 실행됩니다.
 
 ```bash
-curl -X DELETE http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655440000
+curl -X DELETE http://localhost:8000/api/connectors/b59168c41e5e4a0d
 ```
 
 응답 (HTTP 202):
 
 ```json
-{ "connector_id": "550e8400-e29b-41d4-a716-446655440000", "status": "deleting" }
+{ "connector_id": "b59168c41e5e4a0d", "status": "deleting" }
 ```
 
 단, 커넥터를 통해 수집된 후 직접 업로드로 재업로드된 문서(`connector_id = NULL`)는 삭제되지 않습니다.
@@ -452,13 +451,13 @@ curl -X DELETE http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-4466
 수동으로 동기화를 시작합니다. `sync_schedule`과 무관하게 항상 사용 가능합니다.
 
 ```bash
-curl -X POST http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655440000/sync
+curl -X POST http://localhost:8000/api/connectors/b59168c41e5e4a0d/sync
 ```
 
 응답 (HTTP 202):
 
 ```json
-{ "connector_id": "550e8400-e29b-41d4-a716-446655440000", "sync_status": "running" }
+{ "connector_id": "b59168c41e5e4a0d", "sync_status": "running" }
 ```
 
 | 응답 코드 | 조건 |
@@ -479,7 +478,7 @@ curl http://localhost:8000/api/connectors/70779147cfc149de/sync/status
 
 ```json
 {
-  "connector_id": "550e8400-e29b-41d4-a716-446655440000",
+  "connector_id": "b59168c41e5e4a0d",
   "status": "active",
   "sync_status": "idle",
   "sync_started_at": null,
@@ -503,13 +502,13 @@ curl http://localhost:8000/api/connectors/70779147cfc149de/sync/status
 
 ### 커넥터 문서 목록
 
-이 커넥터가 수집한 문서 목록을 조회합니다. 쿼리 파라미터는 [section 5 — 문서 목록 조회](#5-문서-목록-조회)와 동일합니다.
+이 커넥터가 수집한 문서 목록을 조회합니다. 쿼리 파라미터는 [section 5 — 문서 목록 조회](#5-문서-목록-조회)와 동일합니다. 커넥터별 집계는 [section 7 — 문서 상태 집계 조회](#7-문서-상태-집계-조회)의 커넥터별 집계 참고.
 
 ```bash
-curl "http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655440000/docs"
+curl "http://localhost:8000/api/connectors/b59168c41e5e4a0d/docs"
 
 # 필터 + 정렬 예시
-curl "http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655440000/docs?status=failed&sort_by=updated_at"
+curl "http://localhost:8000/api/connectors/b59168c41e5e4a0d/docs?status=failed&sort_by=updated_at"
 ```
 
 응답 형식은 `GET /api/kb/{kb_id}/docs`와 동일합니다 (`items`, `total`, `page`, `page_size`).
@@ -528,7 +527,114 @@ curl "http://localhost:8000/api/connectors/550e8400-e29b-41d4-a716-446655440000/
 
 ---
 
-## 7. 검색
+## 7. 문서 상태 집계 조회
+
+처리 중인 문서가 있는지 확인하거나 전체 현황을 파악할 때 사용합니다.
+개별 문서를 전부 조회하지 않고 상태별 카운트만 반환하므로 대량 문서 환경에서도 가볍습니다.
+
+### 전체 KB 집계
+
+```bash
+curl http://localhost:8000/api/docs/status
+```
+
+응답:
+
+```json
+{
+  "knowledge_bases": {
+    "kb-01": {
+      "doc_counts": {
+        "indexed": 142,
+        "pending": 0,
+        "running": 0,
+        "failed": 1,
+        "deleted": 5,
+        "total": 148
+      }
+    },
+    "kb-02": {
+      "doc_counts": {
+        "indexed": 0,
+        "pending": 0,
+        "running": 0,
+        "failed": 0,
+        "deleted": 0,
+        "total": 0
+      }
+    }
+  }
+}
+```
+
+### 특정 KB 집계
+
+```bash
+curl http://localhost:8000/api/kb/kb-01/docs/status
+```
+
+응답:
+
+```json
+{
+  "kb_id": "kb-01",
+  "doc_counts": {
+    "indexed": 142,
+    "pending": 0,
+    "running": 0,
+    "failed": 1,
+    "deleted": 5,
+    "total": 148
+  }
+}
+```
+
+KB가 없으면 HTTP 404 반환.
+
+### 커넥터별 집계
+
+```bash
+curl http://localhost:8000/api/connectors/{connector_id}/sync/status
+```
+
+응답:
+
+```json
+{
+  "connector_id": "b59168c41e5e4a0d",
+  "status": "active",
+  "sync_status": "idle",
+  "sync_started_at": null,
+  "last_synced_at": "2026-06-20T02:00:05+09:00",
+  "doc_counts": {
+    "indexed": 142,
+    "pending": 0,
+    "running": 0,
+    "failed": 1,
+    "deleted": 5,
+    "total": 148
+  }
+}
+```
+
+`doc_counts.total`은 삭제된 문서를 포함한 전체 건수입니다.
+
+### 처리 완료 여부 확인 패턴
+
+```bash
+# pending + running 이 0 이면 모든 처리 완료
+curl -s http://localhost:8000/api/kb/kb-01/docs/status | \
+  python3 -c "
+import json, sys
+d = json.load(sys.stdin)['doc_counts']
+active = d['pending'] + d['running']
+print('active' if active > 0 else 'done', f'(pending={d[\"pending\"]} running={d[\"running\"]})')
+"
+```
+
+---
+
+## 8. 검색
 
 ### hybrid 모드 (기본)
 
@@ -608,7 +714,7 @@ curl -X POST http://localhost:8000/api/search \
 
 ---
 
-## 8. MCP 연결
+## 9. MCP 연결
 
 VS Code `.vscode/mcp.json` (워크스페이스 기준):
 

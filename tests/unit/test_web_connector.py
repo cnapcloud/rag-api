@@ -365,21 +365,31 @@ class TestShouldProcess:
         assert c._should_process("https://example.com/admin/settings") is False
         assert c._should_process("https://example.com/docs") is True
 
-    def test_pagination_path_blocked(self):
+    def test_pagination_path_allowed_for_link_discovery(self):
+        """Pagination URLs within seed scope are allowed by _should_process.
+
+        BFS must follow /page/2/ links to discover articles beyond page 1.
+        Staging is skipped inside _process_page, not here.
+        URLs outside seed scope are still blocked.
+        """
         from connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com/blog"]})
-        assert c._should_process("https://example.com/blog/page/2") is False
-        assert c._should_process("https://example.com/blog/page/2/") is False
-        assert c._should_process("https://example.com/posts/page/3/") is False
+        assert c._should_process("https://example.com/blog/page/2") is True
+        assert c._should_process("https://example.com/blog/page/2/") is True
+        assert c._should_process("https://example.com/posts/page/3/") is False  # outside seed scope
         assert c._should_process("https://example.com/blog/my-article") is True
 
-    def test_pagination_query_blocked(self):
+    def test_pagination_query_allowed_for_link_discovery(self):
+        """Query-based pagination within seed scope is allowed by _should_process.
+
+        Staging is skipped inside _process_page, not here.
+        """
         from connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com"]})
-        assert c._should_process("https://example.com/blog?page=2") is False
-        assert c._should_process("https://example.com/blog?p=3") is False
+        assert c._should_process("https://example.com/blog?page=2") is True
+        assert c._should_process("https://example.com/blog?p=3") is True
         assert c._should_process("https://example.com/blog?category=tech") is True
 
 

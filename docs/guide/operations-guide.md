@@ -116,6 +116,11 @@ docker exec dagster-daemon dagster sensor stop event_queue_sensor -w /opt/dagste
 
 점검이나 배포 전에 센서를 먼저 중지하면 진행 중인 job이 중간에 끊기는 상황을 예방할 수 있다.
 
+
+
+
+
+
 ---
 
 ## 3. 인제스트 수동 트리거 (reindex)

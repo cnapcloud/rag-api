@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _STALE_SYNC_TIMEOUT_SEC = 1800  # 30 minutes
+_INDEXING_POLL_INTERVAL_SEC = 5
+_INDEXING_TIMEOUT_SEC = 1800  # 30 minutes
 
 
 class ConnectorCreate(BaseModel):
@@ -178,12 +180,30 @@ async def trigger_sync(connector_id: str, background_tasks: BackgroundTasks):
     return {"connector_id": connector_id, "sync_status": "running"}
 
 
+def _wait_for_indexing(connector_id: str) -> None:
+    """Poll Postgres until all docs for this connector reach a terminal status."""
+    import time
+
+    from infra.postgres import get_pending_doc_count_for_connector
+
+    deadline = time.monotonic() + _INDEXING_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        pending = get_pending_doc_count_for_connector(connector_id)
+        if pending == 0:
+            return
+        logger.debug("Waiting for indexing: connector_id=%s pending=%d", connector_id, pending)
+        time.sleep(_INDEXING_POLL_INTERVAL_SEC)
+
+    logger.warning("Indexing wait timed out: connector_id=%s", connector_id)
+
+
 def _run_sync(connector: dict) -> None:
     from infra.postgres import set_connector_status, set_connector_sync_status
 
     connector_id = connector["connector_id"]
     try:
         _dispatch_sync(connector)
+        _wait_for_indexing(connector_id)
         set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(timezone.utc))
         logger.info("Connector sync complete: connector_id=%s", connector_id)
     except Exception as e:
@@ -239,7 +259,7 @@ async def get_sync_status(connector_id: str):
 async def list_connector_docs(
     connector_id: str,
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1),
+    page_size: int = Query(default=10, ge=1),
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
     sort_by: str = Query(default="updated_at"),

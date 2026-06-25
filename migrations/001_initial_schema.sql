@@ -61,6 +61,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_title_hash
     ON documents (kb_id, title_hash) WHERE title_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_connector
     ON documents (connector_id) WHERE connector_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_documents_connector_status
+    ON documents (connector_id, status) WHERE connector_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_status
     ON documents (kb_id, status);
 

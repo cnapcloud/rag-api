@@ -102,6 +102,8 @@ def _make_result(text="hello", kb_id="kb-a", doc_key="doc.pdf", score=0.9):
         kb_id=kb_id,
         doc_key=doc_key,
         source="doc.pdf",
+        source_type="s3",
+        source_uri=doc_key,
         doc_type="pdf",
         chunk_index=0,
         page_num=1,
