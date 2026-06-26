@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Iterator
@@ -53,8 +52,7 @@ class ConfluenceConnector:
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.timeout: int = int(config.get("request_timeout_sec", 30))
 
-        auth_secret = config.get("auth_token_secret")
-        token = os.environ[auth_secret] if auth_secret else None
+        token: str | None = config.get("auth_token_secret") or None
         if token and ":" in token:
             encoded = base64.b64encode(token.encode()).decode()
             self._auth_header: str | None = f"Basic {encoded}"
@@ -106,6 +104,10 @@ class ConfluenceConnector:
         ) as client:
             pages_total = 0
             for page in self._iter_pages(client):
+                from connectors.abort import is_abort_requested
+                if is_abort_requested(connector_id):
+                    logger.info("Confluence sync aborted: connector_id=%s", connector_id)
+                    break
                 self._process_page(client, kb_id, connector_id, page)
                 pages_total += 1
 

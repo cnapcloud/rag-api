@@ -36,6 +36,8 @@ dependencies = [
     # GitHub 커넥터 — CodeSplitter
     "tree-sitter>=0.21",
     "tree-sitter-languages>=1.10",
+    # 암호화 (커넥터 시크릿)
+    "cryptography>=42.0.0",
     # 설정
     "pydantic-settings>=2.2.0",
     "pyyaml>=6.0",

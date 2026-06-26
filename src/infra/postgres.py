@@ -348,6 +348,7 @@ def list_docs_paginated(
     page: int,
     page_size: int,
     status: str | None = None,
+    source_type: str | None = None,
     search: str | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
@@ -368,6 +369,9 @@ def list_docs_paginated(
     if status:
         conditions.append("status = %s")
         params.append(status)
+    if source_type:
+        conditions.append("source_type = %s")
+        params.append(source_type)
     if search:
         conditions.append("(source ILIKE %s OR source_uri ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%"])

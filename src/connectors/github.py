@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
 import time
 from pathlib import Path
 
@@ -49,8 +48,7 @@ class GitHubConnector:
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.timeout: int = int(config.get("request_timeout_sec", 30))
 
-        auth_secret = config.get("auth_token_secret")
-        token = os.environ.get(auth_secret) if auth_secret else None
+        token: str | None = config.get("auth_token_secret") or None
         self._auth_header: str | None = f"Bearer {token}" if token else None
 
     def _headers(self) -> dict[str, str]:
@@ -66,8 +64,26 @@ class GitHubConnector:
         if self.request_delay_ms > 0:
             time.sleep(self.request_delay_ms / 1000)
         resp = client.get(f"{_GITHUB_API}/{path}", params=params or {})
+
+        if resp.status_code in (403, 429):
+            wait = self._rate_limit_wait(resp)
+            if wait > 0:
+                logger.warning("GitHub rate limit hit: sleeping %.0f s", wait)
+                time.sleep(wait)
+                resp = client.get(f"{_GITHUB_API}/{path}", params=params or {})
+
         resp.raise_for_status()
         return resp.json()
+
+    @staticmethod
+    def _rate_limit_wait(resp: httpx.Response) -> float:
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after:
+            return max(float(retry_after), 1.0)
+        reset_ts = resp.headers.get("X-RateLimit-Reset")
+        if reset_ts:
+            return max(float(reset_ts) - time.time() + 1.0, 1.0)
+        return 0.0
 
     def _get_tree_sha(self, client: httpx.Client) -> str:
         data = self._api_get(client, f"repos/{self.owner}/{self.repo}/branches/{self.branch}")
@@ -128,6 +144,10 @@ class GitHubConnector:
                 total,
             )
             for item in blobs:
+                from connectors.abort import is_abort_requested
+                if is_abort_requested(connector_id):
+                    logger.info("GitHub sync aborted: connector_id=%s", connector_id)
+                    break
                 try:
                     self._process_file(client, kb_id, connector_id, item)
                 except Exception as e:
@@ -161,7 +181,7 @@ class GitHubConnector:
         sha: str = item["sha"]
         file_size: int = item.get("size", 0)
         ext: str = Path(path).suffix.lower()
-        source_uri = f"github://{self.owner}/{self.repo}/{self.branch}/{path}"
+        source_uri = f"https://github.com/{self.owner}/{self.repo}/blob/{self.branch}/{path}"
 
         if file_size > self.max_file_bytes:
             logger.info(

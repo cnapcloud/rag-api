@@ -13,6 +13,10 @@ from pydantic import BaseModel, Field
 # 하위 모델
 # ──────────────────────────────────────────────
 
+class DagsterSettings(BaseModel):
+    endpoint: str = "http://dagster-webserver:3000"
+
+
 class S3Settings(BaseModel):
     endpoint: str = "http://minio:9000"
     access_key: str = ""
@@ -141,6 +145,7 @@ _SETTINGS_PATH = Path(__file__).parents[2] / "settings.yaml"
 
 
 class Settings(BaseModel):
+    dagster: DagsterSettings = Field(default_factory=DagsterSettings)
     s3: S3Settings = Field(default_factory=S3Settings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)

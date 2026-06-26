@@ -17,7 +17,7 @@ _FILE_PATH = "src/main.py"
 _FILE_SHA = "abc123def456"
 _FILE_SIZE = 1024
 _DOC_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-_SOURCE_URI = f"github://{OWNER}/{REPO}/{BRANCH}/{_FILE_PATH}"
+_SOURCE_URI = f"https://github.com/{OWNER}/{REPO}/blob/{BRANCH}/{_FILE_PATH}"
 _STORAGE_KEY = f"{KB_ID}/github/{_DOC_ID}.py"
 
 _TREE_SHA = "tree-sha-001"
@@ -113,9 +113,8 @@ class TestConstructor:
         assert c.request_delay_ms == 0
         assert c._auth_header is None
 
-    def test_auth_token_from_env(self, monkeypatch):
-        monkeypatch.setenv("GITHUB_TOKEN", "my-pat")
-        c = _make_connector({"auth_token_secret": "GITHUB_TOKEN"})
+    def test_auth_token_from_config(self):
+        c = _make_connector({"auth_token_secret": "my-pat"})
         assert c._auth_header == "Bearer my-pat"
 
 

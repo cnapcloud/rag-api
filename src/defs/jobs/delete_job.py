@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from dagster import in_process_executor, job
 
-from defs.ops.delete_ops import delete_chunks_op, delete_failure_hook, delete_meta_op
+from defs.ops.delete_ops import delete_chunks_op, delete_failure_hook, delete_meta_op, delete_s3_op
 
 
 @job(
-    description="단일 문서 삭제 파이프라인 (문서 1개 = Run 1개)",
+    description="Single document delete pipeline (one run per document)",
     tags={"pipeline": "delete"},
     hooks={delete_failure_hook},
     executor_def=in_process_executor,
 )
 def delete_job():
     result = delete_chunks_op()
-    delete_meta_op(result)
+    s3_result = delete_s3_op(result)
+    delete_meta_op(s3_result)

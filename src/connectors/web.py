@@ -181,6 +181,10 @@ class WebConnector:
 
         with httpx.Client(**client_kwargs) as client:
             while queue and pages_processed < self.max_pages:
+                from connectors.abort import is_abort_requested
+                if is_abort_requested(connector_id):
+                    logger.info("Web sync aborted: connector_id=%s", connector_id)
+                    break
                 source_uri, current_depth = queue.popleft()
 
                 if source_uri in visited:

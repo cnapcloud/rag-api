@@ -16,6 +16,7 @@
 | v4.0 | MinIO Sensor → event_queue_sensor(Redis 큐 기반)로 전면 교체, minio_sensor 제거, _is_blocked_by_active_run 좀비 복구 통합, sparse 벡터 자체 TF 인코더로 변경, 아키텍처/설계 문서 분리 |
 | v5.0 | **Redis → Postgres 메타데이터 마이그레이션** (US-11), MCP 서버 추가, 검색 흐름 문서화 |
 | v5.1 | 이벤트 처리 경로 상세화, 이벤트 라이프사이클 추가, QueueWorker zombie 복구 불가 명시, delay queue dedup 제거(_retry_id 도입) |
+| v5.2 | 커넥터 섹션 추가 — 구조, 상태 처리 흐름, 커넥터/문서 상태 구분, 스케줄 등록 방식 |
 
 ---
 
@@ -216,7 +217,70 @@ delay queue(`rag:upload:delay`)는 Redis sorted set이며 score = 재시도 예�
 
 ---
 
-## 5. MCP 서버
+## 5. 커넥터 (Connector)
+
+외부 소스(GitHub, Confluence, Web)에서 문서를 주기적으로 가져와 인제스트 파이프라인에 투입하는 컴포넌트.
+
+### 기본 구조
+
+```
+src/connectors/
+  github.py       # GitHubConnector — 레포 파일 fetch
+  confluence.py   # ConfluenceConnector — 페이지/첨부파일 fetch
+  web.py          # WebConnector — 시드 URL 크롤링
+  factory.py      # source_type → Connector 클래스 매핑 (미사용, dispatch는 routers에서)
+```
+
+각 커넥터는 `sync(kb_id, connector_id)` 메서드 하나만 외부에 노출한다. 내부에서 파일 목록 조회 → 개별 파일 다운로드 → S3 스테이징 → 인제스트 큐 투입을 순차 처리한다.
+
+커넥터 설정(`config`)은 Postgres `connectors` 테이블에 JSON으로 저장되며, `auth_token_secret` 등 민감 필드는 Fernet(AES-128)으로 암호화된다. 복호화는 `_dispatch_sync` 호출 시점에만 수행되고 API 응답에는 `"***"`으로 마스킹된다.
+
+### 상태 처리 흐름
+
+```
+POST /api/connectors/{id}/sync
+  → set sync_status = "running"
+  → BackgroundTask: _run_sync()
+      → _dispatch_sync()
+          → decrypt_config()
+          → Connector(config).sync(kb_id, connector_id)
+              파일별:
+                get_doc_by_source_uri()
+                  [신규] create_doc(status="fetching")
+                  [기존] update_doc_fields(status="fetching")
+                download_file() → upload_to_s3() → enqueue_upload_event()
+                  → doc status: pending → running → indexed / failed
+      → set sync_status = "idle", last_synced_at = now
+  오류 시:
+      → set connector status = "error"
+      → set sync_status = "idle"
+```
+
+### 커넥터 / 문서 상태 구분
+
+| 구분 | 필드 | 값 |
+|------|------|----|
+| 커넥터 실행 상태 | `sync_status` | `idle` / `running` |
+| 커넥터 운영 상태 | `status` | `active` / `paused` / `error` / `deleting` |
+| 문서 인제스트 상태 | `status` | `fetching` → `pending` → `running` → `indexed` / `failed` |
+
+`sync_status`는 현재 sync 작업 진행 여부만 나타낸다. `schedule_enabled`가 `false`이면 Dagster 스케줄이 tick해도 `SkipReason`을 반환하고 실제 run을 생성하지 않는다.
+
+운영 액션(상태 값이 아님):
+
+| 액션 | 수단 | 설명 |
+|------|------|------|
+| Pause | `PATCH status: "paused"` | 수동/자동 sync 전면 차단 |
+| Resume | `PATCH status: "active"` | pause 해제 |
+| Reset | `POST /sync/reset` | `sync_status`가 stuck된 경우 `idle`로 강제 초기화. 실행 중 작업을 중단하지는 않음 |
+
+### 스케줄 등록
+
+`sync_schedule`(cron)이 설정된 커넥터는 **Dagster 컨테이너 시작 시** `load_connector_schedules()`가 DB를 조회해 `ScheduleDefinition`으로 등록한다. `dagster api grpc` 방식은 런타임 reload를 지원하지 않으므로, `sync_schedule` 변경 시 Dagster 컨테이너 재시작이 필요하다. `schedule_enabled` 토글은 재시작 없이 즉시 반영된다(execution_fn에서 DB 재조회).
+
+---
+
+## 6. MCP 서버
 
 FastMCP 기반 LLM 툴 인터페이스. `search`, `list_knowledge_bases`, `get_document_status` 3개 툴을 노출한다.
 FastAPI 프로세스에 embedded(`/mcp` 엔드포인트)되거나 `python -m main serve-mcp`로 독립 실행된다.

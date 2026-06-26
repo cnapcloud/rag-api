@@ -121,15 +121,13 @@ class TestInit:
     def test_basic_auth_from_email_colon_token(self):
         import base64
 
-        with patch.dict("os.environ", {"MY_TOKEN": "user@example.com:mytoken"}):
-            c = _make_confluence_connector(extra={"auth_token_secret": "MY_TOKEN"})
+        c = _make_confluence_connector(extra={"auth_token_secret": "user@example.com:mytoken"})
 
         expected = "Basic " + base64.b64encode(b"user@example.com:mytoken").decode()
         assert c._auth_header == expected
 
     def test_bearer_auth_from_pat(self):
-        with patch.dict("os.environ", {"MY_PAT": "secret-pat-value"}):
-            c = _make_confluence_connector(extra={"auth_token_secret": "MY_PAT"})
+        c = _make_confluence_connector(extra={"auth_token_secret": "secret-pat-value"})
 
         assert c._auth_header == "Bearer secret-pat-value"
 

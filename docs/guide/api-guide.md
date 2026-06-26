@@ -305,8 +305,8 @@ curl -X POST http://localhost:8000/api/connectors \
 | `name` | 필수 | 사용자 표시 이름 |
 | `source_type` | 필수 | `web` / `confluence` / `github` (생성 후 변경 불가) |
 | `config` | 필수 | 소스별 설정 (필수 항목은 아래 스키마 참조) |
-| `sync_schedule` | 선택 | cron 표현식 (예: `"0 2 * * *"` = 매일 새벽 2시). **현재 미구현 — DB에 저장만 됨** |
-| `schedule_enabled` | 선택 | 스케줄 자동 실행 여부 (기본값: `false`). **현재 미구현** |
+| `sync_schedule` | 선택 | cron 표현식 (예: `"0 2 * * *"` = 매일 새벽 2시). 설정 후 **Dagster 컨테이너 재시작** 시 스케줄 자동 등록 |
+| `schedule_enabled` | 선택 | 스케줄 자동 실행 여부 (기본값: `false`). PATCH로 변경 시 재시작 없이 즉시 반영 |
 
 응답 (HTTP 201): 생성된 커넥터 전체 필드.
 
@@ -539,6 +539,42 @@ curl -X POST http://localhost:8000/api/connectors/b59168c41e5e4a0d/sync
 
 30분이 지났는데도 `sync_status=running`이면 이전 실행이 비정상 종료된 것으로 판단해 재트리거를 허용합니다.
 
+### Pause / Resume
+
+커넥터를 일시 중단하거나 재개합니다. `status=paused`이면 수동 트리거(`POST /sync`)와 자동 스케줄 모두 차단됩니다.
+
+```bash
+# Pause
+curl -X PATCH http://localhost:8000/api/connectors/b59168c41e5e4a0d \
+  -H "Content-Type: application/json" \
+  -d '{"status": "paused"}'
+
+# Resume
+curl -X PATCH http://localhost:8000/api/connectors/b59168c41e5e4a0d \
+  -H "Content-Type: application/json" \
+  -d '{"status": "active"}'
+```
+
+| `status` | 동작 |
+|----------|------|
+| `active` | 정상 운영. 수동/자동 sync 모두 허용 |
+| `paused` | 전면 중단. 수동/자동 sync 모두 차단 (409 반환) |
+| `error` | 시스템 자동 설정. sync 실패 시 기록되며 직접 설정 불가 |
+
+### 동기화 상태 초기화 (Reset)
+
+`sync_status`가 `running`에 stuck된 경우 강제로 `idle`로 초기화합니다. 실행 중인 작업을 중단하지는 않으며 상태 값만 리셋합니다.
+
+```bash
+curl -X POST http://localhost:8000/api/connectors/b59168c41e5e4a0d/sync/reset
+```
+
+응답 (HTTP 200):
+
+```json
+{ "connector_id": "b59168c41e5e4a0d", "sync_status": "idle" }
+```
+
 ### 동기화 상태 확인
 
 ```bash
@@ -570,6 +606,52 @@ curl http://localhost:8000/api/connectors/70779147cfc149de/sync/status
 |---------------|------|
 | `idle` | 대기 중 (마지막 실행 완료 또는 한 번도 실행 안 됨) |
 | `running` | 동기화 진행 중 |
+
+### 스케줄 자동 동기화
+
+`sync_schedule`에 cron 표현식을 설정하고 `schedule_enabled: true`로 두면, 지정한 시각에 Dagster Schedule이 `connector_sync_job`을 자동으로 실행합니다. 실행 흐름은 수동 트리거와 동일합니다.
+
+```
+Dagster Schedule (cron 도달)
+  → connector_sync_job
+    → connector_sync_op
+      → WebConnector / ConfluenceConnector / GitHubConnector
+        → 문서 fetch → S3 staging → ingest 큐 적재
+          → ingest_job (validate → parse → chunk → embed → upsert → meta)
+```
+
+```json
+{
+  "sync_schedule": "0 2 * * *",
+  "schedule_enabled": true
+}
+```
+
+**동작 방식**
+
+| 항목 | 동작 |
+|------|------|
+| 등록 시점 | **Dagster 컨테이너 재시작 시** `sync_schedule IS NOT NULL`인 커넥터를 DB에서 읽어 `connector_sync_job` 연결 스케줄로 자동 등록. `dagster api grpc` 방식은 런타임 reload를 지원하지 않으므로 신규 커넥터에 `sync_schedule`을 설정하면 재시작 필요 |
+| `schedule_enabled` 토글 | PATCH로 변경하면 **재시작 없이 즉시 반영** — 다음 firing 시점에 DB를 재조회해 `false`면 실행 생략 |
+| cron 표현식 변경 | `sync_schedule` 자체를 바꾸면 Dagster 컨테이너 재시작 필요 |
+| 수동 트리거 | `POST /sync`는 `schedule_enabled` 값과 무관하게 항상 사용 가능하며 동일한 `connector_sync_job` 경로로 실행 |
+| 중복 방지 | 같은 실행 구간에 중복 firing이 발생해도 Dagster가 `run_key`로 무시 |
+
+**cron 표현식 형식** (5-field, UTC 기준)
+
+```
+분 시 일 월 요일
+0 2 * * *    → 매일 02:00
+0 */6 * * *  → 6시간마다
+0 9 * * 1    → 매주 월요일 09:00
+```
+
+**`status`와 `schedule_enabled`의 차이**
+
+| 필드 | 역할 |
+|------|------|
+| `status: paused` | 수동 트리거(`POST /sync`)까지 차단 |
+| `schedule_enabled: false` | 자동 스케줄만 비활성화, 수동 트리거는 허용 |
 
 ### 커넥터 문서 목록
 

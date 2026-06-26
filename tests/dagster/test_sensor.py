@@ -79,6 +79,7 @@ def _run_sensor(
         )
         stack.enter_context(patch("infra.postgres.get_doc_by_id", return_value=pg_doc_by_id))
         stack.enter_context(patch("infra.postgres.update_doc_fields"))
+        stack.enter_context(patch("pipeline.ops.meta.update_doc_fields"))
         if get_run_by_id is not None:
             mock_instance = MagicMock()
             mock_instance.get_run_by_id.side_effect = get_run_by_id

@@ -23,6 +23,8 @@ SUPPORTED_EXTENSIONS = {
     ".go", ".java", ".rs",
     ".cpp", ".cc", ".c", ".cs",
     ".rb", ".php", ".swift", ".kt", ".scala", ".sh",
+    # config / data
+    ".yaml", ".yml", ".properties",
 }
 
 CODE_EXTENSIONS: frozenset[str] = frozenset({

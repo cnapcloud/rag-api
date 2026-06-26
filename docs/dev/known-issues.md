@@ -8,53 +8,37 @@
 
 1. [DELETE /docs/{source} returns 200 for non-existent document](#1-delete-docssource-returns-200-for-non-existent-document)
 2. [Dagster SensorDefinition owners parameter BetaWarning](#2-dagster-sensordefinition-owners-parameter-betawarning)
+3. [커넥터 동기화 중단 불가](#3-커넥터-동기화-중단-불가)
+4. [Delete + Reindex race condition](#4-delete--reindex-race-condition)
 
 ---
 
-## 1. DELETE /docs/{source} returns 200 for non-existent document
+## 1. DELETE /docs/{doc_id} returns 200 for non-existent document
 
 | 항목 | 내용 |
 |------|------|
-| 상태 | open |
+| 상태 | resolved |
 | 발견일 | 2026-06-19 |
+| 해결일 | 2026-06-26 |
 | 심각도 | LOW |
 
 **증상**
 
-존재하지 않는 문서를 삭제 요청해도 `200 {"status":"deleted"}`가 반환된다.
-
-```bash
-curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/notexist.pdf
-# {"kb_id":"kb-01","doc_source":"notexist.pdf","status":"deleted"}  HTTP 200
-```
+존재하지 않는 문서를 삭제 요청해도 `200`이 반환됐다.
 
 **원인**
 
-`DELETE /api/kb/{kb_id}/docs/{source}` 라우터가 삭제 전 문서 존재 여부를 확인하지 않는다.
-Qdrant 및 Redis에서 해당 키가 없더라도 삭제 연산 자체는 오류 없이 완료되므로
-결과적으로 아무것도 삭제하지 않았음에도 성공 응답을 반환한다.
+`DELETE /api/kb/{kb_id}/docs/{doc_id}` 라우터가 삭제 전 문서 존재 여부를 확인하지 않았다.
 
-**기대 동작**
+**해결**
 
-문서가 존재하지 않으면 `404 NotFoundError`를 반환해야 한다.
-
-**해결 방안**
-
-삭제 로직 전에 Redis에서 문서 메타데이터 존재 여부를 조회하고,
-없으면 `NotFoundError`를 raise한다.
+`get_doc_by_id`로 Postgres에서 문서를 조회하고, 없거나 `kb_id`가 불일치하면 `NotFoundError`(404)를 반환한다.
 
 ```python
-# api/routers/docs.py
-meta = get_doc_meta(kb_id, source)
-if meta is None:
-    raise NotFoundError(f"Document not found: kb={kb_id} source={source}")
+doc = get_doc_by_id(doc_id)
+if doc is None or doc.get("kb_id") != kb_id:
+    raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
 ```
-
-**비고**
-
-REST 표준(RFC 9110)상 DELETE는 멱등(idempotent)이어야 하지만,
-두 번째 호출이 404를 반환하는 것은 허용된다.
-클라이언트가 실제 삭제 여부를 구분할 수 없는 현 동작은 혼란을 유발할 수 있다.
 
 ---
 
@@ -100,3 +84,64 @@ warnings.filterwarnings("ignore", category=BetaWarning)
 
 Dagster가 `owners` 파라미터를 정식 릴리스하면 경고는 자동으로 사라진다.
 현재 기능 동작에는 영향 없음.
+
+---
+
+## 3. 커넥터 동기화 중단 불가
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-06-26 |
+| 심각도 | MED |
+
+**증상**
+
+`POST /sync`로 시작된 동기화를 중간에 중단할 방법이 없다. `POST /sync/reset`은 DB의 `sync_status`를 `idle`로 초기화할 뿐, 실행 중인 작업을 멈추지 않는다.
+
+**원인**
+
+동기화는 FastAPI `BackgroundTask`(일반 Python 스레드)로 실행된다. 완전한 중단을 위해서는 세 가지를 동시에 처리해야 한다:
+
+1. **커넥터 수집 루프 중단** — 파일 fetch 루프에 abort 플래그 체크 추가
+2. **Redis 인제스트 큐에서 해당 커넥터 항목 제거** — Redis list는 특정 항목만 골라내는 atomic 연산이 없어 drain 후 재투입 방식만 가능
+3. **Dagster 실행 대기(QUEUED) run 제거** — Dagster run queue에 쌓인 미시작 run을 GraphQL `deletePipelineRun()` 또는 `cancelPipelineRun()`으로 제거 필요
+4. **실행 중인 Dagster job 취소** — GraphQL `terminateRun()` 호출 필요
+
+**현재 대안**
+
+`POST /api/connectors/{id}/sync/abort`로 수집 루프를 중단할 수 있다. 커넥터가 파일/URL을 처리할 때마다 abort 플래그를 확인하고 감지 시 즉시 루프를 종료한다. 단, 이미 Redis 큐에 투입된 문서는 Dagster가 계속 처리하며, Dagster에서 실행 중인 job은 별도로 취소되지 않는다.
+
+**미해결**
+
+2(Redis 큐 항목 제거), 3(Dagster 대기 run 제거), 4(실행 중 Dagster job 취소)는 미구현 상태.
+
+---
+
+## 4. Delete + Reindex race condition
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-06-26 |
+| 심각도 | LOW |
+
+**증상**
+
+문서 삭제 요청 직후 reindex를 요청하면, 삭제 job이 완료되기 전에 ingest job이 큐에 추가된다. 이후 삭제 job이 S3 파일을 지우고 나서 ingest job이 실행되면 파일을 찾지 못해 실패한다.
+
+**원인**
+
+`enqueue_delete_event`와 `enqueue_upload_event` 모두 doc status를 `pending`으로 설정한다. reindex 로직이 `include_deleted=False`(즉 `deleted_at IS NULL`) 기준으로 대상 문서를 조회하기 때문에, 삭제 큐에 들어간 문서(`pending` 상태)도 reindex 대상에 포함된다.
+
+**발생 조건**
+
+삭제 요청과 reindex 요청이 delete job 실행 전에 연속으로 발생해야 하므로 실제 발생 빈도는 낮다.
+
+**현재 동작**
+
+ingest job이 S3 파일을 찾지 못해 실패하고 doc status가 `failed`로 남는다. 이미 soft-delete된 상태이므로 사용자에게 노출되지 않으며, 데이터 정합성은 유지된다.
+
+**해결 방안 (미적용)**
+
+"in-flight 문서에 대한 새 작업 차단" 방식으로 해결할 수 있으나, 비정상 종료 시 `pending`/`running` 상태에 stuck되는 문서 복구 문제(startup reset, timeout 기반 복구 등)를 함께 구현해야 한다. 현재 피해가 graceful한 수준이므로 복잡도 대비 이득이 낮아 보류.

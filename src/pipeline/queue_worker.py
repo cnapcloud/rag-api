@@ -3,6 +3,11 @@
 Runs as an asyncio background task inside FastAPI unless queue_worker.enabled is false.
 Polls rag:upload:queue and rag:delete:queue, executes pipeline functions in a
 ThreadPoolExecutor, and limits concurrency via asyncio.Semaphore.
+
+Duplicate handling: blocked events are written to a Redis sorted set (delay queue)
+with score = ready_at timestamp. The same doc_id payload overwrites the existing
+entry (ZADD semantics), preventing accumulation. Each poll drains ready entries
+back to the main queue before processing.
 """
 
 from __future__ import annotations
@@ -10,11 +15,38 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 
-from pipeline.enqueue import DELETE_QUEUE_KEY, UPLOAD_QUEUE_KEY
+from pipeline.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
+
+
+def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
+    """Move ready items from the delay sorted set back to the main queue."""
+    now = time.time()
+    items = r.zrangebyscore(delay_key, 0, now)
+    if not items:
+        return
+    r.zrem(delay_key, *items)
+    for item in items:
+        try:
+            event = json.loads(item)
+        except json.JSONDecodeError:
+            event = {}
+        doc_id = event.get("doc_id", "")
+        if doc_id:
+            try:
+                from infra.postgres import get_doc_by_id, update_doc_fields
+                doc = get_doc_by_id(doc_id)
+                current = doc.get("status", "") if doc else ""
+                if current not in ("running", "deleting"):
+                    update_doc_fields(doc_id, {"status": "pending"})
+            except Exception as e:
+                logger.warning("drain_delay: status update failed: doc_id=%s err=%s", doc_id, e)
+        r.lpush(main_key, item)
+    logger.debug("Drained %d item(s) from %s to %s", len(items), delay_key, main_key)
 
 
 class QueueWorker:
@@ -48,6 +80,12 @@ class QueueWorker:
             logger.warning("Redis connection failed (queue_worker): %s", e)
             return False
 
+        _drain_delay_queue(r, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY)
+        _drain_delay_queue(r, DELETE_DELAY_KEY, DELETE_QUEUE_KEY)
+
+        from config.settings import get_settings
+        delay_sec = get_settings().queue_poll.retry_interval_sec
+
         upload_count = 0
         while upload_count < self._max_per_poll:
             raw = r.rpop(UPLOAD_QUEUE_KEY)
@@ -71,13 +109,9 @@ class QueueWorker:
             doc = get_doc_by_id(doc_id)
             if doc:
                 s = doc.get("status", "")
-                if s == "deleting":
-                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw, doc_id))
-                    logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
-                    continue
-                elif s == "running":
-                    asyncio.create_task(self._requeue_after_delay(UPLOAD_QUEUE_KEY, raw, doc_id))
-                    logger.info("Upload event delayed (running): doc_id=%s", doc_id)
+                if s in ("running", "deleting"):
+                    r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+                    logger.info("Upload event delayed (%s): doc_id=%s", s, doc_id)
                     continue
 
             set_processing(doc_id)
@@ -106,7 +140,7 @@ class QueueWorker:
 
             doc = get_doc_by_id(doc_id)
             if doc and doc.get("status") in ("running", "deleting"):
-                asyncio.create_task(self._requeue_after_delay(DELETE_QUEUE_KEY, raw, doc_id))
+                r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
                 logger.info("Delete event delayed (busy): doc_id=%s", doc_id)
                 continue
 
@@ -116,25 +150,6 @@ class QueueWorker:
             delete_count += 1
 
         return upload_count >= self._max_per_poll or delete_count >= self._max_per_poll
-
-    async def _requeue_after_delay(self, queue_key: str, raw: str, doc_id: str) -> None:
-        from config.settings import get_settings
-        from infra.redis import get_redis_client
-
-        delay = get_settings().queue_poll.retry_interval_sec
-        await asyncio.sleep(delay)
-
-        try:
-            from infra.postgres import get_doc_by_id, update_doc_fields
-            doc = get_doc_by_id(doc_id)
-            current = doc.get("status", "") if doc else ""
-            if current not in ("running", "deleting"):
-                update_doc_fields(doc_id, {"status": "pending"})
-        except Exception as e:
-            logger.warning("_requeue_after_delay status check failed: doc_id=%s err=%s", doc_id, e)
-
-        get_redis_client().lpush(queue_key, raw)
-        logger.debug("Re-queued delayed event to %s doc_id=%s", queue_key, doc_id)
 
     async def _run_ingest(self, event: dict) -> None:
         assert self._semaphore is not None

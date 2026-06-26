@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from dagster import RunRequest, ScheduleDefinition, SkipReason
+from dagster import DefaultScheduleStatus, RunRequest, ScheduleDefinition, SkipReason
 
 from defs.jobs.connector_sync_job import connector_sync_job
 
@@ -42,6 +42,7 @@ def _make_connector_schedule(connector: dict) -> ScheduleDefinition:
         cron_schedule=cron,
         job=connector_sync_job,
         execution_fn=execution_fn,
+        default_status=DefaultScheduleStatus.RUNNING,
         description=f"Scheduled sync for connector {connector_id} ({cron})",
     )
 

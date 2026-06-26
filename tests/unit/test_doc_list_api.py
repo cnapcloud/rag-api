@@ -55,7 +55,7 @@ class TestListDocsDefaultResponse:
     def test_default_params_passed_to_postgres(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured.update(locals())
             return ([], 0)
 
@@ -74,7 +74,7 @@ class TestListDocsPagination:
     def test_page2_passed_correctly(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["page"] = page
             captured["page_size"] = page_size
             return ([], 50)
@@ -101,7 +101,7 @@ class TestListDocsPagination:
     def test_page_size_clamped_to_100(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["page_size"] = page_size
             return ([], 0)
 
@@ -122,7 +122,7 @@ class TestListDocsSearch:
     def test_search_param_forwarded(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["search"] = search
             return ([], 0)
 
@@ -149,7 +149,7 @@ class TestListDocsStatusFilter:
     def test_status_param_forwarded(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["status"] = status
             return ([], 0)
 
@@ -176,7 +176,7 @@ class TestListDocsSort:
     def test_sort_by_source_param_forwarded(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["sort_by"] = sort_by
             captured["sort_order"] = sort_order
             return ([], 0)

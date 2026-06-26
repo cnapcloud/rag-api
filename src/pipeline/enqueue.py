@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_QUEUE_KEY = "rag:upload:queue"
 DELETE_QUEUE_KEY = "rag:delete:queue"
+UPLOAD_DELAY_KEY = "rag:upload:delay"
+DELETE_DELAY_KEY = "rag:delete:delay"
 
 
 def enqueue_upload_event(doc_id: str, force: bool = False) -> None:

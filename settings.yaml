@@ -1,3 +1,6 @@
+dagster:
+  endpoint: "http://localhost:3000"
+
 s3:
   endpoint: "http://192.168.0.185:9000"
   access_key: "admin"

@@ -16,7 +16,7 @@ from defs.ops.ingest_ops import (
 
 
 @job(
-    description="단일 문서 인제스트 파이프라인 (문서 1개 = Run 1개)",
+    description="Single document ingest pipeline (one run per document)",
     tags={"pipeline": "ingest"},
     hooks={ingest_failure_hook},
     executor_def=in_process_executor,

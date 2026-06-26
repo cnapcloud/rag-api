@@ -12,12 +12,9 @@ from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, Sk
 from defs.jobs.delete_job import delete_job
 from defs.jobs.ingest_job import ingest_job
 
-from pipeline.enqueue import DELETE_QUEUE_KEY, UPLOAD_QUEUE_KEY
+from pipeline.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
-
-UPLOAD_DELAY_KEY = "rag:upload:delay"
-DELETE_DELAY_KEY = "rag:delete:delay"
 
 
 from config.settings import get_settings as _get_settings
@@ -36,10 +33,7 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
     for item in items:
         try:
             event = json.loads(item)
-            event.pop("_retry_id", None)
-            payload = json.dumps(event)
-        except (json.JSONDecodeError, ValueError):
-            payload = item
+        except json.JSONDecodeError:
             event = {}
         doc_id = event.get("doc_id", "")
         if doc_id:
@@ -48,7 +42,7 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
             current = doc.get("status", "") if doc else ""
             if current not in ("running", "deleting"):
                 update_doc_fields(doc_id, {"status": "pending"})
-        r.lpush(main_key, payload)
+        r.lpush(main_key, item)
     logger.debug("Drained %d item(s) from %s to %s", len(items), delay_key, main_key)
 
 
@@ -72,8 +66,7 @@ def _is_blocked_by_active_run(
     if prev_run_id:
         run = context.instance.get_run_by_id(prev_run_id)
         if run is not None and not run.is_finished:
-            unique_member = json.dumps({**json.loads(raw), "_retry_id": str(uuid4())})
-            r.zadd(delay_key, {unique_member: time.time() + delay_sec})
+            r.zadd(delay_key, {raw: time.time() + delay_sec})
             logger.info("Event delayed (%s): doc_id=%s delay=%ss", s, doc_id, delay_sec)
             return True
         set_failed(

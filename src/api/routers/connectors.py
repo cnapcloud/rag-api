@@ -48,22 +48,25 @@ class ConnectorPatch(BaseModel):
 async def create_connector(body: ConnectorCreate):
     import psycopg.errors
 
+    from infra.crypto import encrypt_config, mask_config
     from infra.postgres import create_connector as pg_create, get_kb_meta
 
     if get_kb_meta(body.kb_id) is None:
         raise NotFoundError(f"KB not found: {body.kb_id}")
 
     try:
-        return pg_create(
+        connector = pg_create(
             kb_id=body.kb_id,
             name=body.name,
             source_type=body.source_type,
-            config=body.config,
+            config=encrypt_config(body.config),
             sync_schedule=body.sync_schedule,
             schedule_enabled=body.schedule_enabled,
         )
     except psycopg.errors.UniqueViolation as e:
         raise ConflictError(f"Connector already exists in KB: {body.kb_id}") from e
+
+    return {**connector, "config": mask_config(connector.get("config") or {})}
 
 
 @router.get("")
@@ -75,38 +78,45 @@ async def list_connectors_endpoint(
     sort_by: str = Query(default="created_at"),
     sort_order: str = Query(default="desc"),
 ):
+    from infra.crypto import mask_config
     from infra.postgres import list_connectors
 
-    return {"items": list_connectors(
+    items = list_connectors(
         kb_id=kb_id,
         source_type=source_type,
         status=status,
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
-    )}
+    )
+    return {"items": [{**c, "config": mask_config(c.get("config") or {})} for c in items]}
 
 
 @router.get("/{connector_id}")
 async def get_connector_endpoint(connector_id: str):
+    from infra.crypto import mask_config
     from infra.postgres import get_connector
 
     connector = get_connector(connector_id)
     if connector is None:
         raise NotFoundError(f"Connector not found: {connector_id}")
-    return connector
+    return {**connector, "config": mask_config(connector.get("config") or {})}
 
 
 @router.patch("/{connector_id}")
 async def patch_connector(connector_id: str, body: ConnectorPatch):
+    from infra.crypto import encrypt_config, mask_config
     from infra.postgres import get_connector, update_connector
 
     if get_connector(connector_id) is None:
         raise NotFoundError(f"Connector not found: {connector_id}")
 
     fields = body.model_dump(exclude_unset=True)
+    if "config" in fields and fields["config"]:
+        fields["config"] = encrypt_config(fields["config"])
     updated = update_connector(connector_id, fields)
-    return updated
+
+    return {**updated, "config": mask_config(updated.get("config") or {})}
 
 
 @router.delete("/{connector_id}", status_code=202)
@@ -198,42 +208,66 @@ def _wait_for_indexing(connector_id: str) -> None:
 
 
 def _run_sync(connector: dict) -> None:
+    from connectors.abort import clear_abort, is_abort_requested
     from infra.postgres import set_connector_status, set_connector_sync_status
 
     connector_id = connector["connector_id"]
     try:
         _dispatch_sync(connector)
-        _wait_for_indexing(connector_id)
+        if is_abort_requested(connector_id):
+            logger.info("Connector sync aborted: connector_id=%s", connector_id)
+        else:
+            _wait_for_indexing(connector_id)
+            logger.info("Connector sync complete: connector_id=%s", connector_id)
         set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(timezone.utc))
-        logger.info("Connector sync complete: connector_id=%s", connector_id)
     except Exception as e:
         set_connector_status(connector_id, "error")
         set_connector_sync_status(connector_id, "idle")
         logger.error("Connector sync failed: connector_id=%s err=%s", connector_id, e)
+    finally:
+        clear_abort(connector_id)
 
 
 def _dispatch_sync(connector: dict) -> None:
+    from infra.crypto import decrypt_config
+
     source_type = connector["source_type"]
+    config = decrypt_config(connector.get("config") or {})
+
     if source_type == "web":
         from connectors.web import WebConnector
 
-        WebConnector(connector.get("config") or {}).sync(
-            connector["kb_id"], connector["connector_id"]
-        )
+        WebConnector(config).sync(connector["kb_id"], connector["connector_id"])
     elif source_type == "confluence":
         from connectors.confluence import ConfluenceConnector
 
-        ConfluenceConnector(connector.get("config") or {}).sync(
-            connector["kb_id"], connector["connector_id"]
-        )
+        ConfluenceConnector(config).sync(connector["kb_id"], connector["connector_id"])
     elif source_type == "github":
         from connectors.github import GitHubConnector
 
-        GitHubConnector(connector.get("config") or {}).sync(
-            connector["kb_id"], connector["connector_id"]
-        )
+        GitHubConnector(config).sync(connector["kb_id"], connector["connector_id"])
     else:
-        logger.info("Sync skipped: connector type not yet implemented: connector_id=%s source_type=%s", connector["connector_id"], source_type)
+        logger.info(
+            "Sync skipped: connector type not yet implemented: connector_id=%s source_type=%s",
+            connector["connector_id"],
+            source_type,
+        )
+
+
+@router.post("/{connector_id}/sync/abort", status_code=202)
+async def abort_sync(connector_id: str):
+    from connectors.abort import request_abort
+    from infra.postgres import get_connector
+
+    connector = get_connector(connector_id)
+    if connector is None:
+        raise NotFoundError(f"Connector not found: {connector_id}")
+    if connector["sync_status"] != "running":
+        raise ConflictError(f"No sync in progress: {connector_id}")
+
+    request_abort(connector_id)
+    logger.info("Sync abort requested: connector_id=%s", connector_id)
+    return {"connector_id": connector_id, "status": "abort_requested"}
 
 
 @router.post("/{connector_id}/sync/reset", status_code=200)
