@@ -646,6 +646,8 @@ Dagster Schedule (cron 도달)
 0 9 * * 1    → 매주 월요일 09:00
 ```
 
+> **주의:** `sync_schedule` 값을 변경하면 Dagster 컨테이너(`dagster-rag-api`)를 재시작해야 새 스케줄이 반영된다. `schedule_enabled` 토글은 재시작 없이 즉시 반영된다.
+
 **`status`와 `schedule_enabled`의 차이**
 
 | 필드 | 역할 |

@@ -20,4 +20,6 @@
 | [US-18](US-18-web-connector.md) | WebConnector implementation (R-09) | done |
 | [US-19](US-19-connector-dagster-schedule.md) | Connector Dagster Schedule dynamic registration (R-12) | done |
 | [US-20](US-20-confluence-connector.md) | ConfluenceConnector implementation (R-10) | done |
-| [US-21](todo/US-21-github-connector.md) | GitHubConnector implementation (R-11) | done |
+| [US-21](US-21-github-connector.md) | GitHubConnector implementation (R-11) | done |
+| [US-22](US-22-discard-ingest-on-deleting.md) | deleting 상태 문서의 ingest/delete 이벤트 즉시 버림 | done |
+| [US-23](US-23-dedup-stage1.md) | Dedup Stage 1 — 해시 기반 중복 감지 (SimHash + SHA-256) | done |

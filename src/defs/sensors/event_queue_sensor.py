@@ -59,7 +59,7 @@ def _is_blocked_by_active_run(
     from pipeline.ops.meta import set_failed
 
     s = doc.get("status", "")
-    if s not in ("running", "deleting"):
+    if s != "running":
         return False
 
     prev_run_id = doc.get("run_id", "")
@@ -126,6 +126,9 @@ def event_queue_sensor(context: SensorEvaluationContext):
         from pipeline.ops.meta import set_processing
 
         doc = get_doc_by_id(doc_id)
+        if doc and doc.get("status") == "deleting":
+            logger.warning("Upload event discarded: doc in deleting state: doc_id=%s", doc_id)
+            continue
         if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, doc_id):
             continue
 
@@ -170,6 +173,9 @@ def event_queue_sensor(context: SensorEvaluationContext):
         from pipeline.ops.meta import set_deleting
 
         doc = get_doc_by_id(doc_id)
+        if doc and doc.get("status") == "deleting":
+            logger.warning("Delete event discarded: doc in deleting state: doc_id=%s", doc_id)
+            continue
         if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, doc_id):
             continue
 

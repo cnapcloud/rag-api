@@ -155,44 +155,60 @@ def test_poll_delete_while_processing_delays():
     assert len(zsets.get(DELETE_DELAY_KEY, {})) == 1
 
 
-def test_poll_upload_while_deleting_delays():
-    """Upload event, doc is deleting -> zadd to upload delay sorted set."""
+def test_poll_upload_while_deleting_discards():
+    """Upload event, doc is deleting -> discarded (no delay queue, no dispatch)."""
     from pipeline.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
 
     fake_redis, _, zsets = _make_redis(upload_events=[{"doc_id": DOC_ID, "force": False}])
+    dispatched = []
+
+    def fake_create_task(coro, **kw):
+        dispatched.append(coro)
+        coro.close()
+        return MagicMock()
 
     with (
         patch("infra.redis.get_redis_client", return_value=fake_redis),
         patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting"}),
+        patch("asyncio.create_task", side_effect=fake_create_task),
         patch("config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
 
-    assert len(zsets.get(UPLOAD_DELAY_KEY, {})) == 1
+    assert len(zsets.get(UPLOAD_DELAY_KEY, {})) == 0
+    assert len(dispatched) == 0
 
 
-def test_poll_delete_while_deleting_delays():
-    """Delete event, doc is already deleting -> zadd to delete delay sorted set."""
+def test_poll_delete_while_deleting_discards():
+    """Delete event, doc is already deleting -> discarded (no delay queue, no dispatch)."""
     from pipeline.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
 
     fake_redis, _, zsets = _make_redis(delete_events=[{"doc_id": DOC_ID}])
+    dispatched = []
+
+    def fake_create_task(coro, **kw):
+        dispatched.append(coro)
+        coro.close()
+        return MagicMock()
 
     with (
         patch("infra.redis.get_redis_client", return_value=fake_redis),
         patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting"}),
+        patch("asyncio.create_task", side_effect=fake_create_task),
         patch("config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
 
-    assert len(zsets.get(DELETE_DELAY_KEY, {})) == 1
+    assert len(zsets.get(DELETE_DELAY_KEY, {})) == 0
+    assert len(dispatched) == 0
 
 
 def test_duplicate_delay_overwrites_not_accumulates():

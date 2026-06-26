@@ -233,73 +233,45 @@ def test_sensor_upload_dispatch_lock_remnant_dispatches():
     assert result[0].job_name == "ingest_job"
 
 
-def test_sensor_upload_deleting_with_active_run_delayed():
-    """Upload event: doc is deleting with an active run -> delayed, no RunRequest."""
+def test_sensor_upload_deleting_discarded():
+    """Upload event: doc is deleting -> discarded (no delay queue, no RunRequest)."""
+    for run_id in ("run-del-active", ""):
+        fake_redis = _make_redis(put_events=[{"doc_id": DOC_ID, "force": False}])
+        result = _run_sensor(
+            fake_redis,
+            pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting", "run_id": run_id},
+        )
+
+        assert result == [], f"Expected discard for run_id={run_id!r}"
+        assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 0, f"Expected no delay queue entry for run_id={run_id!r}"
+
+
+def test_sensor_delete_deleting_discarded():
+    """Delete event: doc already deleting -> discarded (no delay queue, no RunRequest)."""
+    fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
+    result = _run_sensor(
+        fake_redis,
+        pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting", "run_id": "run-del"},
+    )
+
+    assert result == []
+    assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 0
+
+
+def test_sensor_delete_blocked_by_active_run_delayed():
+    """Delete event: doc has an active run (running) -> delayed, no RunRequest."""
     active_run = MagicMock()
     active_run.is_finished = False
 
-    fake_redis = _make_redis(put_events=[{"doc_id": DOC_ID, "force": False}])
+    fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
     result = _run_sensor(
         fake_redis,
-        pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting", "run_id": "run-del-active"},
+        pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running", "run_id": "run-active"},
         get_run_by_id=lambda _: active_run,
     )
 
     assert result == []
-    assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 1
-
-
-def test_sensor_upload_deleting_no_run_id_dispatches():
-    """Upload event: doc is deleting but run_id is empty (orphaned status) -> dispatch immediately.
-
-    Reproduces the production bug where a daemon restart left docs stuck in
-    status=deleting with no run_id, causing upload events to loop in the delay queue.
-    """
-    fake_redis = _make_redis(put_events=[{"doc_id": DOC_ID, "force": False}])
-    result = _run_sensor(
-        fake_redis,
-        pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting", "run_id": ""},
-    )
-
-    assert len(result) == 1
-    assert result[0].job_name == "ingest_job"
-    assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 0
-
-
-def test_sensor_upload_deleting_zombie_run_dispatches():
-    """Upload event: doc is deleting but the delete run has finished -> zombie recovered, dispatched."""
-    dead_run = MagicMock()
-    dead_run.is_finished = True
-
-    fake_redis = _make_redis(put_events=[{"doc_id": DOC_ID, "force": False}])
-    calls = []
-    result = _run_sensor(
-        fake_redis,
-        pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting", "run_id": "run-del-dead"},
-        get_run_by_id=lambda _: dead_run,
-        set_failed_calls=calls,
-    )
-
-    assert len(result) == 1
-    assert result[0].job_name == "ingest_job"
-    assert calls[0][1] == "run-del-dead"
-
-
-def test_sensor_delete_blocked_by_active_run_delayed():
-    """Delete event: doc has an active run (running or deleting) -> delayed, no RunRequest."""
-    active_run = MagicMock()
-    active_run.is_finished = False
-
-    for status in ("running", "deleting"):
-        fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
-        result = _run_sensor(
-            fake_redis,
-            pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": status, "run_id": "run-active"},
-            get_run_by_id=lambda _: active_run,
-        )
-
-        assert result == [], f"Expected delay for status={status}"
-        assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 1, f"Expected delay queue entry for status={status}"
+    assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 1
 
 
 def test_sensor_delete_zombie_run_dispatches():
@@ -322,16 +294,15 @@ def test_sensor_delete_zombie_run_dispatches():
 
 
 def test_sensor_delete_no_run_id_dispatches():
-    """Delete event: doc is running/deleting but run_id is empty -> dispatch immediately."""
-    for status in ("running", "deleting"):
-        fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
-        result = _run_sensor(
-            fake_redis,
-            pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": status, "run_id": ""},
-        )
+    """Delete event: doc is running but run_id is empty -> dispatch immediately."""
+    fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
+    result = _run_sensor(
+        fake_redis,
+        pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running", "run_id": ""},
+    )
 
-        assert len(result) == 1, f"Expected dispatch for status={status}"
-        assert result[0].job_name == "delete_job"
+    assert len(result) == 1
+    assert result[0].job_name == "delete_job"
 
 
 def test_sensor_drain_delay_queue():

@@ -35,7 +35,7 @@ def _to_local_iso(dt: datetime | None) -> str:
 
 # Fields allowed in update_doc_fields() to prevent SQL injection via dict keys.
 _ALLOWED_UPDATE_FIELDS = frozenset({
-    "source", "storage_key", "content_version", "connector_id", "status",
+    "source", "source_uri", "storage_key", "content_version", "connector_id", "status",
     "deleted_at", "run_id", "error", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
     "title_hash", "content_simhash",
@@ -690,3 +690,12 @@ def get_kb_doc_counts(kb_id: str) -> dict[str, int]:
         counts[status] = int(n)
     counts["total"] = sum(v for k, v in counts.items() if k != "total")
     return counts
+
+
+def delete_simhash_bands(doc_id: str) -> None:
+    """Remove all simhash band entries for a document."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM simhash_bands WHERE doc_id = %s", [doc_id])
+        conn.commit()
+    logger.info("SimHash bands deleted: doc_id=%s", doc_id)
+

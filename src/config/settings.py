@@ -130,6 +130,16 @@ class TracingSettings(BaseModel):
     service_name: str = "rag-api"
 
 
+class DedupSettings(BaseModel):
+    enabled: bool = True
+    ngram: int = 3
+    num_bands: int = 4
+    simhash_bits: int = 64
+    hamming_identical_threshold: int = 3
+    lock_ttl: int = 10
+    lock_acquire_timeout: int = 5
+
+
 class KBDefinition(BaseModel):
     id: str
     name: str = ""
@@ -151,6 +161,7 @@ class Settings(BaseModel):
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
+    dedup: DedupSettings = Field(default_factory=DedupSettings)
     queue_worker: QueueWorkerSettings = Field(default_factory=QueueWorkerSettings)
     queue_poll: QueuePollSettings = Field(default_factory=QueuePollSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)

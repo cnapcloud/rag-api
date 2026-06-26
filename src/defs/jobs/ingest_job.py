@@ -1,4 +1,4 @@
-"""ingest_job — validate → parse → chunk → embed → upsert → meta."""
+"""ingest_job — validate → dedup → parse → chunk → embed → upsert → meta."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from dagster import in_process_executor, job
 
 from defs.ops.ingest_ops import (
     chunk_op,
+    dedup_op,
     embed_op,
     ingest_failure_hook,
     meta_op,
@@ -23,7 +24,8 @@ from defs.ops.ingest_ops import (
 )
 def ingest_job():
     valid_config = validate_op()
-    docs = parse_op(valid_config)
+    to_parse = dedup_op(valid_config)
+    docs = parse_op(to_parse)
     nodes = chunk_op(docs)
     vectors = embed_op(nodes)
     result = upsert_op(valid_config, vectors)

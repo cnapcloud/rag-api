@@ -72,6 +72,41 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
     )
 
 
+@op(out={"to_parse": Out(dagster_type=dict, is_required=False)})
+def dedup_op(context: OpExecutionContext, valid_config: dict):
+    """Run dedup_job in-process and emit to_parse only when needs_indexing=True.
+
+    Runs before parse_op so duplicate documents skip the full parse/chunk/embed/upsert pipeline.
+    dedup_job's simhash_op downloads the document from MinIO independently.
+    """
+    from config.settings import get_settings
+
+    if not get_settings().dedup.enabled:
+        context.log.info("Dedup disabled: doc_id=%s", valid_config["doc_id"])
+        yield Output(valid_config, "to_parse")
+        return
+
+    from defs.jobs.dedup_job import dedup_job as _dedup_job
+
+    run_result = _dedup_job.execute_in_process(
+        run_config={"ops": {
+            "simhash_op": {"config": {"doc_id": valid_config["doc_id"]}},
+            "verdict_op": {"config": {"doc_id": valid_config["doc_id"]}},
+        }},
+    )
+    dedup_result = run_result.output_for_node("simhash_op")
+
+    context.log.info(
+        "Dedup done: verdict=%s doc_id=%s needs_indexing=%s",
+        dedup_result.verdict, valid_config["doc_id"], dedup_result.needs_indexing,
+    )
+
+    if not dedup_result.needs_indexing:
+        return
+
+    yield Output(valid_config, "to_parse")
+
+
 @op
 def parse_op(context: OpExecutionContext, valid_config: dict):
     """Download file from S3 and convert to LlamaIndex Documents."""

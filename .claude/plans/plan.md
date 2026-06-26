@@ -18,3 +18,4 @@
 | [19](19-connector-dagster-schedule.md) | Connector Dagster Schedule dynamic registration (R-12) | US-19 | done |
 | [20](20-confluence-connector.md) | ConfluenceConnector implementation (R-10) | US-20 | done |
 | [21](21-github-connector.md) | GitHubConnector implementation (R-11) | US-21 | done |
+| [22](22-discard-ingest-on-deleting.md) | deleting 상태 이벤트 즉시 버림 | US-22 | done |

@@ -48,6 +48,12 @@ def run_ingest_pipeline(
     set_processing(doc_id, run_id=run_id)
 
     try:
+        from pipeline.ops.dedup import run_dedup_pipeline
+        dedup_result = run_dedup_pipeline(doc_id=doc_id, run_id=run_id)
+        if not dedup_result.needs_indexing:
+            logger.info("Dedup skipped indexing: doc_id=%s verdict=%s", doc_id, dedup_result.verdict)
+            return 0
+
         documents = parse(doc_id=doc_id, storage_key=storage_key)
         nodes = chunk(documents)
         if not nodes:

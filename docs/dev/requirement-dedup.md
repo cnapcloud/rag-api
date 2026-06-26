@@ -72,6 +72,49 @@
 
 ---
 
+## 2.1 파이프라인 구성 방안
+
+### 실행 구조
+
+dedup 파이프라인은 두 가지 방식으로 실행된다.
+
+**ingest 흐름 (주 경로):**
+기존 `ingest_job` 내 `dedup_op` 하나로 통합한다.
+`dedup_op`은 내부에서 `run_dedup_pipeline()`을 동기 호출하여 1~5단계 전체를 처리한 뒤 결과를 반환받는다.
+Dagster는 `dedup_op`이 완료될 때까지 하위 op을 실행하지 않으므로, 별도 완료 감지 메커니즘이 필요 없다.
+
+**독립 실행 (백필 / 수동 재처리):**
+`dedup_job`은 동일한 dedup 단계를 Dagster op(`simhash_op` → `verdict_op`)으로 노출한 별도 job이다.
+센서/스케줄에서 자동 트리거되지 않으며, 운영자가 수동으로 실행하거나 백필 스크립트에서 호출한다.
+두 방식 모두 `pipeline/ops/dedup/` 의 동일한 순수 함수를 공유한다.
+
+### 단계 책임 분리
+
+`run_dedup_pipeline()`이 1~5단계를 모두 담당한다.
+
+- 1~4단계: 판정 수행
+- 5단계: 판정 결과별 후속 처리(Qdrant payload 갱신, Redis 상태 변경, 링크 메타데이터 추가 등)를 `run_dedup_pipeline()` 내부에서 완결
+
+`dedup_op`은 `run_dedup_pipeline()` 반환값의 `needs_indexing` 여부만 확인하여 하위 op 실행 여부를 결정한다.
+
+### 분기 처리
+
+| verdict | needs_indexing | dedup_op 이후 동작 |
+|---|---|---|
+| 동일 | False | 로그 기록 후 job 종료 — chunk/embed/upsert/meta 모두 스킵 |
+| 제목변경 | False | 로그 기록 후 job 종료 — chunk/embed/upsert/meta 모두 스킵 |
+| 유사 | True | C측 deprecated 처리 완결 후 A 색인 진행 |
+| 관련 | True | C측 링크 메타데이터 추가 완결 후 A 색인 진행 |
+| 무관 | True | 별도 처리 없이 A 색인 진행 |
+
+`needs_indexing=True` 경우, `run_dedup_pipeline()`이 C측 처리(기존 문서 상태 갱신 등)를 완결한 뒤 반환하며, 이후 표준 색인 파이프라인(chunk → embed → upsert → meta)이 A를 신규 색인한다.
+
+### 동시성 제어
+
+1단계 "SUNION 조회 → SADD 등록" 구간의 race condition 방지를 위해 SimHash 밴드 키 단위 Redis 락을 사용한다. 상세 내용은 3.1.3 참조.
+
+---
+
 ## 3. 단계별 개발 요건
 
 ## 3.1 [1단계] 문서 레벨 해시 비교
@@ -135,10 +178,50 @@ SimHash 계산 → 4조각 분할
 신규 문서 조각도 동일하게 SADD (다음 비교 대상이 되도록)
 ```
  
-- 본문 토큰/n-gram(shingle) 분리 (한국어 분리 단위 결정 필요)
+- 본문 shingle: character-level n-gram, n=3 (한국어·영어 동일 처리, 공백 포함)
 - SimHash 비트 길이(64/128bit), Hamming Distance 임계값(예: 3비트 이하) 정의
 - 기존 문서 전체 SimHash 백필 + Redis persistence(AOF/RDB) 점검
 - band 키 SCARD 비정상 증가 모니터링 (템플릿 문서 군집 탐지 신호)
+
+**3.1.3 동시성 제어 — 밴드 키 단위 락**
+
+**문제:** "SUNION 조회 → SADD 등록" 구간이 원자적이지 않으면,
+거의 동시에 유입된 근접 중복 문서 A와 A'가 서로를 후보로 발견하지 못하고
+둘 다 "무관" 판정을 받아 중복 색인이 발생한다.
+
+**해결:** 전역 락 대신 **SimHash 밴드 키 단위 락**을 사용한다.
+
+- 락 단위: 문서의 SimHash 4개 밴드 키 각각에 Redis SETNX 기반 락
+- SimHash 계산은 락 획득 전에 완료 → 락 보유 시간 최소화 (Redis 명령 2~3개 수준)
+- 근접 중복 문서는 밴드 키를 공유하므로 자동으로 직렬화됨
+- 무관한 문서는 밴드 키가 겹치지 않으므로 병렬 처리됨
+
+Process A                    Process B
+    │                            │
+[simhash 계산, 200ms]        [simhash 계산, 200ms]
+    │                            │
+락 획득(band_0) ───────┐          │
+    │              락 대기 ←──────┤
+SUNION → 후보 없음      │         │
+SADD(doc-A)            │        │
+락 해제 ────────────────┘         │
+    │                        락 획득(band_0)
+    │                        SUNION → doc-A 발견
+    │                        Hamming distance 계산
+    │                        → near-duplicate 판정
+    ↓                            ↓
+ 색인됨                      색인 스킵
+
+**타임아웃 설정**
+
+| 파라미터 | 기본값 | 설명 |
+|---|---|---|
+| lock_ttl | 10s | Redis 장애·프로세스 크래시 시 데드락 방지용 자동 만료 |
+| lock_acquire_timeout | 5s | 락 대기 최대 시간. 초과 시 → 후보 없음으로 간주하고 진행 (보수적 선택) |
+
+**오픈 이슈**
+- lock_acquire_timeout 초과 시 처리 정책: "후보 없음 간주 진행" vs "에러 처리 후 재시도" 미결정
+- lock_ttl 10s는 Redis 명령 기준 여유값이며, 운영 데이터 기반 튜닝 필요
 
 **출력**
  
@@ -154,11 +237,13 @@ SimHash 계산 → 4조각 분할
 - 전체 스캔 없이 4개 키 SUNION만으로 후보 추출됨을 확인
 - "동일"/"제목변경" 케이스가 2·3·4단계 스킵하고 5단계로 바로 전달되며, 5단계에서 올바르게 분기(색인스킵 vs 제목갱신)됨을 확인
 
+**결정 사항**
+- n-gram: character-level n=3 (한국어·영어 동일, 공백 포함)
+- Hamming Distance 임계값: 설정값 `hamming_identical_threshold` (기본값 3)
+
 **오픈 이슈**
-- SimHash n-gram/shingle 분할 단위 (단어 vs 음절, 한국어 특성)
 - 문서 규모 확대 시 Postgres 이전 시점/기준 미정
 - band 키 SCARD 모니터링 임계치 미정
-- "동일/제목변경" Hamming Distance 기준값(0 vs 1 이하) 미정
 
 ---
 
@@ -317,9 +402,10 @@ SimHash 계산 → 4조각 분할
 
 | 판정 | 처리 |
 |---|---|
-| 동일 | 색인 스킵 (원본 파일 보존, 이력만 기록) |
-| 제목변경 | Qdrant payload(doc_source/doc_key) 갱신 + Redis 키 rename, 재임베딩 없음 |
-| 유사 | A 신규 색인 + C를 deprecated 전환 (상태 필드 갱신) |
+| 동일 | A: dedup_skipped. C 변경 없음 |
+| 제목변경 (A 최신) | Qdrant payload(source/source_uri) 갱신 + C: outdated + simhash_bands 삭제 + A: indexed. 재임베딩 없음 |
+| 제목변경 (A 구버전) | A: outdated. C 변경 없음 |
+| 유사 | A 신규 색인 + C를 outdated 전환 (상태 필드 갱신) |
 | 관련 | A 신규 색인 + 관련 링크 메타데이터 추가 |
 | 무관 | A 신규 색인 |
 
@@ -356,9 +442,22 @@ A가 여러 후보와 동시에 매칭되어 후보별로 다른 판정을 받�
 
 **롤백:** 그레이스 기간 내 C↔A의 status 재전환만으로 즉시 복구 (재임베딩 불필요)
 
-**"제목변경" 처리 (요약)**
-- doc_source_history(Redis)에 변경 이력 누적, 누적 길이 ≥M이면 자동 처리 중단 후 "검토대기"
-- Redis rename(읽기→쓰기→삭제) 원자성: Lua 스크립트 처리 확정
+**"제목변경" 처리 — doc_created_at 기반 최신 판단**
+
+A, C의 `doc_created_at` 비교:
+- C의 `doc_created_at`이 NULL이면 A를 최신으로 간주
+
+A가 최신인 경우:
+1. Qdrant: C의 모든 청크 payload `source`, `source_uri` → A 값으로 갱신
+2. Postgres C: `status` → `outdated`
+3. Postgres `simhash_bands`: C 행 삭제
+4. Postgres A: `status` → `indexed`, `process_finished_at` 갱신
+
+A가 구버전인 경우:
+1. Postgres A: `status` → `outdated`, `error` → `dedup:title_changed duplicate_of={C.doc_id}`
+
+오픈 이슈:
+- MinIO 파일 삭제 (C의 구버전 파일, grace period 방식) — 별도 US
 
 **출력**
 - 색인/갱신/링크 처리 완료 상태

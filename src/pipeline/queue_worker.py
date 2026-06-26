@@ -109,9 +109,12 @@ class QueueWorker:
             doc = get_doc_by_id(doc_id)
             if doc:
                 s = doc.get("status", "")
-                if s in ("running", "deleting"):
+                if s == "deleting":
+                    logger.warning("Upload event discarded: doc in deleting state: doc_id=%s", doc_id)
+                    continue
+                if s == "running":
                     r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
-                    logger.info("Upload event delayed (%s): doc_id=%s", s, doc_id)
+                    logger.info("Upload event delayed (running): doc_id=%s", doc_id)
                     continue
 
             set_processing(doc_id)
@@ -139,10 +142,15 @@ class QueueWorker:
             from pipeline.ops.meta import set_deleting
 
             doc = get_doc_by_id(doc_id)
-            if doc and doc.get("status") in ("running", "deleting"):
-                r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
-                logger.info("Delete event delayed (busy): doc_id=%s", doc_id)
-                continue
+            if doc:
+                s = doc.get("status", "")
+                if s == "deleting":
+                    logger.warning("Delete event discarded: doc in deleting state: doc_id=%s", doc_id)
+                    continue
+                if s == "running":
+                    r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
+                    logger.info("Delete event delayed (running): doc_id=%s", doc_id)
+                    continue
 
             set_deleting(doc_id)
             logger.info("Dequeued delete event, scheduling delete: doc_id=%s", doc_id)

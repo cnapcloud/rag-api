@@ -33,6 +33,15 @@ redis:
 ingestion:
   max_file_size_mb: 10
 
+dedup:
+  enabled: true
+  ngram: 3
+  num_bands: 4
+  simhash_bits: 64
+  hamming_identical_threshold: 5
+  lock_ttl: 10
+  lock_acquire_timeout: 5
+
 queue_worker:
   enabled: false # true이면 dagster가 비활성화됨
   max_workers: 4
