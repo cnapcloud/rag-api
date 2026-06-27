@@ -162,11 +162,14 @@ curl "http://localhost:8000/api/kb/kb-01/docs?sort_by=source&sort_order=asc"
 # 단일 문서 인덱싱 상태 확인 ({doc_id}는 업로드 응답의 doc_id)
 curl http://localhost:8000/api/kb/kb-01/docs/{doc_id}/status
 
-# 문서 삭제 (벡터 + 메타데이터 + S3 파일)
+# 원본 파일 다운로드 (S3에서 스트리밍)
+curl -OJ http://localhost:8000/api/kb/kb-01/docs/{doc_id}/download
+
+# 문서 삭제 (벡터 + 메타데이터 + S3 파일, 비동기)
 curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
 ```
 
-### 업로드 응답 (HTTP 202)
+### 단일 업로드 응답 (HTTP 202)
 
 ```json
 {
@@ -177,7 +180,43 @@ curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
 }
 ```
 
-`doc_id`는 이후 상태 확인, 삭제, 재인덱싱, 복구 요청에 사용합니다.
+`doc_id`는 이후 상태 확인, 삭제, 재인덱싱, 복구, 다운로드 요청에 사용합니다.
+
+### 배치 업로드 응답 (HTTP 202)
+
+파일별 결과를 `results` 배열로 반환합니다. 일부 파일이 실패해도 나머지는 처리됩니다.
+
+```json
+{
+  "results": [
+    {
+      "doc_id": "b59168c41e5e4a0d",
+      "source_uri": "a.pdf",
+      "etag": "d41d8cd98f00b204e9800998ecf8427e",
+      "status_url": "/api/kb/kb-01/docs/b59168c41e5e4a0d/status"
+    },
+    {
+      "source": "b.xyz",
+      "error": "Unsupported file format: .xyz",
+      "status": "error"
+    }
+  ]
+}
+```
+
+### 문서 삭제 응답 (HTTP 202)
+
+삭제는 비동기로 처리됩니다. 응답 반환 후 백그라운드에서 Qdrant 청크 → S3 파일 → Postgres 행 순으로 삭제합니다.
+
+```json
+{ "kb_id": "kb-01", "doc_id": "b59168c41e5e4a0d", "status": "pending" }
+```
+
+| 응답 코드 | 조건 |
+|-----------|------|
+| 202 | 삭제 큐에 등록됨 |
+| 404 | 문서 없음 |
+| 409 | `status=running` (파이프라인 처리 중) 또는 `status=deleting` (이미 삭제 진행 중) |
 
 ### 문서 상태값
 
@@ -215,6 +254,32 @@ curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/reindex?force=tru
 curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/recover"
 ```
 
+### 응답 형식
+
+**KB 전체 재인덱싱 (HTTP 202)**
+
+```json
+{ "kb_id": "kb-01", "queued": 5, "skipped": 12 }
+```
+
+ETag가 변경된 문서만 큐에 등록합니다. `force=true`이면 모두 큐에 등록합니다.
+
+**단일 문서 재인덱싱 (HTTP 202)**
+
+```json
+{ "kb_id": "kb-01", "doc_id": "b59168c41e5e4a0d", "queued": 1, "skipped": 0 }
+```
+
+ETag가 동일하면 `queued: 0, skipped: 1`을 반환합니다. `force=true`이면 항상 `queued: 1`입니다.
+
+**문서 복구 (HTTP 202)**
+
+```json
+{ "kb_id": "kb-01", "doc_id": "b59168c41e5e4a0d", "queued": true }
+```
+
+`status=running`이 아닌 문서에 복구를 요청하면 HTTP 409 반환.
+
 ---
 
 ## 5. 문서 목록 조회
@@ -228,6 +293,7 @@ curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/recover"
 | `page` | int | 1 | 페이지 번호 (1-based) |
 | `page_size` | int | 20 | 페이지당 항목 수 (최대 100, 초과 시 자동 클램핑) |
 | `status` | str | — | 상태 필터: `uploading`, `fetching`, `pending`, `running`, `indexed`, `failed`, `deleting`, `deleted` |
+| `source_type` | str | — | 출처 유형 필터: `s3` (직접 업로드), `web`, `confluence`, `github` |
 | `search` | str | — | `source` 부분 문자열 검색 (대소문자 무시) |
 | `sort_by` | str | `updated_at` | 정렬 기준: `updated_at`, `created_at`, `source`, `chunk_count`, `file_size` |
 | `sort_order` | str | `desc` | 정렬 방향: `asc`, `desc` |
@@ -271,6 +337,20 @@ curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed
   "page": 1,
   "page_size": 20
 }
+```
+
+### 전체 문서 목록 (KB 무관)
+
+`GET /api/docs` — KB를 지정하지 않고 모든 KB의 문서를 통합 조회합니다.
+
+쿼리 파라미터는 위 표와 동일하되, `source_type` 필터는 지원하지 않습니다. 응답 형식은 KB별 목록과 동일합니다 (`items`, `total`, `page`, `page_size`).
+
+```bash
+# 전체 문서 목록 (기본: 1페이지, 20개)
+curl http://localhost:8000/api/docs
+
+# 필터 예시
+curl "http://localhost:8000/api/docs?status=failed&search=report&sort_by=updated_at"
 ```
 
 ---
@@ -347,9 +427,8 @@ curl -X POST http://localhost:8000/api/connectors \
 {
   "owner": "myorg",
   "repo": "docs",
-  "ref": "main",
-  "paths": ["docs/", "README.md"],
-  "include_extensions": [".md", ".txt", ".rst"],
+  "branch": "main",
+  "path_prefix": "docs/",
   "auth_token_secret": "GITHUB_TOKEN"
 }
 ```
@@ -366,6 +445,8 @@ curl -X POST http://localhost:8000/api/connectors \
 | `request_delay_ms` | `100` | 페이지 요청 간 대기 시간(밀리초). 서버 부하 방지용 |
 | `auth_headers` | `{}` | 모든 요청에 추가할 HTTP 헤더. Bearer 토큰(`Authorization: Bearer ...`) 또는 API 키(`X-API-Key: ...`) 등 |
 | `auth_basic` | 없음 | HTTP Basic Auth. `auth_headers`가 설정되어 있으면 무시됨 |
+| `skip_seed_pages` | `true` | seed URL 자체(depth 0)를 문서로 저장하지 않음. 목록/인덱스 페이지를 건너뛸 때 사용 |
+| `min_content_chars` | `200` | trafilatura 본문 추출 결과가 이 값 미만인 페이지는 저장 제외. 네비게이션 전용 페이지 필터링에 활용 |
 
 > **주의**: 포털 루트 URL처럼 수만 개 페이지를 보유한 사이트에 `include_patterns` 없이 `depth >= 2`를 설정하면 queue가 대량 누적될 수 있습니다. `include_patterns`로 경로를 명시하거나 `depth=1` + `max_pages` 조합으로 범위를 제한하세요.
 
@@ -560,6 +641,26 @@ curl -X PATCH http://localhost:8000/api/connectors/b59168c41e5e4a0d \
 | `active` | 정상 운영. 수동/자동 sync 모두 허용 |
 | `paused` | 전면 중단. 수동/자동 sync 모두 차단 (409 반환) |
 | `error` | 시스템 자동 설정. sync 실패 시 기록되며 직접 설정 불가 |
+
+### 동기화 중단 (Abort)
+
+진행 중인 sync를 중단 요청합니다. 커넥터가 현재 fetch 중인 페이지까지 처리하고 다음 페이지 요청 전에 중단합니다. 이미 S3에 staging된 파일은 인덱싱이 완료됩니다.
+
+```bash
+curl -X POST http://localhost:8000/api/connectors/b59168c41e5e4a0d/sync/abort
+```
+
+응답 (HTTP 202):
+
+```json
+{ "connector_id": "b59168c41e5e4a0d", "status": "abort_requested" }
+```
+
+| 응답 코드 | 조건 |
+|-----------|------|
+| 202 | 중단 요청 수락 |
+| 404 | 커넥터 없음 |
+| 409 | `sync_status`가 `running`이 아님 |
 
 ### 동기화 상태 초기화 (Reset)
 
