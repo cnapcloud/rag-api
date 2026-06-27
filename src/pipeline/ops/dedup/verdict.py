@@ -13,29 +13,36 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_newer(
-    doc_id_a: str,
-    doc_id_c: str,
-) -> tuple[dict | None, dict | None, Literal["a", "c", "unknown"]]:
+    incoming_doc_id: str,
+    existing_doc_id: str,
+) -> tuple[dict | None, dict | None, Literal["incoming", "existing", "unknown"]]:
     """Fetch both docs and determine which is newer by doc_created_at.
 
-    Returns (doc_a, doc_c, winner) where winner is 'a' if incoming is newer,
-    'c' if existing is newer, or 'unknown' if either doc is missing.
+    Returns (incoming_doc, existing_doc, winner) where winner is 'incoming' if the
+    incoming doc is newer, 'existing' if the existing doc is newer, or 'unknown' if
+    either doc is missing.
     """
     from infra.postgres import get_doc_by_id
 
-    doc_a = get_doc_by_id(doc_id_a)
-    doc_c = get_doc_by_id(doc_id_c)
+    incoming_doc = get_doc_by_id(incoming_doc_id)
+    existing_doc = get_doc_by_id(existing_doc_id)
 
-    if doc_a is None or doc_c is None:
-        logger.warning("_resolve_newer: doc not found a=%s c=%s", doc_id_a, doc_id_c)
-        return doc_a, doc_c, "unknown"
+    if incoming_doc is None or existing_doc is None:
+        logger.warning(
+            "_resolve_newer: doc not found incoming=%s existing=%s",
+            incoming_doc_id,
+            existing_doc_id,
+        )
+        return incoming_doc, existing_doc, "unknown"
 
-    created_a: datetime | None = doc_a.get("doc_created_at")
-    created_c: datetime | None = doc_c.get("doc_created_at")
-    winner: Literal["a", "c"] = (
-        "a" if (created_c is None or (created_a is not None and created_a > created_c)) else "c"
+    created_incoming: datetime | None = incoming_doc.get("doc_created_at")
+    created_existing: datetime | None = existing_doc.get("doc_created_at")
+    winner: Literal["incoming", "existing"] = (
+        "incoming"
+        if (created_existing is None or (created_incoming is not None and created_incoming > created_existing))
+        else "existing"
     )
-    return doc_a, doc_c, winner
+    return incoming_doc, existing_doc, winner
 
 
 def _mark_outdated(
@@ -60,7 +67,7 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
     """Title changed but body is identical.
 
     Incoming newer: update existing Qdrant payload, mark existing outdated,
-    remove existing simhash bands, mark incoming indexed.
+    remove existing dedup bands, mark incoming indexed.
     Incoming older: mark incoming outdated only.
     """
     from infra.postgres import delete_minhash_bands, delete_simhash_bands, update_doc_fields
@@ -70,17 +77,17 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
         _mark_outdated(doc_id, "title_changed", None)
         return
 
-    doc_a, doc_c, newer = _resolve_newer(doc_id, duplicate_doc_id)
+    incoming_doc, existing_doc, winner = _resolve_newer(doc_id, duplicate_doc_id)
 
-    if newer != "a":
+    if winner != "incoming":
         _mark_outdated(doc_id, "title_changed", duplicate_doc_id)
         logger.info("title_changed: incoming older incoming=%s existing=%s", doc_id, duplicate_doc_id)
         return
 
-    kb_id = doc_c.get("kb_id", "")  # type: ignore[union-attr]
+    kb_id = existing_doc.get("kb_id", "")  # type: ignore[union-attr]
     update_payload_by_doc_id(kb_id, duplicate_doc_id, {
-        "source": doc_a.get("source", ""),  # type: ignore[union-attr]
-        "source_uri": doc_a.get("source_uri", ""),  # type: ignore[union-attr]
+        "source": incoming_doc.get("source", ""),  # type: ignore[union-attr]
+        "source_uri": incoming_doc.get("source_uri", ""),  # type: ignore[union-attr]
     })
     update_doc_fields(duplicate_doc_id, {
         "status": "outdated",
@@ -114,10 +121,10 @@ def handle_similar(doc_id: str, result: DedupResult, run_id: str = "") -> None:
         result.needs_indexing = False
         return
 
-    _, doc_c, newer = _resolve_newer(doc_id, duplicate_doc_id)
+    _, existing_doc, winner = _resolve_newer(doc_id, duplicate_doc_id)
 
-    if newer == "a":
-        kb_id = doc_c.get("kb_id", "")  # type: ignore[union-attr]
+    if winner == "incoming":
+        kb_id = existing_doc.get("kb_id", "")  # type: ignore[union-attr]
         delete_chunks_by_doc_id(kb_id, duplicate_doc_id)
         delete_simhash_bands(duplicate_doc_id)
         delete_minhash_bands(duplicate_doc_id)
