@@ -91,36 +91,13 @@ def run_ingest_pipeline(
 
 
 def run_delete_pipeline(doc_id: str) -> None:
-    """Delete a document's Qdrant chunks, S3 object, and soft-delete its Postgres row."""
-    from botocore.exceptions import ClientError
-    from infra import qdrant as qdrant_infra
-    from infra.postgres import get_doc_by_id, soft_delete_doc
-    from infra.s3 import delete_by_key
-    from pipeline.ops.meta import set_deleting, set_failed
+    """Delete a document. Delegates to delete_doc() for status-based soft/hard delete logic."""
+    from pipeline.ops.delete import delete_doc
+    from pipeline.ops.meta import set_failed
 
-    doc = get_doc_by_id(doc_id)
-    if doc is None:
-        logger.warning("run_delete_pipeline: doc not found: doc_id=%s", doc_id)
-        return
-
-    kb_id: str = doc["kb_id"]
-    set_deleting(doc_id, run_id="direct")
     try:
-        qdrant_infra.delete_chunks_by_doc_id(kb_id, doc_id)
-        soft_delete_doc(doc_id)
-
-        storage_key = doc.get("storage_key") or ""
-        if storage_key:
-            try:
-                delete_by_key(storage_key)
-            except ClientError as e:
-                logger.warning(
-                    "S3 object deletion failed (ignored): doc_id=%s storage_key=%s err=%s",
-                    doc_id, storage_key, e,
-                )
-
-        logger.info("Delete done: doc_id=%s kb=%s", doc_id, kb_id)
+        delete_doc(doc_id, run_id="direct")
     except Exception as e:
         set_failed(doc_id, f"delete_pipeline failed: {e}")
-        logger.exception("Delete pipeline failed: doc_id=%s kb=%s", doc_id, kb_id)
+        logger.exception("Delete pipeline failed: doc_id=%s", doc_id)
         raise

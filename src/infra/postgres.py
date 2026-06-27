@@ -320,6 +320,14 @@ def soft_delete_doc(doc_id: str) -> None:
     logger.info("Doc soft-deleted: doc_id=%s", doc_id)
 
 
+def hard_delete_doc(doc_id: str) -> None:
+    """Physically delete the document row. Cascades to simhash_bands and minhash_bands."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM documents WHERE doc_id = %s", [doc_id])
+        conn.commit()
+    logger.info("Doc hard-deleted: doc_id=%s", doc_id)
+
+
 def list_docs(
     kb_id: str,
     *,

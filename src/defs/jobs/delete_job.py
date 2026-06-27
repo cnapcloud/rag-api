@@ -1,10 +1,10 @@
-"""delete_job — Qdrant 청크 삭제 → Redis 메타 삭제."""
+"""delete_job — document delete pipeline."""
 
 from __future__ import annotations
 
 from dagster import in_process_executor, job
 
-from defs.ops.delete_ops import delete_chunks_op, delete_failure_hook, delete_meta_op, delete_s3_op
+from defs.ops.delete_ops import delete_failure_hook, delete_op
 
 
 @job(
@@ -14,6 +14,4 @@ from defs.ops.delete_ops import delete_chunks_op, delete_failure_hook, delete_me
     executor_def=in_process_executor,
 )
 def delete_job():
-    result = delete_chunks_op()
-    s3_result = delete_s3_op(result)
-    delete_meta_op(s3_result)
+    delete_op()
