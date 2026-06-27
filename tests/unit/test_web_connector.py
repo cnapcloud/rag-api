@@ -16,9 +16,9 @@ _URL = "https://example.com/docs/page"
 _BASE_DOC = {
     "doc_id": _DOC_ID,
     "kb_id": KB_ID,
-    "source": _URL,
+    "title": _URL,
     "source_type": "web",
-    "source_uri": _URL,
+    "source": _URL,
     "status": "indexed",
     "content_version": "etag-v1",  # stored without surrounding quotes (stripped at write time)
     "storage_key": f"{KB_ID}/web/{_DOC_ID}.html",
@@ -65,7 +65,7 @@ class TestProcessPage:
         new_doc = {**_BASE_DOC, "status": "fetching"}
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="etag-s3") as mock_upload,
@@ -90,19 +90,19 @@ class TestProcessPage:
             c for c in mock_update.call_args_list if c.args[1].get("status") == "pending"
         )
         assert pending_call.args[1]["storage_key"] == f"{KB_ID}/web/{_DOC_ID}.html"
-        assert pending_call.args[1]["source"] == "Test Page"
+        assert pending_call.args[1]["title"] == "Test Page"
 
         mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
 
     def test_unchanged_etag_updates_title_if_changed(self):
         from connectors.web import WebConnector
 
-        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "source": _URL}
+        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "title": _URL}
         resp = _make_response(etag="etag-v2")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -114,17 +114,17 @@ class TestProcessPage:
         assert result == _HTML_SIMPLE
         mock_upload.assert_not_called()
         mock_enqueue.assert_not_called()
-        mock_update.assert_called_once_with(_DOC_ID, {"source": "New Title"})
+        mock_update.assert_called_once_with(_DOC_ID, {"title": "New Title"})
 
     def test_unchanged_etag_title_same_skips_all(self):
         from connectors.web import WebConnector
 
-        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "source": "Same Title"}
+        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "title": "Same Title"}
         resp = _make_response(etag="etag-v2")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -146,7 +146,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="s3-etag"),
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -169,7 +169,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=deleted_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="s3-etag"),
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -198,7 +198,7 @@ class TestProcessPage:
         ))
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -220,7 +220,7 @@ class TestProcessPage:
         client.get = MagicMock(side_effect=httpx.ConnectError("timeout"))
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=failed_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
@@ -247,7 +247,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -268,7 +268,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", side_effect=Exception("S3 down")),
@@ -365,21 +365,31 @@ class TestShouldProcess:
         assert c._should_process("https://example.com/admin/settings") is False
         assert c._should_process("https://example.com/docs") is True
 
-    def test_pagination_path_blocked(self):
+    def test_pagination_path_allowed_for_link_discovery(self):
+        """Pagination URLs within seed scope are allowed by _should_process.
+
+        BFS must follow /page/2/ links to discover articles beyond page 1.
+        Staging is skipped inside _process_page, not here.
+        URLs outside seed scope are still blocked.
+        """
         from connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com/blog"]})
-        assert c._should_process("https://example.com/blog/page/2") is False
-        assert c._should_process("https://example.com/blog/page/2/") is False
-        assert c._should_process("https://example.com/posts/page/3/") is False
+        assert c._should_process("https://example.com/blog/page/2") is True
+        assert c._should_process("https://example.com/blog/page/2/") is True
+        assert c._should_process("https://example.com/posts/page/3/") is False  # outside seed scope
         assert c._should_process("https://example.com/blog/my-article") is True
 
-    def test_pagination_query_blocked(self):
+    def test_pagination_query_allowed_for_link_discovery(self):
+        """Query-based pagination within seed scope is allowed by _should_process.
+
+        Staging is skipped inside _process_page, not here.
+        """
         from connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com"]})
-        assert c._should_process("https://example.com/blog?page=2") is False
-        assert c._should_process("https://example.com/blog?p=3") is False
+        assert c._should_process("https://example.com/blog?page=2") is True
+        assert c._should_process("https://example.com/blog?p=3") is True
         assert c._should_process("https://example.com/blog?category=tech") is True
 
 
@@ -449,7 +459,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -470,7 +480,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object", return_value="etag"),
@@ -490,7 +500,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("connectors.web._has_sufficient_content", return_value=False),
         ):
@@ -508,7 +518,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object", return_value="etag"),
@@ -659,6 +669,74 @@ class TestSync:
 
 
 # ──────────────────────────────────────────────
+# Auth config — httpx.Client kwargs
+# ──────────────────────────────────────────────
+
+class TestAuthConfig:
+
+    def _captured_client_kwargs(self, config: dict) -> dict:
+        """Run sync() with a no-op _process_page and capture httpx.Client kwargs."""
+        from connectors.web import WebConnector
+
+        captured: dict = {}
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                pass
+            def get(self, *_, **__):
+                return MagicMock()
+
+        with patch("connectors.web.httpx.Client", FakeClient):
+            with patch.object(WebConnector, "_process_page", return_value=None):
+                WebConnector(config).sync(KB_ID, CONNECTOR_ID)
+
+        return captured
+
+    def test_no_auth_omits_auth_key(self):
+        kwargs = self._captured_client_kwargs({"seed_urls": [_URL]})
+        assert "auth" not in kwargs
+        assert kwargs["headers"] == {"User-Agent": "RAG-WebConnector/1.0"}
+
+    def test_auth_headers_merged_into_headers(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_headers": {"Authorization": "Bearer token123"},
+        })
+        assert "auth" not in kwargs
+        assert kwargs["headers"]["Authorization"] == "Bearer token123"
+        assert kwargs["headers"]["User-Agent"] == "RAG-WebConnector/1.0"
+
+    def test_auth_basic_sets_auth_tuple(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_basic": {"username": "user", "password": "pass"},
+        })
+        assert kwargs["auth"] == ("user", "pass")
+        assert kwargs["headers"] == {"User-Agent": "RAG-WebConnector/1.0"}
+
+    def test_auth_headers_takes_priority_over_auth_basic(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_headers": {"Authorization": "Bearer token123"},
+            "auth_basic": {"username": "user", "password": "pass"},
+        })
+        assert "auth" not in kwargs
+        assert kwargs["headers"]["Authorization"] == "Bearer token123"
+
+    def test_empty_auth_headers_falls_through_to_auth_basic(self):
+        kwargs = self._captured_client_kwargs({
+            "seed_urls": [_URL],
+            "auth_headers": {},
+            "auth_basic": {"username": "u", "password": "p"},
+        })
+        assert kwargs["auth"] == ("u", "p")
+
+
+# ──────────────────────────────────────────────
 # _dispatch_sync wiring
 # ──────────────────────────────────────────────
 
@@ -679,18 +757,25 @@ class TestDispatchSync:
 
         mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
 
-    def test_unimplemented_source_type_logs_and_returns(self):
+    def test_github_connector_dispatched(self):
+        from unittest.mock import MagicMock, patch
+
         from api.routers.connectors import _dispatch_sync
 
         connector = {
             "connector_id": CONNECTOR_ID,
             "kb_id": KB_ID,
-            "source_type": "confluence",
-            "config": {},
+            "source_type": "github",
+            "config": {"owner": "my-org", "repo": "my-repo"},
         }
 
-        # Should not raise — just logs info.
-        _dispatch_sync(connector)
+        with patch("connectors.github.GitHubConnector") as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+            _dispatch_sync(connector)
+
+        mock_cls.assert_called_once_with(connector["config"])
+        mock_instance.sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
 
 
 # ──────────────────────────────────────────────

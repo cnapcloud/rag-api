@@ -57,10 +57,15 @@ def test_ingest_job_validate_passes(ingest_run_config):
 
     doc = {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/test.pdf", "file_size": 1024, "status": "pending"}
 
+    from pipeline.ops.dedup.types import DedupResult
+
     with (
         patch("infra.postgres.get_doc_by_id", return_value=doc),
         patch("infra.postgres.update_doc_fields"),
         patch("pipeline.ops.parse.parse", return_value=[]),
+        patch("pipeline.ops.dedup.run_simhash_detection",
+              return_value=DedupResult(body_match="identical_level", needs_indexing=True)),
+        patch("pipeline.ops.dedup.run_verdict"),
         patch("pipeline.ops.chunk.chunk", return_value=[MagicMock()]),
         patch("pipeline.ops.embed.embed", return_value=[]),
         patch("pipeline.ops.upsert.upsert") as mock_upsert,

@@ -1,3 +1,6 @@
+dagster:
+  endpoint: "http://dagster-webserver:3000"
+
 s3:
   endpoint: "http://minio:9000"
   access_key: "minioadmin"   # matches MINIO_ROOT_USER in .env
@@ -28,7 +31,20 @@ redis:
   db: 0
 
 ingestion:
-  max_file_size_mb: 200
+  max_file_size_mb: 10
+
+dedup:
+  enabled: true
+  ngram: 3
+  num_bands: 4
+  simhash_bits: 64
+  hamming_identical_threshold: 5
+  hamming_similar_threshold: 10
+  lock_ttl: 10
+  lock_acquire_timeout: 5
+  jaccard_threshold: 0.65
+  title_fuzzy_threshold: 0.85
+  user_words_path: "data/kiwi_user_words.tsv"
 
 queue_worker:
   enabled: false # true이면 dagster가 비활성화됨

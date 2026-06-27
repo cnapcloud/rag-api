@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from exceptions import ConflictError, IngestValidationError, NotFoundError
 
@@ -40,7 +42,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     4. Enqueue ingest event
     """
     import psycopg.errors
-    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
     from pipeline.enqueue import enqueue_upload_event
     from pipeline.source_uri import normalize_source_uri
@@ -57,22 +59,23 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     storage_key = _build_storage_key(kb_id, filename)
     doc_type = Path(filename).suffix.lstrip(".").lower()
 
-    existing = get_doc_by_source_uri(kb_id, source_uri)
+    existing = get_doc_by_source(kb_id, source_uri)
     if existing is None:
         try:
             doc = create_doc(
                 kb_id=kb_id,
-                source_uri=source_uri,
-                source=filename,
+                source=source_uri,
+                title=filename,
                 source_type="s3",
                 status="uploading",
                 storage_key=storage_key,
                 file_size=file_size,
                 doc_type=doc_type,
+                doc_created_at=datetime.now(timezone.utc),
             )
         except psycopg.errors.UniqueViolation:
             # Race condition: concurrent upload created the row; retry lookup
-            doc = get_doc_by_source_uri(kb_id, source_uri)
+            doc = get_doc_by_source(kb_id, source_uri)
             if doc is None:
                 raise
             update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
@@ -94,7 +97,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
 
     return {
         "doc_id": doc_id,
-        "source_uri": source_uri,
+        "source": source_uri,
         "etag": etag,
         "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
     }
@@ -107,7 +110,7 @@ async def upload_docs_batch(
 ):
     """Row-first batch document upload."""
     import psycopg.errors
-    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
     from pipeline.enqueue import enqueue_upload_event
     from pipeline.source_uri import normalize_source_uri
@@ -127,21 +130,22 @@ async def upload_docs_batch(
             storage_key = _build_storage_key(kb_id, filename)
             doc_type = Path(filename).suffix.lstrip(".").lower()
 
-            existing = get_doc_by_source_uri(kb_id, source_uri)
+            existing = get_doc_by_source(kb_id, source_uri)
             if existing is None:
                 try:
                     doc = create_doc(
                         kb_id=kb_id,
-                        source_uri=source_uri,
-                        source=filename,
+                        source=source_uri,
+                        title=filename,
                         source_type="s3",
                         status="uploading",
                         storage_key=storage_key,
                         file_size=file_size,
                         doc_type=doc_type,
+                        doc_created_at=datetime.now(timezone.utc),
                     )
                 except psycopg.errors.UniqueViolation:
-                    doc = get_doc_by_source_uri(kb_id, source_uri)
+                    doc = get_doc_by_source(kb_id, source_uri)
                     if doc is None:
                         raise
                     update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
@@ -163,17 +167,17 @@ async def upload_docs_batch(
 
             results.append({
                 "doc_id": doc_id,
-                "source_uri": source_uri,
+                "source": source_uri,
                 "etag": etag,
                 "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
             })
         except (IngestValidationError, ClientError) as e:
-            results.append({"source": file.filename, "error": str(e), "status": "error"})
+            results.append({"title": file.filename, "error": str(e), "status": "error"})
 
     return {"results": results}
 
 
-_SORT_FIELDS = Literal["updated_at", "created_at", "source", "chunk_count", "file_size"]
+_SORT_FIELDS = Literal["updated_at", "created_at", "title", "chunk_count", "file_size"]
 _SORT_ORDERS = Literal["asc", "desc"]
 
 
@@ -183,6 +187,7 @@ async def list_docs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1),
     status: str | None = Query(default=None),
+    source_type: str | None = Query(default=None),
     search: str | None = Query(default=None),
     sort_by: _SORT_FIELDS = Query(default="updated_at"),
     sort_order: _SORT_ORDERS = Query(default="desc"),
@@ -195,11 +200,21 @@ async def list_docs(
         page=page,
         page_size=clamped_size,
         status=status,
+        source_type=source_type,
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
     )
     return {"items": items, "total": total, "page": page, "page_size": clamped_size}
+
+
+@router.get("/kb/{kb_id}/docs/status")
+async def get_kb_doc_counts(kb_id: str):
+    from infra.postgres import get_kb_meta, get_kb_doc_counts as pg_get_kb_doc_counts
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+    return {"kb_id": kb_id, "doc_counts": pg_get_kb_doc_counts(kb_id)}
 
 
 @router.get("/kb/{kb_id}/docs/{doc_id}/status")
@@ -214,12 +229,17 @@ async def get_doc_status(kb_id: str, doc_id: str):
 
 @router.delete("/kb/{kb_id}/docs/{doc_id}", status_code=202)
 async def delete_doc(kb_id: str, doc_id: str):
+    from exceptions import ConflictError
     from infra.postgres import get_doc_by_id
     from pipeline.enqueue import enqueue_delete_event
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
         raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
+
+    status = doc.get("status", "")
+    if status == "running":
+        raise ConflictError(f"Document is currently being processed, try again later: doc_id={doc_id}")
 
     enqueue_delete_event(doc_id)
     return {"kb_id": kb_id, "doc_id": doc_id, "status": "pending"}
@@ -313,12 +333,76 @@ async def recover_doc(kb_id: str, doc_id: str):
     return {"kb_id": kb_id, "doc_id": doc_id, "queued": True}
 
 
+@router.get("/docs")
+async def list_all_docs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1),
+    status: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    sort_by: _SORT_FIELDS = Query(default="updated_at"),
+    sort_order: _SORT_ORDERS = Query(default="desc"),
+):
+    from infra.postgres import list_all_docs_paginated
+
+    clamped_size = min(page_size, 100)
+    items, total = list_all_docs_paginated(
+        page=page,
+        page_size=clamped_size,
+        status=status,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    return {"items": items, "total": total, "page": page, "page_size": clamped_size}
+
+
+@router.get("/kb/{kb_id}/docs/{doc_id}/download")
+async def download_doc(kb_id: str, doc_id: str):
+    """Stream the raw file for a document from S3."""
+    import mimetypes
+
+    from infra.postgres import get_doc_by_id
+    from infra.s3 import get_s3_client
+    from config.settings import get_settings
+
+    doc = get_doc_by_id(doc_id)
+    if doc is None or doc.get("kb_id") != kb_id:
+        raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
+
+    storage_key = doc.get("storage_key") or ""
+    if not storage_key:
+        raise NotFoundError(f"Document has no stored file: doc_id={doc_id}")
+
+    cfg = get_settings().s3
+    client = get_s3_client()
+
+    try:
+        resp = client.get_object(Bucket=cfg.rag_bucket, Key=storage_key)
+    except ClientError as e:
+        raise NotFoundError(f"File not found in storage: {storage_key}") from e
+
+    filename = Path(storage_key).name
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+    def _iter():
+        for chunk in resp["Body"].iter_chunks(chunk_size=65536):
+            yield chunk
+
+    logger.info("Download doc: kb=%s doc_id=%s key=%s", kb_id, doc_id, storage_key)
+    return StreamingResponse(
+        _iter(),
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/docs/status")
 async def all_docs_status():
-    from infra.postgres import list_docs as pg_list_docs, list_kb_ids
+    from infra.postgres import list_kb_ids, get_kb_doc_counts as pg_get_kb_doc_counts
 
     kb_ids = list_kb_ids()
-    all_docs = {}
-    for kb_id in kb_ids:
-        all_docs[kb_id] = pg_list_docs(kb_id)
-    return {"knowledge_bases": all_docs}
+    return {
+        "knowledge_bases": {
+            kb_id: {"doc_counts": pg_get_kb_doc_counts(kb_id)} for kb_id in kb_ids
+        }
+    }

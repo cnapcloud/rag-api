@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE IF NOT EXISTS knowledge_bases (
     kb_id        TEXT PRIMARY KEY,
     kb_name      TEXT NOT NULL DEFAULT '',
@@ -31,9 +33,9 @@ CREATE TABLE IF NOT EXISTS connectors (
 CREATE TABLE IF NOT EXISTS documents (
     doc_id              TEXT         PRIMARY KEY,
     kb_id               TEXT         NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE,
-    source              TEXT         NOT NULL,
+    title               TEXT         NOT NULL,
     source_type         TEXT         NOT NULL,
-    source_uri          TEXT         NOT NULL,
+    source              TEXT         NOT NULL,
     storage_key         TEXT,
     content_version     TEXT,
     connector_id        TEXT         REFERENCES connectors(connector_id) ON DELETE SET NULL,
@@ -52,7 +54,8 @@ CREATE TABLE IF NOT EXISTS documents (
     doc_created_at      TIMESTAMPTZ,
     title_hash          TEXT,
     content_simhash     BIGINT,
-    UNIQUE(kb_id, source_uri)
+    duplicate_of        TEXT,
+    UNIQUE(kb_id, source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_content_version
@@ -61,8 +64,12 @@ CREATE INDEX IF NOT EXISTS idx_documents_title_hash
     ON documents (kb_id, title_hash) WHERE title_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_connector
     ON documents (connector_id) WHERE connector_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_documents_connector_status
+    ON documents (connector_id, status) WHERE connector_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_status
     ON documents (kb_id, status);
+CREATE INDEX IF NOT EXISTS idx_documents_title_trgm
+    ON documents USING GIN (title gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS simhash_bands (
     band_id     TEXT     PRIMARY KEY,
@@ -75,3 +82,14 @@ CREATE TABLE IF NOT EXISTS simhash_bands (
 
 CREATE INDEX IF NOT EXISTS idx_simhash_bands_lsh
     ON simhash_bands (kb_id, band_index, band_value);
+
+CREATE TABLE IF NOT EXISTS minhash_bands (
+    doc_id      TEXT     NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
+    kb_id       TEXT     NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE,
+    band_index  SMALLINT NOT NULL,
+    band_hash   BIGINT   NOT NULL,
+    PRIMARY KEY (doc_id, band_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_minhash_bands_lsh
+    ON minhash_bands (kb_id, band_index, band_hash);

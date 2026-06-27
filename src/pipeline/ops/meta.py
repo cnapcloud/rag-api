@@ -17,7 +17,6 @@ def update_meta(
     run_id: str = "",
     doc_type: str = "",
     embedding_model: str = "",
-    doc_created_at: str = "",
 ) -> None:
     """Update document to status=indexed after a successful ingest."""
     fields: dict = {
@@ -31,8 +30,6 @@ def update_meta(
         fields["doc_type"] = doc_type
     if embedding_model:
         fields["embedding_model"] = embedding_model
-    if doc_created_at:
-        fields["doc_created_at"] = doc_created_at
     update_doc_fields(doc_id, fields)
     logger.info("Meta updated: doc_id=%s status=indexed chunks=%d", doc_id, upsert_result.chunk_count)
 
@@ -57,7 +54,7 @@ def set_deleting(doc_id: str, run_id: str = "") -> None:
 
 def restore_indexed(doc_id: str) -> None:
     """Restore status to indexed after a skip (e.g. no-op re-index)."""
-    update_doc_fields(doc_id, {"status": "indexed"})
+    update_doc_fields(doc_id, {"status": "indexed", "error": None})
     logger.info("Status restored to indexed (skip): doc_id=%s", doc_id)
 
 

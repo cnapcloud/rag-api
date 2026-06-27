@@ -12,12 +12,9 @@ from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, Sk
 from defs.jobs.delete_job import delete_job
 from defs.jobs.ingest_job import ingest_job
 
-from pipeline.enqueue import DELETE_QUEUE_KEY, UPLOAD_QUEUE_KEY
+from pipeline.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
-
-UPLOAD_DELAY_KEY = "rag:upload:delay"
-DELETE_DELAY_KEY = "rag:delete:delay"
 
 
 from config.settings import get_settings as _get_settings
@@ -37,8 +34,7 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
         try:
             event = json.loads(item)
         except json.JSONDecodeError:
-            r.lpush(main_key, item)
-            continue
+            event = {}
         doc_id = event.get("doc_id", "")
         if doc_id:
             from infra.postgres import get_doc_by_id, update_doc_fields
@@ -63,7 +59,7 @@ def _is_blocked_by_active_run(
     from pipeline.ops.meta import set_failed
 
     s = doc.get("status", "")
-    if s not in ("running", "deleting"):
+    if s != "running":
         return False
 
     prev_run_id = doc.get("run_id", "")
@@ -130,6 +126,10 @@ def event_queue_sensor(context: SensorEvaluationContext):
         from pipeline.ops.meta import set_processing
 
         doc = get_doc_by_id(doc_id)
+        if doc and doc.get("status") == "deleting":
+            r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+            logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
+            continue
         if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, doc_id):
             continue
 
@@ -171,13 +171,11 @@ def event_queue_sensor(context: SensorEvaluationContext):
             continue
 
         from infra.postgres import get_doc_by_id
-        from pipeline.ops.meta import set_deleting
 
         doc = get_doc_by_id(doc_id)
         if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, doc_id):
             continue
 
-        set_deleting(doc_id)
         kb_id = doc["kb_id"] if doc else ""
         logger.info("Dispatching delete_job from queue: doc_id=%s kb=%s", doc_id, kb_id)
         yield RunRequest(
@@ -185,7 +183,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
             job_name=delete_job.name,
             run_config={
                 "ops": {
-                    "delete_chunks_op": {
+                    "delete_op": {
                         "config": {
                             "doc_id": doc_id,
                         }

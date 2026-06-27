@@ -35,22 +35,22 @@ def _to_local_iso(dt: datetime | None) -> str:
 
 # Fields allowed in update_doc_fields() to prevent SQL injection via dict keys.
 _ALLOWED_UPDATE_FIELDS = frozenset({
-    "source", "storage_key", "content_version", "connector_id", "status",
+    "title", "source", "storage_key", "content_version", "connector_id", "status",
     "deleted_at", "run_id", "error", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
-    "title_hash", "content_simhash",
+    "title_hash", "content_simhash", "duplicate_of",
 })
 
-_ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "source", "chunk_count", "file_size"})
+_ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "title", "chunk_count", "file_size"})
 _NULL_LAST_FIELDS = frozenset({"chunk_count", "file_size"})
 
 # Column order for all documents SELECT queries — must match CREATE TABLE order.
 _DOC_COLS = (
-    "doc_id", "kb_id", "source", "source_type", "source_uri", "storage_key",
+    "doc_id", "kb_id", "title", "source_type", "source", "storage_key",
     "content_version", "connector_id", "status", "deleted_at", "run_id", "error",
     "created_at", "updated_at", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
-    "title_hash", "content_simhash",
+    "title_hash", "content_simhash", "duplicate_of",
 )
 _DOC_SELECT = "SELECT " + ", ".join(_DOC_COLS) + " FROM documents"
 
@@ -232,8 +232,8 @@ def _row_to_doc(row: tuple) -> dict:
 
 def create_doc(
     kb_id: str,
-    source_uri: str,
     source: str,
+    title: str,
     source_type: str,
     *,
     status: str = "pending",
@@ -242,26 +242,38 @@ def create_doc(
     connector_id: str | None = None,
     file_size: int | None = None,
     doc_type: str | None = None,
+    doc_created_at: datetime | None = None,
 ) -> dict:
     """INSERT a new document row and return it as a dict.
 
     doc_id is app-generated as a 16-char hex ID.
-    Raises psycopg.errors.UniqueViolation if (kb_id, source_uri) already exists.
+    Raises psycopg.errors.UniqueViolation if (kb_id, source) already exists.
     """
     doc_id = generate_id()
     returning = ", ".join(_DOC_COLS)
     with get_pool().connection() as conn:
         row = conn.execute(
             f"INSERT INTO documents "
-            f"(doc_id, kb_id, source_uri, source, source_type, status, "
-            f"storage_key, content_version, connector_id, file_size, doc_type) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            f"(doc_id, kb_id, source, title, source_type, status, "
+            f"storage_key, content_version, connector_id, file_size, doc_type, doc_created_at) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {returning}",
-            [doc_id, kb_id, source_uri, source, source_type, status,
-             storage_key, content_version, connector_id, file_size, doc_type],
+            [doc_id, kb_id, source, title, source_type, status,
+             storage_key, content_version, connector_id, file_size, doc_type, doc_created_at],
         ).fetchone()
         conn.commit()
     return _row_to_doc(row)
+
+
+def get_pending_doc_count_for_connector(connector_id: str) -> int:
+    """Count docs owned by connector_id that have not yet reached a terminal status."""
+    with get_pool().connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM documents "
+            "WHERE connector_id = %s AND status NOT IN ('indexed', 'failed', 'deleted', 'deleting')",
+            [connector_id],
+        ).fetchone()
+    return int(row[0]) if row else 0
 
 
 def get_doc_by_id(doc_id: str) -> dict | None:
@@ -273,11 +285,11 @@ def get_doc_by_id(doc_id: str) -> dict | None:
     return _row_to_doc(row) if row else None
 
 
-def get_doc_by_source_uri(kb_id: str, source_uri: str) -> dict | None:
+def get_doc_by_source(kb_id: str, source: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(
-            _DOC_SELECT + " WHERE kb_id = %s AND source_uri = %s",
-            [kb_id, source_uri],
+            _DOC_SELECT + " WHERE kb_id = %s AND source = %s",
+            [kb_id, source],
         ).fetchone()
     return _row_to_doc(row) if row else None
 
@@ -306,6 +318,14 @@ def soft_delete_doc(doc_id: str) -> None:
         )
         conn.commit()
     logger.info("Doc soft-deleted: doc_id=%s", doc_id)
+
+
+def hard_delete_doc(doc_id: str) -> None:
+    """Physically delete the document row. Cascades to simhash_bands and minhash_bands."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM documents WHERE doc_id = %s", [doc_id])
+        conn.commit()
+    logger.info("Doc hard-deleted: doc_id=%s", doc_id)
 
 
 def list_docs(
@@ -337,6 +357,7 @@ def list_docs_paginated(
     page: int,
     page_size: int,
     status: str | None = None,
+    source_type: str | None = None,
     search: str | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
@@ -357,9 +378,12 @@ def list_docs_paginated(
     if status:
         conditions.append("status = %s")
         params.append(status)
+    if source_type:
+        conditions.append("source_type = %s")
+        params.append(source_type)
     if search:
-        conditions.append("source ILIKE %s")
-        params.append(f"%{search}%")
+        conditions.append("(title ILIKE %s OR source ILIKE %s OR doc_id ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where = " AND ".join(conditions)
     order_dir = "DESC" if sort_order == "desc" else "ASC"
@@ -373,6 +397,46 @@ def list_docs_paginated(
         ).fetchone()[0]
         rows = conn.execute(
             f"{_DOC_SELECT} WHERE {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
+            params + [page_size, offset],
+        ).fetchall()
+
+    return [_row_to_doc(r) for r in rows], total
+
+
+def list_all_docs_paginated(
+    page: int,
+    page_size: int,
+    status: str | None = None,
+    search: str | None = None,
+    sort_by: str = "updated_at",
+    sort_order: str = "desc",
+    include_deleted: bool = False,
+) -> tuple[list[dict], int]:
+    """Paginated, filtered, and sorted document list across all KBs."""
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if not include_deleted:
+        conditions.append("status != 'deleted'")
+    if status:
+        conditions.append("status = %s")
+        params.append(status)
+    if search:
+        conditions.append("(title ILIKE %s OR source ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    order_dir = "DESC" if sort_order == "desc" else "ASC"
+    nulls_clause = "NULLS LAST" if sort_by in _NULL_LAST_FIELDS else ""
+    order_clause = f"{sort_by} {order_dir} {nulls_clause}".strip()
+
+    offset = (page - 1) * page_size
+    with get_pool().connection() as conn:
+        total: int = conn.execute(
+            f"SELECT COUNT(*) FROM documents {where}", params
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"{_DOC_SELECT} {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
             params + [page_size, offset],
         ).fetchall()
 
@@ -416,8 +480,8 @@ def list_docs_by_connector_paginated(
         conditions.append("status = %s")
         params.append(status)
     if search:
-        conditions.append("source ILIKE %s")
-        params.append(f"%{search}%")
+        conditions.append("(title ILIKE %s OR source ILIKE %s OR doc_id ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where = " AND ".join(conditions)
     order_dir = "DESC" if sort_order == "desc" else "ASC"
@@ -521,8 +585,8 @@ def list_connectors(
     elif has_schedule is False:
         conditions.append("sync_schedule IS NULL")
     if search is not None:
-        conditions.append("LOWER(name) LIKE %s")
-        params.append(f"%{search.lower()}%")
+        conditions.append("(LOWER(name) LIKE %s OR LOWER(connector_id) LIKE %s)")
+        params.extend([f"%{search.lower()}%", f"%{search.lower()}%"])
 
     col = sort_by if sort_by in _ALLOWED_CONNECTOR_SORT_FIELDS else "created_at"
     direction = "ASC" if sort_order.lower() == "asc" else "DESC"
@@ -621,3 +685,178 @@ def get_connector_doc_counts(connector_id: str) -> dict[str, int]:
         counts[status] = int(n)
     counts["total"] = sum(v for k, v in counts.items() if k != "total")
     return counts
+
+
+def get_kb_doc_counts(kb_id: str) -> dict[str, int]:
+    """Return {status: count, ..., "total": n} for all documents in a KB."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) FROM documents WHERE kb_id = %s GROUP BY status",
+            [kb_id],
+        ).fetchall()
+    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
+    for status, n in rows:
+        counts[status] = int(n)
+    counts["total"] = sum(v for k, v in counts.items() if k != "total")
+    return counts
+
+
+def save_simhash_bands(doc_id: str, bands: list[tuple[int, str]]) -> None:
+    """Store SimHash band entries for a document.
+
+    Looks up kb_id from the documents table. Upserts to tolerate re-ingest.
+    bands: list of (band_index, band_value_hex) as returned by get_bands().
+    """
+    with get_pool().connection() as conn:
+        row = conn.execute("SELECT kb_id FROM documents WHERE doc_id = %s", [doc_id]).fetchone()
+        if row is None:
+            raise ValueError(f"Document not found for simhash save: doc_id={doc_id}")
+        kb_id = row[0]
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO simhash_bands (band_id, doc_id, kb_id, band_index, band_value)"
+                " VALUES (%s, %s, %s, %s, %s)"
+                " ON CONFLICT (band_id) DO UPDATE SET band_value = EXCLUDED.band_value",
+                [(f"{doc_id}:{idx}", doc_id, kb_id, idx, int(val, 16)) for idx, val in bands],
+            )
+        conn.commit()
+    logger.info("SimHash bands saved: doc_id=%s num_bands=%d", doc_id, len(bands))
+
+
+def find_simhash_candidates(bands: list[tuple[int, str]], kb_id: str) -> set[str]:
+    """Return doc_ids that share at least one (band_index, band_value) pair within the same KB.
+
+    bands: list of (band_index, band_value_hex) as returned by get_bands().
+    """
+    clauses = ["(band_index = %s AND band_value = %s)"] * len(bands)
+    params: list[Any] = [kb_id]
+    for idx, val in bands:
+        params.extend([idx, int(val, 16)])
+    sql = f"SELECT DISTINCT doc_id FROM simhash_bands WHERE kb_id = %s AND ({' OR '.join(clauses)})"
+    with get_pool().connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return {row[0] for row in rows}
+
+
+def get_docs_fingerprints(doc_ids: list[str]) -> dict[str, dict]:
+    """Return {doc_id: {content_simhash, title_hash}} for the given doc_ids.
+
+    Used by SimHash detection to retrieve candidate fingerprints in one query.
+    content_simhash is a signed BIGINT (i64); caller converts to u64 for Hamming.
+    """
+    if not doc_ids:
+        return {}
+    placeholders = ",".join(["%s"] * len(doc_ids))
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            f"SELECT doc_id, content_simhash, title_hash FROM documents"
+            f" WHERE doc_id IN ({placeholders})",
+            doc_ids,
+        ).fetchall()
+    return {row[0]: {"content_simhash": row[1], "title_hash": row[2]} for row in rows}
+
+
+def delete_simhash_bands(doc_id: str) -> None:
+    """Remove all simhash band entries for a document."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM simhash_bands WHERE doc_id = %s", [doc_id])
+        conn.commit()
+    logger.info("SimHash bands deleted: doc_id=%s", doc_id)
+
+
+# ──────────────────────────────────────────────
+# MinHash band CRUD (stage 2 dedup)
+# ──────────────────────────────────────────────
+
+def save_minhash_bands(doc_id: str, signature: list[int]) -> None:
+    """Store a 128-element MinHash signature as individual rows in minhash_bands.
+
+    Each row: (doc_id, kb_id, band_index=0..127, band_hash=MinHash value at that position).
+    Looks up kb_id from the documents table. Upserts to tolerate re-ingest.
+    """
+    with get_pool().connection() as conn:
+        row = conn.execute("SELECT kb_id FROM documents WHERE doc_id = %s", [doc_id]).fetchone()
+        if row is None:
+            raise ValueError(f"Document not found for minhash save: doc_id={doc_id}")
+        kb_id = row[0]
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO minhash_bands (doc_id, kb_id, band_index, band_hash) VALUES (%s, %s, %s, %s)"
+                " ON CONFLICT (doc_id, band_index) DO UPDATE SET band_hash = EXCLUDED.band_hash",
+                [(doc_id, kb_id, i, h) for i, h in enumerate(signature)],
+            )
+        conn.commit()
+    logger.info("MinHash bands saved: doc_id=%s num_values=%d", doc_id, len(signature))
+
+
+def get_minhash_signature(doc_id: str) -> list[int] | None:
+    """Return the stored MinHash signature (ordered by band_index), or None if absent."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT band_hash FROM minhash_bands WHERE doc_id = %s ORDER BY band_index",
+            [doc_id],
+        ).fetchall()
+    if not rows:
+        return None
+    return [row[0] for row in rows]
+
+
+def find_minhash_candidates(signature: list[int], kb_id: str, num_bands: int = 16) -> set[str]:
+    """Return doc_ids that share ALL MinHash values in at least one band within the same KB.
+
+    Uses LSH band approach: the signature is split into num_bands bands of equal size.
+    A candidate doc matches a band if every position within that band has the same hash value.
+    This is more selective than any-match, reducing false positives for large corpora.
+    """
+    n = len(signature)
+    rows_per_band = n // num_bands
+
+    union_parts: list[str] = []
+    all_params: list[Any] = []
+
+    for band_idx in range(num_bands):
+        start = band_idx * rows_per_band
+        or_clauses = []
+        for row in range(rows_per_band):
+            pos = start + row
+            or_clauses.append("(band_index = %s AND band_hash = %s)")
+            all_params.extend([pos, signature[pos]])
+
+        all_params.append(kb_id)
+        union_parts.append(
+            f"SELECT doc_id FROM ("
+            f"SELECT doc_id, COUNT(*) AS cnt FROM minhash_bands"
+            f" WHERE ({' OR '.join(or_clauses)}) AND kb_id = %s"
+            f" GROUP BY doc_id"
+            f") s{band_idx} WHERE cnt = {rows_per_band}"
+        )
+
+    sql = " UNION ".join(union_parts)
+    with get_pool().connection() as conn:
+        rows = conn.execute(sql, all_params).fetchall()
+    return {row[0] for row in rows}
+
+
+def find_title_candidates(title: str, threshold: float, kb_id: str) -> dict[str, float]:
+    """Return {doc_id: similarity_score} for documents whose source matches title via pg_trgm.
+
+    Uses GIN index idx_documents_source_trgm. Scoped to kb_id. Excludes deleted documents.
+    """
+    with get_pool().connection() as conn:
+        # SET does not support parameter binding; threshold is a config float (not user input).
+        conn.execute(f"SET LOCAL pg_trgm.similarity_threshold = {float(threshold)!r}")
+        rows = conn.execute(
+            "SELECT doc_id, similarity(title, %s) AS sim FROM documents"
+            " WHERE kb_id = %s AND title %% %s AND status != 'deleted'",
+            [title, kb_id, title],
+        ).fetchall()
+    return {row[0]: float(row[1]) for row in rows}
+
+
+def delete_minhash_bands(doc_id: str) -> None:
+    """Remove all MinHash band entries for a document."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM minhash_bands WHERE doc_id = %s", [doc_id])
+        conn.commit()
+    logger.info("MinHash bands deleted: doc_id=%s", doc_id)
+

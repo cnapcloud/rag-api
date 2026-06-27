@@ -1,4 +1,4 @@
-"""chunk Op — LlamaIndex NodeParser 청킹 (recursive / semantic)."""
+"""chunk Op — LlamaIndex NodeParser chunking (recursive / semantic / code)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from llama_index.core.schema import BaseNode
 
 from config.settings import get_settings
 from exceptions import ConfigError
+from pipeline.ops.parse import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,6 @@ def _build_parser(strategy: ChunkStrategy, chunk_size: int, chunk_overlap: int, 
     elif strategy == "semantic":
         from llama_index.core.node_parser import SemanticSplitterNodeParser
 
-        # SemanticSplitter는 embed_model이 필요 — settings에서 가져옴
         from pipeline.ops.embed import build_embed_model
 
         embed_model = build_embed_model()
@@ -39,23 +39,39 @@ def _build_parser(strategy: ChunkStrategy, chunk_size: int, chunk_overlap: int, 
         raise ConfigError(f"Unknown chunking strategy: {strategy}")
 
 
+def _build_code_parser(language: str, chunk_lines: int, chunk_lines_overlap: int):
+    try:
+        from llama_index.core.node_parser import CodeSplitter
+    except ImportError as e:
+        raise ConfigError("CodeSplitter unavailable: install tree-sitter-languages") from e
+    return CodeSplitter(language=language, chunk_lines=chunk_lines, chunk_lines_overlap=chunk_lines_overlap)
+
+
+def _group_by_language(docs: list[Document]) -> list[tuple[str, list[Document]]]:
+    groups: dict[str, list[Document]] = {}
+    for doc in docs:
+        ext = f".{doc.metadata.get('doc_type', '')}"
+        lang = CODE_LANGUAGE_MAP.get(ext, "python")
+        groups.setdefault(lang, []).append(doc)
+    return list(groups.items())
+
+
 def chunk(
     documents: list[Document],
     strategy: ChunkStrategy | None = None,
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
 ) -> list[BaseNode]:
-    """
-    Document 리스트를 Node 리스트로 청킹한다.
+    """Split documents into nodes, routing code files to CodeSplitter automatically.
 
     Args:
-        documents: LlamaIndex Document 리스트
-        strategy: 청킹 전략 (None이면 settings.yaml에서 읽음)
-        chunk_size: 청크 크기 (None이면 settings)
-        chunk_overlap: 오버랩 크기 (None이면 settings)
+        documents: LlamaIndex Document list
+        strategy: chunking strategy for non-code docs (None -> settings.yaml)
+        chunk_size: chunk size override for non-code docs
+        chunk_overlap: overlap override for non-code docs
 
     Returns:
-        BaseNode 리스트
+        BaseNode list
     """
     cfg = get_settings().chunking
     _strategy: ChunkStrategy = strategy or cfg.strategy  # type: ignore[assignment]
@@ -63,22 +79,29 @@ def chunk(
     _chunk_overlap = chunk_overlap or cfg.chunk_overlap
     _semantic_threshold = cfg.semantic_threshold
 
-    parser = _build_parser(_strategy, _chunk_size, _chunk_overlap, _semantic_threshold)
+    code_docs = [d for d in documents if f".{d.metadata.get('doc_type', '')}" in CODE_EXTENSIONS]
+    text_docs = [d for d in documents if d not in code_docs]
 
-    nodes = parser.get_nodes_from_documents(documents)
+    nodes: list[BaseNode] = []
+
+    for language, group in _group_by_language(code_docs):
+        parser = _build_code_parser(language, cfg.code_chunk_lines, cfg.code_chunk_lines_overlap)
+        raw = parser.get_nodes_from_documents(group)
+        for n in raw:
+            n.metadata["chunk_strategy"] = "code"
+        nodes.extend(raw)
+
+    if text_docs:
+        parser = _build_parser(_strategy, _chunk_size, _chunk_overlap, _semantic_threshold)
+        raw = parser.get_nodes_from_documents(text_docs)
+        for n in raw:
+            n.metadata.update({"chunk_strategy": _strategy, "chunk_size": _chunk_size, "chunk_overlap": _chunk_overlap})
+        nodes.extend(raw)
+
     nodes = [n for n in nodes if len(n.get_content().strip()) >= cfg.min_chunk_chars]
 
-    # 각 노드에 청킹 메타데이터 추가
     for i, node in enumerate(nodes):
-        node.metadata.update(
-            {
-                "chunk_index": i,
-                "total_chunks": len(nodes),
-                "chunk_strategy": _strategy,
-                "chunk_size": _chunk_size,
-                "chunk_overlap": _chunk_overlap,
-            }
-        )
+        node.metadata.update({"chunk_index": i, "total_chunks": len(nodes)})
 
-    logger.info("Chunking done: strategy=%s nodes=%d", _strategy, len(nodes))
+    logger.info("Chunking done: code=%d text=%d nodes=%d", len(code_docs), len(text_docs), len(nodes))
     return nodes

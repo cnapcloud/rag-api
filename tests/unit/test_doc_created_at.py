@@ -191,47 +191,40 @@ class TestUpsertDocCreatedAt:
 
 
 # ──────────────────────────────────────────────
-# update_meta stores doc_created_at in Postgres
+# parse_op stores doc_created_at in Postgres immediately
 # ──────────────────────────────────────────────
 
 class TestMetaDocCreatedAt:
-    def _make_upsert_result(self, doc_created_at="2023-05-15T10:30:00+00:00"):
-        from pipeline.ops.upsert import UpsertResult
-        return UpsertResult(kb_id="kb-test", doc_id=DOC_ID, chunk_count=3, doc_created_at=doc_created_at)
+    def test_parse_op_saves_doc_created_at(self):
+        """parse_op persists doc_created_at to DB right after parse, before dedup."""
+        from llama_index.core.schema import Document
 
-    def test_update_meta_stores_doc_created_at(self):
-        from pipeline.ops.meta import update_meta
-
+        doc = Document(text="hello", metadata={"doc_created_at": "2023-05-15T10:30:00+00:00", "file_name": "x.md"})
         stored: dict = {}
 
-        def fake_update(doc_id, fields):
-            stored.update(fields)
-
-        with patch("pipeline.ops.meta.update_doc_fields", side_effect=fake_update):
-            update_meta(
-                doc_id=DOC_ID,
-                upsert_result=self._make_upsert_result("2023-05-15T10:30:00+00:00"),
-                doc_created_at="2023-05-15T10:30:00+00:00",
-            )
+        with patch("infra.postgres.update_doc_fields", side_effect=lambda doc_id, fields: stored.update(fields)), \
+             patch("pipeline.ops.parse.parse", return_value=[doc]):
+            from dagster import build_op_context
+            from defs.ops.ingest_ops import parse_op
+            ctx = build_op_context()
+            parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})
 
         assert stored.get("doc_created_at") == "2023-05-15T10:30:00+00:00"
 
-    def test_update_meta_omits_doc_created_at_when_empty(self):
-        from pipeline.ops.meta import update_meta
+    def test_parse_op_skips_save_when_doc_created_at_empty(self):
+        """parse_op does not call update_doc_fields when doc_created_at is empty."""
+        from llama_index.core.schema import Document
 
-        stored: dict = {}
+        doc = Document(text="hello", metadata={"doc_created_at": "", "file_name": "x.md"})
 
-        def fake_update(doc_id, fields):
-            stored.update(fields)
+        with patch("infra.postgres.update_doc_fields") as mock_udf, \
+             patch("pipeline.ops.parse.parse", return_value=[doc]):
+            from dagster import build_op_context
+            from defs.ops.ingest_ops import parse_op
+            ctx = build_op_context()
+            parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})
 
-        with patch("pipeline.ops.meta.update_doc_fields", side_effect=fake_update):
-            update_meta(
-                doc_id=DOC_ID,
-                upsert_result=self._make_upsert_result(""),
-                doc_created_at="",
-            )
-
-        assert "doc_created_at" not in stored
+        mock_udf.assert_not_called()
 
 
 # ──────────────────────────────────────────────

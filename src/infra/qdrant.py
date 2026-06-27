@@ -133,3 +133,28 @@ def upsert_chunks(
     c = client or get_qdrant_client()
     c.upsert(collection_name=kb_id, points=points)
     logger.info("Qdrant upsert done: kb=%s count=%d", kb_id, len(points))
+
+
+def update_payload_by_doc_id(
+    kb_id: str,
+    doc_id: str,
+    payload: dict,
+    client: QdrantClient | None = None,
+) -> None:
+    """Overwrite specific payload fields on all chunks belonging to doc_id."""
+    c = client or get_qdrant_client()
+    c.set_payload(
+        collection_name=kb_id,
+        payload=payload,
+        points=qmodels.FilterSelector(
+            filter=qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="doc_id",
+                        match=qmodels.MatchValue(value=doc_id),
+                    )
+                ]
+            )
+        ),
+    )
+    logger.info("Qdrant payload updated: kb=%s doc_id=%s fields=%s", kb_id, doc_id, list(payload))

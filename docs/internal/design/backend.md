@@ -1,4 +1,4 @@
-# Internal Design
+# Backend Design
 
 내부 데이터 구조, 상태 정의, 시스템 흐름에 대한 설계 문서.
 엔드포인트 계약(스키마, 파라미터)은 `/docs` (Swagger UI) 참고.
@@ -66,17 +66,17 @@ KB·문서 메타데이터는 Postgres `knowledge_bases` / `documents` 테이블
 ```
 rag:upload:queue   # 인제스트 이벤트 큐  (List, lpush / rpop)
 rag:delete:queue   # 삭제 이벤트 큐     (List, lpush / rpop)
-rag:upload:delay   # 인제스트 지연 큐    (List, sensor가 준비된 항목을 main 큐로 복원)
-rag:delete:delay   # 삭제 지연 큐       (List, sensor가 준비된 항목을 main 큐로 복원)
+rag:upload:delay   # 인제스트 지연 큐    (Sorted Set, score=ready_at, member=payload JSON)
+rag:delete:delay   # 삭제 지연 큐       (Sorted Set, score=ready_at, member=payload JSON)
 ```
 
 큐 이벤트 JSON 구조:
 
 ```json
-{ "kb_id": "kb-01", "doc_source": "doc.pdf", "etag": "abc123", "file_size": 5120, "force": false }
+{ "doc_id": "a1b2c3d4e5f6g7h8", "force": false }
 ```
 
-처리 중인 문서가 이미 `running / deleting` 상태이면 QueueWorker가 `asyncio.sleep(retry_interval_sec)` 후 동일 큐에 재push한다 (Sorted Set 미사용).
+처리 중인 문서가 이미 `running / deleting` 상태이면 delay 큐(Sorted Set)로 밀린다. 동작 원리는 [섹션 6](#6-delay-큐-동작-원리) 참고.
 
 ---
 
@@ -139,18 +139,38 @@ POST /api/search
 
 ## 6. Delay 큐 동작 원리
 
-QueueWorker가 큐에서 이벤트를 꺼냈을 때 해당 문서가 이미 `running / deleting` 상태이면, 이벤트를 즉시 재push하지 않고 `asyncio.sleep(retry_interval_sec)` 후 동일 큐 앞쪽(lpush)에 돌려넣는다.
+main 큐에서 꺼낸 이벤트의 문서가 `running / deleting` 상태이면 즉시 처리하지 않고
+Redis Sorted Set으로 구성된 delay 큐에 넣는다.
+score는 `time.time() + retry_interval_sec` (처리 가능 시각).
 
 ```
 rpop rag:upload:queue
   └─ status=running / deleting
-      → asyncio.sleep(retry_interval_sec)
-      → lpush rag:upload:queue (재대기)
+      → zadd rag:upload:delay  {payload: ready_at}
+
+poll 시작 시:
+  zrangebyscore rag:upload:delay 0 now
+      → zrem (delay 큐에서 제거)
+      → lpush rag:upload:queue (main 큐로 복원)
 ```
 
 `retry_interval_sec`는 `settings.yaml`의 `queue_poll.retry_interval_sec`으로 설정.
 
-Redis Sorted Set 기반 delay 큐는 사용하지 않는다.
+### 중복 요청 overwrite
+
+ZADD의 member key는 원본 payload JSON 문자열 (`{"doc_id": "...", "force": false}`)이다.
+같은 doc_id + 같은 force 값이면 member가 동일하므로 ZADD가 score만 갱신한다 (overwrite).
+동일 문서가 여러 번 block되더라도 delay 큐에 entry가 누적되지 않는다.
+
+단, force 값이 다른 두 요청(예: `force:false`와 `force:true`)은 member가 달라 각각 독립 entry로 존재한다.
+
+### sensor vs QueueWorker
+
+| 항목 | event_queue_sensor | QueueWorker |
+|------|-------------------|-------------|
+| block 판단 | Dagster run_id 조회 (active run 확인) | doc status 확인 (running/deleting) |
+| delay 방식 | zadd rag:upload:delay | zadd rag:upload:delay |
+| drain 시점 | 매 sensor firing 시작 시 | 매 poll 시작 시 |
 
 ---
 

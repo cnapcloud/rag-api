@@ -475,7 +475,7 @@ class TestListConnectorDocs:
             "doc_id": "dddd-0001",
             "kb_id": KB_ID,
             "connector_id": CONNECTOR_ID,
-            "source": "Getting Started",
+            "title": "Getting Started",
             "status": "indexed",
         }
         with (

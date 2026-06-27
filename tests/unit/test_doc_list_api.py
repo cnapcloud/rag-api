@@ -21,8 +21,8 @@ def _make_doc(source: str, status: str = "indexed", chunk_count: int | None = No
     return {
         "doc_id": "11111111-0000-0000-0000-000000000001",
         "kb_id": "kb1",
+        "title": source,
         "source": source,
-        "source_uri": source,
         "source_type": "s3",
         "status": status,
         "doc_type": "pdf",
@@ -55,7 +55,7 @@ class TestListDocsDefaultResponse:
     def test_default_params_passed_to_postgres(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured.update(locals())
             return ([], 0)
 
@@ -74,7 +74,7 @@ class TestListDocsPagination:
     def test_page2_passed_correctly(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["page"] = page
             captured["page_size"] = page_size
             return ([], 50)
@@ -101,7 +101,7 @@ class TestListDocsPagination:
     def test_page_size_clamped_to_100(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["page_size"] = page_size
             return ([], 0)
 
@@ -122,7 +122,7 @@ class TestListDocsSearch:
     def test_search_param_forwarded(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["search"] = search
             return ([], 0)
 
@@ -142,14 +142,14 @@ class TestListDocsSearch:
 
         items, total = store.list_docs_paginated("kb1", 1, 20, search="report")
         assert total == 1
-        assert items[0]["source"] == "Reports/Q1.pdf"
+        assert items[0]["title"] == "Reports/Q1.pdf"
 
 
 class TestListDocsStatusFilter:
     def test_status_param_forwarded(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["status"] = status
             return ([], 0)
 
@@ -173,18 +173,18 @@ class TestListDocsStatusFilter:
 
 
 class TestListDocsSort:
-    def test_sort_by_source_param_forwarded(self, client):
+    def test_sort_by_title_param_forwarded(self, client):
         captured = {}
 
-        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order):
+        def fake_paginated(kb_id, page, page_size, status, search, sort_by, sort_order, source_type=None):
             captured["sort_by"] = sort_by
             captured["sort_order"] = sort_order
             return ([], 0)
 
         with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
-            client.get("/api/kb/kb1/docs?sort_by=source&sort_order=asc")
+            client.get("/api/kb/kb1/docs?sort_by=title&sort_order=asc")
 
-        assert captured["sort_by"] == "source"
+        assert captured["sort_by"] == "title"
         assert captured["sort_order"] == "asc"
 
     def test_doc_source_is_no_longer_valid_sort_field(self, client):
@@ -209,8 +209,8 @@ class TestListDocsSort:
         store.create_doc("kb1", "apple.pdf", "apple.pdf", "s3", status="indexed")
         store.create_doc("kb1", "mango.pdf", "mango.pdf", "s3", status="indexed")
 
-        items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="source", sort_order="asc")
-        sources = [d["source"] for d in items]
+        items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="title", sort_order="asc")
+        sources = [d["title"] for d in items]
         assert sources == sorted(sources)
 
     def test_null_chunk_count_sorts_last_desc(self):
@@ -225,7 +225,7 @@ class TestListDocsSort:
         store.update_doc_fields(doc_c["doc_id"], {"chunk_count": 10})
 
         items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="chunk_count", sort_order="desc")
-        sources = [d["source"] for d in items]
+        sources = [d["title"] for d in items]
         assert sources[-1] == "b.pdf"
 
     def test_null_chunk_count_sorts_last_asc(self):
@@ -240,7 +240,7 @@ class TestListDocsSort:
         store.update_doc_fields(doc_c["doc_id"], {"chunk_count": 10})
 
         items, _ = store.list_docs_paginated("kb1", 1, 20, sort_by="chunk_count", sort_order="asc")
-        sources = [d["source"] for d in items]
+        sources = [d["title"] for d in items]
         assert sources[-1] == "b.pdf"
 
 
@@ -252,7 +252,7 @@ class TestListDocsItemShape:
 
         doc = resp.json()["items"][0]
         assert "doc_id" in doc
-        assert "source" in doc
+        assert "title" in doc
         assert "status" in doc
         assert "doc_type" in doc
         assert "chunk_count" in doc

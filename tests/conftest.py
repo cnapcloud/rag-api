@@ -68,8 +68,8 @@ class FakePostgresStore:
     def create_doc(
         self,
         kb_id: str,
-        source_uri: str,
         source: str,
+        title: str,
         source_type: str,
         *,
         status: str = "pending",
@@ -84,9 +84,9 @@ class FakePostgresStore:
         doc = {
             "doc_id": doc_id,
             "kb_id": kb_id,
-            "source": source,
+            "title": title,
             "source_type": source_type,
-            "source_uri": source_uri,
+            "source": source,
             "storage_key": storage_key,
             "content_version": content_version,
             "connector_id": connector_id,
@@ -112,9 +112,9 @@ class FakePostgresStore:
     def get_doc_by_id(self, doc_id: str) -> dict | None:
         return dict(self._docs[doc_id]) if doc_id in self._docs else None
 
-    def get_doc_by_source_uri(self, kb_id: str, source_uri: str) -> dict | None:
+    def get_doc_by_source(self, kb_id: str, source: str) -> dict | None:
         for doc in self._docs.values():
-            if doc["kb_id"] == kb_id and doc["source_uri"] == source_uri:
+            if doc["kb_id"] == kb_id and doc["source"] == source:
                 return dict(doc)
         return None
 
@@ -160,7 +160,7 @@ class FakePostgresStore:
         if status:
             docs = [d for d in docs if d.get("status") == status]
         if search:
-            docs = [d for d in docs if search.lower() in (d.get("source") or "").lower()]
+            docs = [d for d in docs if search.lower() in (d.get("title") or "").lower()]
 
         null_last_fields = {"chunk_count", "file_size"}
         reverse = sort_order == "desc"
@@ -308,7 +308,7 @@ class FakePostgresStore:
         if status:
             docs = [d for d in docs if d.get("status") == status]
         if search:
-            docs = [d for d in docs if search.lower() in (d.get("source") or "").lower()]
+            docs = [d for d in docs if search.lower() in (d.get("title") or "").lower()]
         docs.sort(key=lambda d: d.get(sort_by) or "", reverse=(sort_order == "desc"))
         total = len(docs)
         offset = (page - 1) * page_size
@@ -327,7 +327,7 @@ def mock_postgres(monkeypatch):
     monkeypatch.setattr("infra.postgres.delete_kb_meta", store.delete_kb_meta)
     monkeypatch.setattr("infra.postgres.create_doc", store.create_doc)
     monkeypatch.setattr("infra.postgres.get_doc_by_id", store.get_doc_by_id)
-    monkeypatch.setattr("infra.postgres.get_doc_by_source_uri", store.get_doc_by_source_uri)
+    monkeypatch.setattr("infra.postgres.get_doc_by_source", store.get_doc_by_source)
     monkeypatch.setattr("infra.postgres.update_doc_fields", store.update_doc_fields)
     monkeypatch.setattr("infra.postgres.soft_delete_doc", store.soft_delete_doc)
     monkeypatch.setattr("infra.postgres.list_docs", store.list_docs)

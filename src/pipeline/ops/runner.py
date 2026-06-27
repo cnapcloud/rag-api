@@ -34,6 +34,9 @@ def run_ingest_pipeline(
 
     kb_id: str = doc["kb_id"]
     storage_key: str = doc.get("storage_key") or ""
+    title: str = doc.get("title") or ""
+    source_type: str = doc.get("source_type") or ""
+    source: str = doc.get("source") or ""
 
     try:
         validate(doc_id, force=force)
@@ -45,12 +48,29 @@ def run_ingest_pipeline(
     set_processing(doc_id, run_id=run_id)
 
     try:
+        from infra.postgres import update_doc_fields
+        from pipeline.ops.dedup import run_dedup_pipeline
+
         documents = parse(doc_id=doc_id, storage_key=storage_key)
+
+        if documents:
+            doc_created_at = documents[0].metadata.get("doc_created_at", "")
+            if doc_created_at:
+                update_doc_fields(doc_id, {"doc_created_at": doc_created_at})
+
+        dedup_result = run_dedup_pipeline(doc_id=doc_id, kb_id=kb_id, run_id=run_id, documents=documents)
+        if not dedup_result.needs_indexing:
+            logger.info("Dedup skipped indexing: doc_id=%s verdict=%s", doc_id, dedup_result.verdict)
+            return 0
+
         nodes = chunk(documents)
         if not nodes:
             raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
         embedded_nodes = embed(nodes)
-        upsert_result = upsert(kb_id, doc_id, embedded_nodes)
+        upsert_result = upsert(
+            kb_id, doc_id, embedded_nodes,
+            title=title, source_type=source_type, source=source,
+        )
 
         cfg = get_settings().embedding
         doc_type = storage_key.rsplit(".", 1)[-1] if "." in storage_key else ""
@@ -60,7 +80,6 @@ def run_ingest_pipeline(
             run_id=run_id,
             doc_type=doc_type,
             embedding_model=cfg.model,
-            doc_created_at=upsert_result.doc_created_at,
         )
         logger.info("Ingest done: doc_id=%s kb=%s chunks=%d", doc_id, kb_id, upsert_result.chunk_count)
         return upsert_result.chunk_count
@@ -72,36 +91,13 @@ def run_ingest_pipeline(
 
 
 def run_delete_pipeline(doc_id: str) -> None:
-    """Delete a document's Qdrant chunks, S3 object, and soft-delete its Postgres row."""
-    from botocore.exceptions import ClientError
-    from infra import qdrant as qdrant_infra
-    from infra.postgres import get_doc_by_id, soft_delete_doc
-    from infra.s3 import delete_by_key
-    from pipeline.ops.meta import set_deleting, set_failed
+    """Delete a document. Delegates to delete_doc() for status-based soft/hard delete logic."""
+    from pipeline.ops.delete import delete_doc
+    from pipeline.ops.meta import set_failed
 
-    doc = get_doc_by_id(doc_id)
-    if doc is None:
-        logger.warning("run_delete_pipeline: doc not found: doc_id=%s", doc_id)
-        return
-
-    kb_id: str = doc["kb_id"]
-    set_deleting(doc_id, run_id="direct")
     try:
-        qdrant_infra.delete_chunks_by_doc_id(kb_id, doc_id)
-        soft_delete_doc(doc_id)
-
-        storage_key = doc.get("storage_key") or ""
-        if storage_key:
-            try:
-                delete_by_key(storage_key)
-            except ClientError as e:
-                logger.warning(
-                    "S3 object deletion failed (ignored): doc_id=%s storage_key=%s err=%s",
-                    doc_id, storage_key, e,
-                )
-
-        logger.info("Delete done: doc_id=%s kb=%s", doc_id, kb_id)
+        delete_doc(doc_id, run_id="direct")
     except Exception as e:
         set_failed(doc_id, f"delete_pipeline failed: {e}")
-        logger.exception("Delete pipeline failed: doc_id=%s kb=%s", doc_id, kb_id)
+        logger.exception("Delete pipeline failed: doc_id=%s", doc_id)
         raise

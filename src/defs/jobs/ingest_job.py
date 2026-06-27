@@ -1,4 +1,4 @@
-"""ingest_job — validate → parse → chunk → embed → upsert → meta."""
+"""ingest_job — validate → parse → dedup → chunk → embed → upsert → meta."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from dagster import in_process_executor, job
 
 from defs.ops.ingest_ops import (
     chunk_op,
+    dedup_op,
     embed_op,
     ingest_failure_hook,
     meta_op,
@@ -16,15 +17,16 @@ from defs.ops.ingest_ops import (
 
 
 @job(
-    description="단일 문서 인제스트 파이프라인 (문서 1개 = Run 1개)",
+    description="Single document ingest pipeline (one run per document)",
     tags={"pipeline": "ingest"},
     hooks={ingest_failure_hook},
     executor_def=in_process_executor,
 )
 def ingest_job():
     valid_config = validate_op()
-    docs = parse_op(valid_config)
-    nodes = chunk_op(docs)
+    documents = parse_op(valid_config)
+    to_chunk = dedup_op(valid_config, documents)
+    nodes = chunk_op(to_chunk)
     vectors = embed_op(nodes)
     result = upsert_op(valid_config, vectors)
     meta_op(valid_config, result)

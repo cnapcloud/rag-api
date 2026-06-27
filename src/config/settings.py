@@ -13,6 +13,10 @@ from pydantic import BaseModel, Field
 # 하위 모델
 # ──────────────────────────────────────────────
 
+class DagsterSettings(BaseModel):
+    endpoint: str = "http://dagster-webserver:3000"
+
+
 class S3Settings(BaseModel):
     endpoint: str = "http://minio:9000"
     access_key: str = ""
@@ -67,6 +71,8 @@ class ChunkingSettings(BaseModel):
     chunk_overlap: int = 128
     semantic_threshold: float = 0.8
     min_chunk_chars: int = 30
+    code_chunk_lines: int = 40
+    code_chunk_lines_overlap: int = 5
 
 
 class EmbeddingSettings(BaseModel):
@@ -124,6 +130,23 @@ class TracingSettings(BaseModel):
     service_name: str = "rag-api"
 
 
+class DedupSettings(BaseModel):
+    enabled: bool = True
+    ngram: int = 3
+    num_bands: int = 4
+    simhash_bits: int = 64
+    hamming_identical_threshold: int = 3
+    hamming_similar_threshold: int = 10
+    lock_ttl: int = 10
+    lock_acquire_timeout: int = 5
+    # Stage 2 thresholds
+    jaccard_threshold: float = 0.65
+    title_fuzzy_threshold: float = 0.85
+    title_only_min_jaccard_floor: float = 0.25
+    # Kiwi user word dictionary (relative to project root; empty = no user dict)
+    user_words_path: str = ""
+
+
 class KBDefinition(BaseModel):
     id: str
     name: str = ""
@@ -139,11 +162,13 @@ _SETTINGS_PATH = Path(__file__).parents[2] / "settings.yaml"
 
 
 class Settings(BaseModel):
+    dagster: DagsterSettings = Field(default_factory=DagsterSettings)
     s3: S3Settings = Field(default_factory=S3Settings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
+    dedup: DedupSettings = Field(default_factory=DedupSettings)
     queue_worker: QueueWorkerSettings = Field(default_factory=QueueWorkerSettings)
     queue_poll: QueuePollSettings = Field(default_factory=QueuePollSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)

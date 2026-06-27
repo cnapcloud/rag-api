@@ -16,3 +16,9 @@
 | [17](17-html-clean-reader.md) | HTML Clean Reader — strip nav/footer/script (R-08) | US-17 | done |
 | [18](18-web-connector.md) | WebConnector implementation (R-09) | US-18 | done |
 | [19](19-connector-dagster-schedule.md) | Connector Dagster Schedule dynamic registration (R-12) | US-19 | done |
+| [20](20-confluence-connector.md) | ConfluenceConnector implementation (R-10) | US-20 | done |
+| [21](21-github-connector.md) | GitHubConnector implementation (R-11) | US-21 | done |
+| [22](22-discard-ingest-on-deleting.md) | deleting 상태 이벤트 즉시 버림 | US-22 | done |
+| [24](24-dedup-stage2.md) | Dedup Stage 2 — MinHash + pg_trgm | US-24 | done |
+| [25](25-kiwi-user-words.md) | Kiwi 사용자 사전 파일 지원 | US-25 | done |
+| [26](26-delete-pipeline-refactor.md) | Delete Pipeline Refactor — soft/hard delete 분기 + status guard | US-26 | todo |

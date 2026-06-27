@@ -53,12 +53,18 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
     doc = get_doc_by_id(config.doc_id)
     kb_id = doc["kb_id"] if doc else ""
     storage_key = doc.get("storage_key", "") if doc else ""
+    title = doc.get("title", "") if doc else ""
+    source_type = doc.get("source_type", "") if doc else ""
+    source = doc.get("source", "") if doc else ""
 
     yield Output(
         {
             "doc_id": config.doc_id,
             "kb_id": kb_id,
             "storage_key": storage_key,
+            "title": title,
+            "source_type": source_type,
+            "source": source,
             "force": config.force,
             "run_id": context.run_id,
         },
@@ -68,21 +74,52 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
 
 @op
 def parse_op(context: OpExecutionContext, valid_config: dict):
-    """Download file from S3 and convert to LlamaIndex Documents."""
+    """Download file from S3, convert to LlamaIndex Documents, persist doc_created_at."""
+    from infra.postgres import update_doc_fields
     from pipeline.ops.parse import parse
 
-    documents = parse(doc_id=valid_config["doc_id"], storage_key=valid_config["storage_key"])
-    context.log.info("Parse done: %d documents", len(documents))
+    doc_id = valid_config["doc_id"]
+    documents = parse(doc_id=doc_id, storage_key=valid_config["storage_key"])
+
+    if documents:
+        doc_created_at = documents[0].metadata.get("doc_created_at", "")
+        if doc_created_at:
+            update_doc_fields(doc_id, {"doc_created_at": doc_created_at})
+
+    context.log.info("Parse done: %d documents doc_id=%s", len(documents), doc_id)
     return documents
 
 
+@op(out={"to_chunk": Out(dagster_type=list, is_required=False)})
+def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
+    """Run dedup pipeline (stage 1 SimHash + stage 2 MinHash/pg_trgm) on pre-parsed documents.
+
+    Emits to_chunk only when needs_indexing=True; otherwise terminates the pipeline branch.
+    """
+    from pipeline.ops.dedup import run_dedup_pipeline
+
+    doc_id = valid_config["doc_id"]
+    kb_id = valid_config["kb_id"]
+    result = run_dedup_pipeline(doc_id=doc_id, kb_id=kb_id, run_id=context.run_id, documents=documents)
+
+    context.log.info(
+        "Dedup done: body_match=%s doc_id=%s needs_indexing=%s",
+        result.body_match, doc_id, result.needs_indexing,
+    )
+
+    if not result.needs_indexing:
+        return
+
+    yield Output(documents, "to_chunk")
+
+
 @op
-def chunk_op(context: OpExecutionContext, documents):
+def chunk_op(context: OpExecutionContext, to_chunk):
     """Document -> Node chunking."""
     from exceptions import IngestValidationError
     from pipeline.ops.chunk import chunk
 
-    nodes = chunk(documents)
+    nodes = chunk(to_chunk)
     if not nodes:
         raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
     context.log.info("Chunking done: %d nodes", len(nodes))
@@ -108,6 +145,9 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
         kb_id=valid_config["kb_id"],
         doc_id=valid_config["doc_id"],
         embedded_nodes=embedded_nodes,
+        title=valid_config.get("title", ""),
+        source_type=valid_config.get("source_type", ""),
+        source=valid_config.get("source", ""),
     )
     context.log.info("Upsert done: %d chunks", result.chunk_count)
     return result
@@ -129,7 +169,6 @@ def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
         run_id=valid_config.get("run_id", context.run_id),
         doc_type=doc_type,
         embedding_model=cfg.model,
-        doc_created_at=upsert_result.doc_created_at,
     )
     context.log.info(
         "ingest_job completed: doc_id=%s chunks=%d",

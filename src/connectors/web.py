@@ -138,9 +138,15 @@ class WebConnector:
         self.exclude_patterns: list[str] = config.get("exclude_patterns", [])
         self.max_pages: int = int(config.get("max_pages", 50))
         self.timeout: int = int(config.get("request_timeout_sec", 30))
-        self.request_delay_ms: int = int(config.get("request_delay_ms", 0))
+        self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.skip_seed_pages: bool = bool(config.get("skip_seed_pages", True))
         self.min_content_chars: int = int(config.get("min_content_chars", 200))
+        self.auth_headers: dict[str, str] = config.get("auth_headers") or {}
+        self.auth_basic: tuple[str, str] | None = (
+            (str(cfg["username"]), str(cfg["password"]))
+            if (cfg := config.get("auth_basic"))
+            else None
+        )
 
         # Scope is derived from the full path of each seed URL.
         # https://example.com/docs → only https://example.com/docs/* is crawled.
@@ -152,21 +158,33 @@ class WebConnector:
     def sync(self, kb_id: str, connector_id: str) -> None:
         """Run Flow B for all pages reachable from seed_urls."""
         visited: set[str] = set()
+        queued: set[str] = set()
         queue: deque[tuple[str, int]] = deque()
         max_queue_size = self.max_pages * _QUEUE_SIZE_MULTIPLIER
 
         for url in self.seed_urls:
             norm = normalize_source_uri("web", url)
             queue.append((norm, 0))
+            queued.add(norm)
 
         pages_processed = 0
 
-        with httpx.Client(
-            timeout=self.timeout,
-            follow_redirects=True,
-            headers={"User-Agent": _USER_AGENT},
-        ) as client:
+        client_kwargs: dict = {
+            "timeout": self.timeout,
+            "follow_redirects": True,
+            "headers": {"User-Agent": _USER_AGENT},
+        }
+        if self.auth_headers:
+            client_kwargs["headers"] = {"User-Agent": _USER_AGENT, **self.auth_headers}
+        elif self.auth_basic:
+            client_kwargs["auth"] = self.auth_basic
+
+        with httpx.Client(**client_kwargs) as client:
             while queue and pages_processed < self.max_pages:
+                from connectors.abort import is_abort_requested
+                if is_abort_requested(connector_id):
+                    logger.info("Web sync aborted: connector_id=%s", connector_id)
+                    break
                 source_uri, current_depth = queue.popleft()
 
                 if source_uri in visited:
@@ -186,8 +204,9 @@ class WebConnector:
                 if html is not None and current_depth < self.depth:
                     for link in _discover_links(html, source_uri):
                         norm_link = normalize_source_uri("web", link)
-                        if norm_link not in visited and len(queue) < max_queue_size:
+                        if norm_link not in queued and len(queue) < max_queue_size:
                             queue.append((norm_link, current_depth + 1))
+                            queued.add(norm_link)
 
         logger.info(
             "Web connector sync done: connector_id=%s pages_processed=%d",
@@ -231,11 +250,11 @@ class WebConnector:
         Returns raw HTML if the page was fetched (for link discovery), None on hard failure.
         Unchanged pages and filtered pages return HTML but skip staging/enqueue.
         """
-        from infra.postgres import create_doc, get_doc_by_source_uri, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
         from infra.s3 import upload_object
         from pipeline.enqueue import enqueue_upload_event
 
-        doc = get_doc_by_source_uri(kb_id, source_uri)
+        doc = get_doc_by_source(kb_id, source_uri)
 
         # [3-2] Fetch content — always GET so we can discover links from unchanged pages.
         try:
@@ -246,8 +265,8 @@ class WebConnector:
             if doc is None:
                 doc = create_doc(
                     kb_id=kb_id,
-                    source_uri=source_uri,
                     source=source_uri,
+                    title=source_uri,
                     source_type="web",
                     status="failed",
                     connector_id=connector_id,
@@ -294,8 +313,8 @@ class WebConnector:
                 if doc.get("connector_id") != connector_id:
                     fields["connector_id"] = connector_id
                 new_title = _extract_title(html, source_uri)
-                if new_title != doc.get("source"):
-                    fields["source"] = new_title
+                if new_title != doc.get("title"):
+                    fields["title"] = new_title
                     logger.info(
                         "Title updated on unchanged page: source_uri=%s title=%r",
                         source_uri,
@@ -311,8 +330,8 @@ class WebConnector:
         if doc is None:
             doc = create_doc(
                 kb_id=kb_id,
-                source_uri=source_uri,
                 source=source_uri,
+                title=source_uri,
                 source_type="web",
                 status="fetching",
                 connector_id=connector_id,
@@ -349,7 +368,7 @@ class WebConnector:
         update_doc_fields(
             doc_id,
             {
-                "source": title,
+                "title": title,
                 "status": "pending",
                 "storage_key": storage_key,
                 "content_version": etag or None,

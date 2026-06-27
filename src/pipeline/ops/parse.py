@@ -15,7 +15,42 @@ from infra.s3 import download_by_key
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".pdf", ".md", ".docx", ".txt", ".hwp", ".html", ".htm", ".rst"}
+SUPPORTED_EXTENSIONS = {
+    # documents
+    ".pdf", ".md", ".docx", ".txt", ".hwp", ".html", ".htm", ".rst",
+    # source code
+    ".py", ".ts", ".tsx", ".js", ".jsx",
+    ".go", ".java", ".rs",
+    ".cpp", ".cc", ".c", ".cs",
+    ".rb", ".php", ".swift", ".kt", ".scala", ".sh",
+    # config / data
+    ".yaml", ".yml", ".properties",
+}
+
+CODE_EXTENSIONS: frozenset[str] = frozenset({
+    ".py", ".ts", ".tsx", ".js", ".jsx",
+    ".go", ".java", ".rs",
+    ".cpp", ".cc", ".c", ".cs",
+    ".rb", ".php", ".swift", ".kt", ".scala", ".sh",
+})
+
+CODE_LANGUAGE_MAP: dict[str, str] = {
+    ".py": "python",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".js": "javascript", ".jsx": "javascript",
+    ".go": "go",
+    ".java": "java",
+    ".rs": "rust",
+    ".cpp": "cpp", ".cc": "cpp",
+    ".c": "c",
+    ".cs": "c_sharp",
+    ".rb": "ruby",
+    ".php": "php",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".scala": "scala",
+    ".sh": "bash",
+}
 
 
 def _extract_doc_created_at(file_path: Path, suffix: str, storage_key: str) -> str:
@@ -92,7 +127,7 @@ def _get_file_extractor() -> dict:
         logger.warning("llama-index-readers-file not installed, using default reader")
         return {}
 
-    return {
+    extractors: dict = {
         ".pdf": PDFReader(),
         ".md": MarkdownReader(),
         ".docx": DocxReader(),
@@ -102,6 +137,9 @@ def _get_file_extractor() -> dict:
         ".htm": HTMLCleanReader(),
         ".rst": FlatReader(),
     }
+    for ext in CODE_EXTENSIONS:
+        extractors[ext] = FlatReader()
+    return extractors
 
 
 def parse(doc_id: str, storage_key: str, local_path: Path | None = None) -> list[Document]:
