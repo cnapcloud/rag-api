@@ -85,10 +85,11 @@ CREATE INDEX IF NOT EXISTS idx_simhash_bands_lsh
 
 CREATE TABLE IF NOT EXISTS minhash_bands (
     doc_id      TEXT     NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
+    kb_id       TEXT     NOT NULL REFERENCES knowledge_bases(kb_id) ON DELETE CASCADE,
     band_index  SMALLINT NOT NULL,
     band_hash   BIGINT   NOT NULL,
     PRIMARY KEY (doc_id, band_index)
 );
 
-CREATE INDEX IF NOT EXISTS idx_minhash_bands_lookup
-    ON minhash_bands (band_index, band_hash);
+CREATE INDEX IF NOT EXISTS idx_minhash_bands_lsh
+    ON minhash_bands (kb_id, band_index, band_hash);

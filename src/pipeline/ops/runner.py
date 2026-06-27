@@ -58,7 +58,7 @@ def run_ingest_pipeline(
             if doc_created_at:
                 update_doc_fields(doc_id, {"doc_created_at": doc_created_at})
 
-        dedup_result = run_dedup_pipeline(doc_id=doc_id, run_id=run_id, documents=documents)
+        dedup_result = run_dedup_pipeline(doc_id=doc_id, kb_id=kb_id, run_id=run_id, documents=documents)
         if not dedup_result.needs_indexing:
             logger.info("Dedup skipped indexing: doc_id=%s verdict=%s", doc_id, dedup_result.verdict)
             return 0

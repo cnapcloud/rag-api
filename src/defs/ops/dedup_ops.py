@@ -17,10 +17,11 @@ def parse_op(context: OpExecutionContext, config: IngestConfig):
         raise IngestValidationError(f"Document not found: doc_id={config.doc_id}")
 
     storage_key = doc.get("storage_key", "")
+    kb_id = doc.get("kb_id", "")
     documents = parse(doc_id=config.doc_id, storage_key=storage_key)
     context.log.info("Parse done: %d documents doc_id=%s", len(documents), config.doc_id)
 
-    yield Output({"doc_id": config.doc_id, "storage_key": storage_key}, "valid_config")
+    yield Output({"doc_id": config.doc_id, "kb_id": kb_id, "storage_key": storage_key}, "valid_config")
     yield Output(documents, "documents")
 
 
@@ -32,6 +33,7 @@ def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
     from pipeline.ops.dedup.types import DedupResult
 
     doc_id = valid_config["doc_id"]
+    kb_id = valid_config["kb_id"]
     cfg = get_settings()
     if not cfg.dedup.enabled:
         context.log.info("Dedup disabled: doc_id=%s", doc_id)
@@ -45,6 +47,7 @@ def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
         title=title,
         body=body,
         cfg=cfg.dedup,
+        kb_id=kb_id,
     )
 
     context.log.info(
@@ -65,6 +68,7 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
     from pipeline.ops.dedup.types import DedupResult
 
     doc_id = valid_config["doc_id"]
+    kb_id = valid_config["kb_id"]
 
     if simhash_result.body_match != "none":
         context.log.info(
@@ -80,7 +84,7 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
     body = " ".join(d.text for d in documents)
 
-    result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup)
+    result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup, kb_id=kb_id)
     context.log.info(
         "Stage2 detection done: body=%s doc_id=%s", result.body_match, doc_id
     )

@@ -99,7 +99,8 @@ def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
     from pipeline.ops.dedup import run_dedup_pipeline
 
     doc_id = valid_config["doc_id"]
-    result = run_dedup_pipeline(doc_id=doc_id, run_id=context.run_id, documents=documents)
+    kb_id = valid_config["kb_id"]
+    result = run_dedup_pipeline(doc_id=doc_id, kb_id=kb_id, run_id=context.run_id, documents=documents)
 
     context.log.info(
         "Dedup done: body_match=%s doc_id=%s needs_indexing=%s",

@@ -82,6 +82,7 @@ def run_simhash_detection(
     title: str,
     body: str,
     cfg: DedupSettings,
+    kb_id: str = "",
 ) -> DedupResult:
     """Run SimHash-based duplicate detection using Postgres band index.
 
@@ -105,7 +106,7 @@ def run_simhash_detection(
     simhash = compute_simhash(body, ngram=cfg.ngram, bits=cfg.simhash_bits)
     bands = get_bands(simhash, num_bands=cfg.num_bands, bits=cfg.simhash_bits)
 
-    candidates = find_simhash_candidates(bands) - {doc_id}
+    candidates = find_simhash_candidates(bands, kb_id=kb_id) - {doc_id}
 
     fingerprints: dict[str, dict] = {}
     close_candidates: list[tuple[str, int]] = []

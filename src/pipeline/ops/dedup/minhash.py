@@ -128,7 +128,7 @@ def compute_jaccard(sig_a: list[int], sig_b: list[int]) -> float:
 # Stage 2 pipeline
 # ──────────────────────────────────────────────
 
-def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings) -> DedupResult:
+def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings, kb_id: str = "") -> DedupResult:
     """Detect duplicates via MinHash Jaccard similarity and pg_trgm title fuzzy matching.
 
     Saves A's MinHash signature to minhash_bands AFTER querying candidates
@@ -145,12 +145,12 @@ def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings
     signature = compute_minhash(tokens)
 
     # Query candidates BEFORE saving so A does not match itself.
-    body_candidates: set[str] = find_minhash_candidates(signature)
+    body_candidates: set[str] = find_minhash_candidates(signature, kb_id=kb_id)
     body_candidates.discard(doc_id)
 
     title_scores: dict[str, float] = {}
     if title.strip():
-        title_scores = find_title_candidates(title, cfg.title_fuzzy_threshold)
+        title_scores = find_title_candidates(title, cfg.title_fuzzy_threshold, kb_id=kb_id)
         title_scores.pop(doc_id, None)
 
     # Persist A's signature.

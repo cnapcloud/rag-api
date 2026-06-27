@@ -16,6 +16,7 @@ __all__ = ["run_dedup_pipeline", "run_simhash_detection", "run_verdict", "DedupR
 
 def run_dedup_pipeline(
     doc_id: str,
+    kb_id: str = "",
     run_id: str = "direct",
     documents=None,
 ) -> DedupResult:
@@ -54,12 +55,13 @@ def run_dedup_pipeline(
         title=title,
         body=body,
         cfg=cfg.dedup,
+        kb_id=kb_id,
     )
 
     # Stage 2: MinHash + pg_trgm (only when stage 1 found no candidates)
     if result.body_match == "none":
         from pipeline.ops.dedup.minhash import run_minhash_detection
-        result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup)
+        result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup, kb_id=kb_id)
 
     run_verdict(doc_id=doc_id, result=result, run_id=run_id)
     return result

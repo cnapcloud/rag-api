@@ -715,16 +715,16 @@ def save_simhash_bands(doc_id: str, bands: list[tuple[int, str]]) -> None:
     logger.info("SimHash bands saved: doc_id=%s num_bands=%d", doc_id, len(bands))
 
 
-def find_simhash_candidates(bands: list[tuple[int, str]]) -> set[str]:
-    """Return doc_ids that share at least one (band_index, band_value) pair.
+def find_simhash_candidates(bands: list[tuple[int, str]], kb_id: str) -> set[str]:
+    """Return doc_ids that share at least one (band_index, band_value) pair within the same KB.
 
     bands: list of (band_index, band_value_hex) as returned by get_bands().
     """
     clauses = ["(band_index = %s AND band_value = %s)"] * len(bands)
-    params: list[Any] = []
+    params: list[Any] = [kb_id]
     for idx, val in bands:
         params.extend([idx, int(val, 16)])
-    sql = f"SELECT DISTINCT doc_id FROM simhash_bands WHERE {' OR '.join(clauses)}"
+    sql = f"SELECT DISTINCT doc_id FROM simhash_bands WHERE kb_id = %s AND ({' OR '.join(clauses)})"
     with get_pool().connection() as conn:
         rows = conn.execute(sql, params).fetchall()
     return {row[0] for row in rows}
@@ -763,15 +763,19 @@ def delete_simhash_bands(doc_id: str) -> None:
 def save_minhash_bands(doc_id: str, signature: list[int]) -> None:
     """Store a 128-element MinHash signature as individual rows in minhash_bands.
 
-    Each row: (doc_id, band_index=0..127, band_hash=MinHash value at that position).
-    Upserts to tolerate re-ingest of the same document.
+    Each row: (doc_id, kb_id, band_index=0..127, band_hash=MinHash value at that position).
+    Looks up kb_id from the documents table. Upserts to tolerate re-ingest.
     """
     with get_pool().connection() as conn:
+        row = conn.execute("SELECT kb_id FROM documents WHERE doc_id = %s", [doc_id]).fetchone()
+        if row is None:
+            raise ValueError(f"Document not found for minhash save: doc_id={doc_id}")
+        kb_id = row[0]
         with conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO minhash_bands (doc_id, band_index, band_hash) VALUES (%s, %s, %s)"
+                "INSERT INTO minhash_bands (doc_id, kb_id, band_index, band_hash) VALUES (%s, %s, %s, %s)"
                 " ON CONFLICT (doc_id, band_index) DO UPDATE SET band_hash = EXCLUDED.band_hash",
-                [(doc_id, i, h) for i, h in enumerate(signature)],
+                [(doc_id, kb_id, i, h) for i, h in enumerate(signature)],
             )
         conn.commit()
     logger.info("MinHash bands saved: doc_id=%s num_values=%d", doc_id, len(signature))
@@ -789,8 +793,8 @@ def get_minhash_signature(doc_id: str) -> list[int] | None:
     return [row[0] for row in rows]
 
 
-def find_minhash_candidates(signature: list[int], num_bands: int = 16) -> set[str]:
-    """Return doc_ids that share ALL MinHash values in at least one band with the given signature.
+def find_minhash_candidates(signature: list[int], kb_id: str, num_bands: int = 16) -> set[str]:
+    """Return doc_ids that share ALL MinHash values in at least one band within the same KB.
 
     Uses LSH band approach: the signature is split into num_bands bands of equal size.
     A candidate doc matches a band if every position within that band has the same hash value.
@@ -810,10 +814,11 @@ def find_minhash_candidates(signature: list[int], num_bands: int = 16) -> set[st
             or_clauses.append("(band_index = %s AND band_hash = %s)")
             all_params.extend([pos, signature[pos]])
 
+        all_params.append(kb_id)
         union_parts.append(
             f"SELECT doc_id FROM ("
             f"SELECT doc_id, COUNT(*) AS cnt FROM minhash_bands"
-            f" WHERE {' OR '.join(or_clauses)}"
+            f" WHERE ({' OR '.join(or_clauses)}) AND kb_id = %s"
             f" GROUP BY doc_id"
             f") s{band_idx} WHERE cnt = {rows_per_band}"
         )
@@ -824,18 +829,18 @@ def find_minhash_candidates(signature: list[int], num_bands: int = 16) -> set[st
     return {row[0] for row in rows}
 
 
-def find_title_candidates(title: str, threshold: float) -> dict[str, float]:
+def find_title_candidates(title: str, threshold: float, kb_id: str) -> dict[str, float]:
     """Return {doc_id: similarity_score} for documents whose source matches title via pg_trgm.
 
-    Uses GIN index idx_documents_source_trgm. Excludes deleted documents.
+    Uses GIN index idx_documents_source_trgm. Scoped to kb_id. Excludes deleted documents.
     """
     with get_pool().connection() as conn:
         # SET does not support parameter binding; threshold is a config float (not user input).
         conn.execute(f"SET LOCAL pg_trgm.similarity_threshold = {float(threshold)!r}")
         rows = conn.execute(
             "SELECT doc_id, similarity(source, %s) AS sim FROM documents"
-            " WHERE source %% %s AND status != 'deleted'",
-            [title, title],
+            " WHERE kb_id = %s AND source %% %s AND status != 'deleted'",
+            [title, kb_id, title],
         ).fetchall()
     return {row[0]: float(row[1]) for row in rows}
 
