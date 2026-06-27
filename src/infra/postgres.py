@@ -374,8 +374,8 @@ def list_docs_paginated(
         conditions.append("source_type = %s")
         params.append(source_type)
     if search:
-        conditions.append("(source ILIKE %s OR source_uri ILIKE %s)")
-        params.extend([f"%{search}%", f"%{search}%"])
+        conditions.append("(source ILIKE %s OR source_uri ILIKE %s OR doc_id ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where = " AND ".join(conditions)
     order_dir = "DESC" if sort_order == "desc" else "ASC"
@@ -472,8 +472,8 @@ def list_docs_by_connector_paginated(
         conditions.append("status = %s")
         params.append(status)
     if search:
-        conditions.append("(source ILIKE %s OR source_uri ILIKE %s)")
-        params.extend([f"%{search}%", f"%{search}%"])
+        conditions.append("(source ILIKE %s OR source_uri ILIKE %s OR doc_id ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where = " AND ".join(conditions)
     order_dir = "DESC" if sort_order == "desc" else "ASC"
