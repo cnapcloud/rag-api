@@ -40,11 +40,13 @@ def _delete_s3_object(storage_key: str, doc_id: str, status: str) -> None:
 
 
 def _delete_db_record(doc_id: str, status: str) -> None:
-    """Persist delete in DB. indexed → soft delete (status='deleted');
+    """Persist delete in DB. indexed → soft delete (status='deleted') after clearing bands;
     all else → hard delete (CASCADE removes simhash_bands and minhash_bands)."""
-    from infra.postgres import hard_delete_doc, soft_delete_doc
+    from infra.postgres import delete_minhash_bands, delete_simhash_bands, hard_delete_doc, soft_delete_doc
 
     if status == "indexed":
+        delete_simhash_bands(doc_id)
+        delete_minhash_bands(doc_id)
         soft_delete_doc(doc_id)
     else:
         hard_delete_doc(doc_id)
@@ -53,7 +55,7 @@ def _delete_db_record(doc_id: str, status: str) -> None:
 def delete_doc(doc_id: str, run_id: str = "direct") -> None:
     """Delete a document. Branches on status at call time:
 
-    indexed  → soft delete: Qdrant chunks removed, S3 kept, DB status='deleted'.
+    indexed  → soft delete: Qdrant chunks removed, S3 kept, dedup bands removed, DB status='deleted'.
     all else → hard delete: Qdrant chunks attempted, S3 deleted, DB row removed.
     """
     from infra.postgres import get_doc_by_id
