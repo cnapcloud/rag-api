@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS documents (
     doc_created_at      TIMESTAMPTZ,
     title_hash          TEXT,
     content_simhash     BIGINT,
+    duplicate_of        TEXT,
     UNIQUE(kb_id, source_uri)
 );
 

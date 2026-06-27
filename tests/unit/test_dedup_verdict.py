@@ -92,7 +92,7 @@ def test_title_changed_a_newer_updates_c():
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
     mock_qpay.assert_called_once_with("kb-1", "doc-c", {"source": "new.md", "source_uri": "uri-new"})
-    mock_udf.assert_any_call("doc-c", {"status": "outdated"})
+    mock_udf.assert_any_call("doc-c", {"status": "outdated", "duplicate_of": "doc-a"})
     mock_del.assert_called_once_with("doc-c")
     mock_udf.assert_any_call("doc-a", {
         "status": "indexed", "run_id": "r1",

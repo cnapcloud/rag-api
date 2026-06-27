@@ -72,58 +72,71 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
     )
 
 
-@op(out={"to_parse": Out(dagster_type=dict, is_required=False)})
-def dedup_op(context: OpExecutionContext, valid_config: dict):
-    """Run dedup_job in-process and emit to_parse only when needs_indexing=True.
+@op
+def parse_op(context: OpExecutionContext, valid_config: dict):
+    """Download file from S3, convert to LlamaIndex Documents, persist doc_created_at."""
+    from infra.postgres import update_doc_fields
+    from pipeline.ops.parse import parse
 
-    Runs before parse_op so duplicate documents skip the full parse/chunk/embed/upsert pipeline.
-    dedup_job's simhash_op downloads the document from MinIO independently.
-    """
+    doc_id = valid_config["doc_id"]
+    documents = parse(doc_id=doc_id, storage_key=valid_config["storage_key"])
+
+    if documents:
+        doc_created_at = documents[0].metadata.get("doc_created_at", "")
+        if doc_created_at:
+            update_doc_fields(doc_id, {"doc_created_at": doc_created_at})
+
+    context.log.info("Parse done: %d documents doc_id=%s", len(documents), doc_id)
+    return documents
+
+
+@op(out={"to_chunk": Out(dagster_type=list, is_required=False)})
+def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
+    """Run SimHash dedup on pre-parsed documents. Emits to_chunk only when needs_indexing=True."""
     from config.settings import get_settings
 
     if not get_settings().dedup.enabled:
         context.log.info("Dedup disabled: doc_id=%s", valid_config["doc_id"])
-        yield Output(valid_config, "to_parse")
+        yield Output(documents, "to_chunk")
         return
 
-    from defs.jobs.dedup_job import dedup_job as _dedup_job
+    from infra.redis import get_redis_client
+    from pipeline.ops.dedup.simhash import run_simhash_detection
+    from pipeline.ops.dedup.verdict import run_verdict
 
-    run_result = _dedup_job.execute_in_process(
-        run_config={"ops": {
-            "simhash_op": {"config": {"doc_id": valid_config["doc_id"]}},
-            "verdict_op": {"config": {"doc_id": valid_config["doc_id"]}},
-        }},
+    doc_id = valid_config["doc_id"]
+    cfg = get_settings()
+
+    title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
+    body = " ".join(d.text for d in documents)
+
+    result = run_simhash_detection(
+        doc_id=doc_id,
+        title=title,
+        body=body,
+        rc=get_redis_client(),
+        cfg=cfg.dedup,
     )
-    dedup_result = run_result.output_for_node("simhash_op")
+    run_verdict(doc_id=doc_id, result=result, run_id=context.run_id)
 
     context.log.info(
         "Dedup done: verdict=%s doc_id=%s needs_indexing=%s",
-        dedup_result.verdict, valid_config["doc_id"], dedup_result.needs_indexing,
+        result.verdict, doc_id, result.needs_indexing,
     )
 
-    if not dedup_result.needs_indexing:
+    if not result.needs_indexing:
         return
 
-    yield Output(valid_config, "to_parse")
+    yield Output(documents, "to_chunk")
 
 
 @op
-def parse_op(context: OpExecutionContext, valid_config: dict):
-    """Download file from S3 and convert to LlamaIndex Documents."""
-    from pipeline.ops.parse import parse
-
-    documents = parse(doc_id=valid_config["doc_id"], storage_key=valid_config["storage_key"])
-    context.log.info("Parse done: %d documents", len(documents))
-    return documents
-
-
-@op
-def chunk_op(context: OpExecutionContext, documents):
+def chunk_op(context: OpExecutionContext, to_chunk):
     """Document -> Node chunking."""
     from exceptions import IngestValidationError
     from pipeline.ops.chunk import chunk
 
-    nodes = chunk(documents)
+    nodes = chunk(to_chunk)
     if not nodes:
         raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
     context.log.info("Chunking done: %d nodes", len(nodes))
@@ -173,7 +186,6 @@ def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
         run_id=valid_config.get("run_id", context.run_id),
         doc_type=doc_type,
         embedding_model=cfg.model,
-        doc_created_at=upsert_result.doc_created_at,
     )
     context.log.info(
         "ingest_job completed: doc_id=%s chunks=%d",

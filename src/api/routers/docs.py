@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -70,6 +71,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
                 storage_key=storage_key,
                 file_size=file_size,
                 doc_type=doc_type,
+                doc_created_at=datetime.now(timezone.utc),
             )
         except psycopg.errors.UniqueViolation:
             # Race condition: concurrent upload created the row; retry lookup
@@ -140,6 +142,7 @@ async def upload_docs_batch(
                         storage_key=storage_key,
                         file_size=file_size,
                         doc_type=doc_type,
+                        doc_created_at=datetime.now(timezone.utc),
                     )
                 except psycopg.errors.UniqueViolation:
                     doc = get_doc_by_source_uri(kb_id, source_uri)

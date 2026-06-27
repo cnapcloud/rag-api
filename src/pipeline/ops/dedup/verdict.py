@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _mark_dedup_skipped(
+def _mark_outdated(
     doc_id: str,
     verdict: str,
     duplicate_doc_id: str | None,
@@ -20,20 +20,17 @@ def _mark_dedup_skipped(
 ) -> None:
     from infra.postgres import update_doc_fields
 
-    note = f"dedup:{verdict}"
-    if duplicate_doc_id:
-        note += f" duplicate_of={duplicate_doc_id}"
     update_doc_fields(doc_id, {
-        "status": "dedup_skipped",
-        "error": note,
+        "status": "outdated",
+        "duplicate_of": duplicate_doc_id,
         "run_id": run_id,
         "process_finished_at": datetime.now(timezone.utc).isoformat(),
     })
-    logger.info("Dedup skipped: doc_id=%s verdict=%s duplicate=%s", doc_id, verdict, duplicate_doc_id)
+    logger.info("Marked outdated: doc_id=%s verdict=%s duplicate=%s", doc_id, verdict, duplicate_doc_id)
 
 
 def handle_identical(doc_id: str, duplicate_doc_id: str | None, run_id: str = "") -> None:
-    _mark_dedup_skipped(doc_id, "identical", duplicate_doc_id, run_id)
+    _mark_outdated(doc_id, "identical", duplicate_doc_id, run_id)
 
 
 def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str = "") -> None:
@@ -48,7 +45,6 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
     if not duplicate_doc_id:
         update_doc_fields(doc_id, {
             "status": "outdated",
-            "error": "dedup:title_changed",
             "run_id": run_id,
             "process_finished_at": datetime.now(timezone.utc).isoformat(),
         })
@@ -63,7 +59,7 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
         )
         update_doc_fields(doc_id, {
             "status": "outdated",
-            "error": f"dedup:title_changed duplicate_of={duplicate_doc_id}",
+            "duplicate_of": duplicate_doc_id,
             "run_id": run_id,
             "process_finished_at": datetime.now(timezone.utc).isoformat(),
         })
@@ -79,7 +75,7 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
             "source": doc_a.get("source", ""),
             "source_uri": doc_a.get("source_uri", ""),
         })
-        update_doc_fields(duplicate_doc_id, {"status": "outdated"})
+        update_doc_fields(duplicate_doc_id, {"status": "outdated", "duplicate_of": doc_id})
         delete_simhash_bands(duplicate_doc_id)
         update_doc_fields(doc_id, {
             "status": "indexed",
@@ -87,17 +83,19 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
             "process_finished_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(
-            "title_changed: A is newer, C outdated doc_a=%s doc_c=%s", doc_id, duplicate_doc_id,
+            "title_changed: incoming is newer, existing marked outdated"
+            " incoming=%s existing=%s", doc_id, duplicate_doc_id,
         )
     else:
         update_doc_fields(doc_id, {
             "status": "outdated",
-            "error": f"dedup:title_changed duplicate_of={duplicate_doc_id}",
+            "duplicate_of": duplicate_doc_id,
             "run_id": run_id,
             "process_finished_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(
-            "title_changed: A is older, no update doc_a=%s doc_c=%s", doc_id, duplicate_doc_id,
+            "title_changed: incoming is older, marked outdated"
+            " incoming=%s existing=%s", doc_id, duplicate_doc_id,
         )
 
 

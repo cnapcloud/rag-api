@@ -48,13 +48,21 @@ def run_ingest_pipeline(
     set_processing(doc_id, run_id=run_id)
 
     try:
+        from infra.postgres import update_doc_fields
         from pipeline.ops.dedup import run_dedup_pipeline
-        dedup_result = run_dedup_pipeline(doc_id=doc_id, run_id=run_id)
+
+        documents = parse(doc_id=doc_id, storage_key=storage_key)
+
+        if documents:
+            doc_created_at = documents[0].metadata.get("doc_created_at", "")
+            if doc_created_at:
+                update_doc_fields(doc_id, {"doc_created_at": doc_created_at})
+
+        dedup_result = run_dedup_pipeline(doc_id=doc_id, run_id=run_id, documents=documents)
         if not dedup_result.needs_indexing:
             logger.info("Dedup skipped indexing: doc_id=%s verdict=%s", doc_id, dedup_result.verdict)
             return 0
 
-        documents = parse(doc_id=doc_id, storage_key=storage_key)
         nodes = chunk(documents)
         if not nodes:
             raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
@@ -72,7 +80,6 @@ def run_ingest_pipeline(
             run_id=run_id,
             doc_type=doc_type,
             embedding_model=cfg.model,
-            doc_created_at=upsert_result.doc_created_at,
         )
         logger.info("Ingest done: doc_id=%s kb=%s chunks=%d", doc_id, kb_id, upsert_result.chunk_count)
         return upsert_result.chunk_count

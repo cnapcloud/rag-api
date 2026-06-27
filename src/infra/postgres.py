@@ -38,7 +38,7 @@ _ALLOWED_UPDATE_FIELDS = frozenset({
     "source", "source_uri", "storage_key", "content_version", "connector_id", "status",
     "deleted_at", "run_id", "error", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
-    "title_hash", "content_simhash",
+    "title_hash", "content_simhash", "duplicate_of",
 })
 
 _ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "source", "chunk_count", "file_size"})
@@ -50,7 +50,7 @@ _DOC_COLS = (
     "content_version", "connector_id", "status", "deleted_at", "run_id", "error",
     "created_at", "updated_at", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
-    "title_hash", "content_simhash",
+    "title_hash", "content_simhash", "duplicate_of",
 )
 _DOC_SELECT = "SELECT " + ", ".join(_DOC_COLS) + " FROM documents"
 
@@ -242,6 +242,7 @@ def create_doc(
     connector_id: str | None = None,
     file_size: int | None = None,
     doc_type: str | None = None,
+    doc_created_at: datetime | None = None,
 ) -> dict:
     """INSERT a new document row and return it as a dict.
 
@@ -254,11 +255,11 @@ def create_doc(
         row = conn.execute(
             f"INSERT INTO documents "
             f"(doc_id, kb_id, source_uri, source, source_type, status, "
-            f"storage_key, content_version, connector_id, file_size, doc_type) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            f"storage_key, content_version, connector_id, file_size, doc_type, doc_created_at) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {returning}",
             [doc_id, kb_id, source_uri, source, source_type, status,
-             storage_key, content_version, connector_id, file_size, doc_type],
+             storage_key, content_version, connector_id, file_size, doc_type, doc_created_at],
         ).fetchone()
         conn.commit()
     return _row_to_doc(row)
