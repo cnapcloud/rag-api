@@ -14,9 +14,9 @@ PointStruct
 └── payload
     ├── kb_id              : str      — Knowledge Base ID
     ├── doc_id             : str      — 16-char hex ID of the parent document row (delete filter key)
-    ├── source             : str      — user-visible display name (mirrors documents.source)
+    ├── title              : str      — user-visible display name (mirrors documents.title)
     ├── source_type        : str      — s3 | web | confluence | github
-    ├── source_uri         : str      — canonical dedup key (mirrors documents.source_uri)
+    ├── source             : str      — canonical dedup key (mirrors documents.source)
     ├── doc_type           : str      — file extension (pdf, docx, txt, md, html, rst, …)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document
@@ -87,13 +87,13 @@ connectors
 documents
 ├── doc_id              TEXT         PRIMARY KEY   -- 16-char hex, app-generated (generate_id())
 ├── kb_id               TEXT         NOT NULL FK knowledge_bases (ON DELETE CASCADE)
-├── source              TEXT         NOT NULL   -- user-visible display name
+├── title               TEXT         NOT NULL   -- user-visible display name
 │                                                 s3:         original filename (e.g. report.pdf)
-│                                                 web:        page <title> (source_uri used as placeholder before fetch)
+│                                                 web:        page <title> (source used as placeholder before fetch)
 │                                                 confluence: page title from API response
 │                                                 github:     file path (e.g. docs/guide.md)
 ├── source_type         TEXT         NOT NULL   -- s3 | web | confluence | github
-├── source_uri          TEXT         NOT NULL   -- canonical dedup key
+├── source              TEXT         NOT NULL   -- canonical dedup key
 │                                                 s3:         {filename}
 │                                                 web:        https://...
 │                                                 confluence: confluence://{space}/{page_id}
@@ -117,7 +117,7 @@ documents
 ├── title_hash          TEXT
 ├── content_simhash     BIGINT
 ├── duplicate_of        TEXT                    -- doc_id of the superseding document (set when status = outdated)
-└── UNIQUE(kb_id, source_uri)
+└── UNIQUE(kb_id, source)
 ```
 
 Indexes:
@@ -125,7 +125,7 @@ Indexes:
 - `idx_documents_title_hash` on `(kb_id, title_hash) WHERE title_hash IS NOT NULL`
 - `idx_documents_connector` on `(connector_id) WHERE connector_id IS NOT NULL`
 - `idx_documents_status` on `(kb_id, status)`
-- `idx_documents_source_trgm` on `source` using GIN (pg_trgm) — 2단계 제목 퍼지 검색용
+- `idx_documents_title_trgm` on `title` using GIN (pg_trgm) — 2단계 제목 퍼지 검색용
 
 ### `simhash_bands` table
 
@@ -162,7 +162,7 @@ Index:
 LSH candidate query: 16밴드 × 8행 구조로 UNION — 한 밴드의 8개 값이 모두 일치하는 doc_id만 후보로 추출 (`COUNT(*) = 8` 조건).
 
 Extension:
-- `pg_trgm` — `documents.source` 컬럼 제목 퍼지 검색용 (`idx_documents_source_trgm` GIN 인덱스)
+- `pg_trgm` — `documents.title` 컬럼 제목 퍼지 검색용 (`idx_documents_title_trgm` GIN 인덱스)
 
 ### Status field values
 

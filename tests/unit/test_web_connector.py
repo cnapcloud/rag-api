@@ -16,9 +16,9 @@ _URL = "https://example.com/docs/page"
 _BASE_DOC = {
     "doc_id": _DOC_ID,
     "kb_id": KB_ID,
-    "source": _URL,
+    "title": _URL,
     "source_type": "web",
-    "source_uri": _URL,
+    "source": _URL,
     "status": "indexed",
     "content_version": "etag-v1",  # stored without surrounding quotes (stripped at write time)
     "storage_key": f"{KB_ID}/web/{_DOC_ID}.html",
@@ -65,7 +65,7 @@ class TestProcessPage:
         new_doc = {**_BASE_DOC, "status": "fetching"}
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="etag-s3") as mock_upload,
@@ -90,19 +90,19 @@ class TestProcessPage:
             c for c in mock_update.call_args_list if c.args[1].get("status") == "pending"
         )
         assert pending_call.args[1]["storage_key"] == f"{KB_ID}/web/{_DOC_ID}.html"
-        assert pending_call.args[1]["source"] == "Test Page"
+        assert pending_call.args[1]["title"] == "Test Page"
 
         mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
 
     def test_unchanged_etag_updates_title_if_changed(self):
         from connectors.web import WebConnector
 
-        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "source": _URL}
+        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "title": _URL}
         resp = _make_response(etag="etag-v2")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -114,17 +114,17 @@ class TestProcessPage:
         assert result == _HTML_SIMPLE
         mock_upload.assert_not_called()
         mock_enqueue.assert_not_called()
-        mock_update.assert_called_once_with(_DOC_ID, {"source": "New Title"})
+        mock_update.assert_called_once_with(_DOC_ID, {"title": "New Title"})
 
     def test_unchanged_etag_title_same_skips_all(self):
         from connectors.web import WebConnector
 
-        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "source": "Same Title"}
+        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "title": "Same Title"}
         resp = _make_response(etag="etag-v2")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -146,7 +146,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="s3-etag"),
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -169,7 +169,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=deleted_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="s3-etag"),
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -198,7 +198,7 @@ class TestProcessPage:
         ))
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -220,7 +220,7 @@ class TestProcessPage:
         client.get = MagicMock(side_effect=httpx.ConnectError("timeout"))
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=failed_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
@@ -247,7 +247,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -268,7 +268,7 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", side_effect=Exception("S3 down")),
@@ -459,7 +459,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -480,7 +480,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object", return_value="etag"),
@@ -500,7 +500,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("connectors.web._has_sufficient_content", return_value=False),
         ):
@@ -518,7 +518,7 @@ class TestContentFilter:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object", return_value="etag"),

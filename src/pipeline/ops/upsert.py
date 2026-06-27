@@ -27,9 +27,9 @@ def upsert(
     kb_id: str,
     doc_id: str,
     embedded_nodes: list[EmbeddedNode],
-    source: str = "",
+    title: str = "",
     source_type: str = "",
-    source_uri: str = "",
+    source: str = "",
 ) -> UpsertResult:
     """Delete all existing chunks for doc_id then insert new ones."""
     client = qdrant_infra.get_qdrant_client()
@@ -48,9 +48,9 @@ def upsert(
         payload = {
             "kb_id": kb_id,
             "doc_id": doc_id,
-            "source": source,
+            "title": title,
             "source_type": source_type,
-            "source_uri": source_uri,
+            "source": source,
             "doc_type": meta.get("doc_type", ""),
             "chunk_index": meta.get("chunk_index", 0),
             "page_num": meta.get("page_label", None),

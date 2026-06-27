@@ -175,7 +175,7 @@ POST /api/connectors/{id}/sync
           → decrypt_config()
           → Connector(config).sync(kb_id, connector_id)
               파일별:
-                get_doc_by_source_uri()
+                get_doc_by_source()
                   [신규] create_doc(status="fetching")
                   [기존] update_doc_fields(status="fetching")
                 download_file() → upload_to_s3() → enqueue_upload_event()

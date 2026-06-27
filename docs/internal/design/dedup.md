@@ -428,7 +428,7 @@ Postgres 트랜잭션 격리로 band 조회와 INSERT가 직렬화된다.
 | 판정 | 처리 |
 |---|---|
 | 동일 | A: dedup_skipped. C 변경 없음 |
-| 제목변경 (A 최신) | Qdrant payload(source/source_uri) 갱신 + C: outdated + simhash_bands 삭제 + A: indexed. 재임베딩 없음 |
+| 제목변경 (A 최신) | Qdrant payload(title/source) 갱신 + C: outdated + simhash_bands 삭제 + A: indexed. 재임베딩 없음 |
 | 제목변경 (A 구버전) | A: outdated. C 변경 없음 |
 | 유사 | A 신규 색인 + C를 outdated 전환 (상태 필드 갱신) |
 | 관련 | A 신규 색인 + 관련 링크 메타데이터 추가 |
@@ -473,7 +473,7 @@ A, C의 `doc_created_at` 비교:
 - C의 `doc_created_at`이 NULL이면 A를 최신으로 간주
 
 A가 최신인 경우:
-1. Qdrant: C의 모든 청크 payload `source`, `source_uri` → A 값으로 갱신
+1. Qdrant: C의 모든 청크 payload `title`, `source` → A 값으로 갱신
 2. Postgres C: `status` → `outdated`
 3. Postgres `simhash_bands`: C 행 삭제
 4. Postgres A: `status` → `indexed`, `process_finished_at` 갱신

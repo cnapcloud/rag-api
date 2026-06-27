@@ -49,9 +49,9 @@ class SearchResultItem(BaseModel):
     chunk_id: str
     kb_id: str
     doc_key: str
-    source: str
+    title: str
     source_type: str
-    source_uri: str
+    source: str
     doc_type: str
     chunk_index: int
     page_num: Any | None
@@ -127,9 +127,9 @@ async def search(req: SearchRequest):
                 chunk_id=r.chunk_id,
                 kb_id=r.kb_id,
                 doc_key=r.doc_key,
-                source=r.source,
+                title=r.title,
                 source_type=r.source_type,
-                source_uri=r.source_uri,
+                source=r.source,
                 doc_type=r.doc_type,
                 chunk_index=r.chunk_index,
                 page_num=r.page_num,

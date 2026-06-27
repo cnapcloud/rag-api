@@ -21,7 +21,7 @@ Three problems:
 ```
 POST /api/kb/{kb_id}/docs/upload
   [1] Verify KB exists, validate file extension
-  [2] Lookup documents by (kb_id, source_uri)
+  [2] Lookup documents by (kb_id, source)
       |- not found               -> proceed as new document
       |- status=uploading        -> 409 (upload already in progress)
       |- status=running          -> 409 (pipeline already in progress)
@@ -65,7 +65,7 @@ Trigger: POST /api/connectors/{connector_id}/sync  OR  Dagster Schedule
         confluence: list pages via space API
         github:     list files via path API
   [3] For each document:
-      [3-1] Lookup documents by (kb_id, source_uri)
+      [3-1] Lookup documents by (kb_id, source)
             not found       -> create row (status=fetching)
             status=deleted  -> set status=fetching, skip content_version comparison (chunks are gone)
             found (other)   -> compare content_version
@@ -73,8 +73,8 @@ Trigger: POST /api/connectors/{connector_id}/sync  OR  Dagster Schedule
                                  changed   -> set status=fetching
       [3-2] Fetch content (HTTP GET / Confluence API / GitHub API)
               failure -> status=failed, continue to next document
-              web: extract <title> from HTML -> update source field
-                   no <title> -> source remains as source_uri (fallback)
+              web: extract <title> from HTML -> update title field
+                   no <title> -> title remains as source (fallback)
       [3-3] Stage to object storage  key = {kb_id}/{source_type}/{doc_id}.{ext}
               failure -> status=failed, continue to next document
       [3-4] Update documents
@@ -139,8 +139,8 @@ Redis Queue: {doc_id, force}
 | Change | Detail |
 |---|---|
 | PK change | composite `(kb_id, source)` -> `doc_id UUID PRIMARY KEY` |
-| Unique constraint added | `UNIQUE(kb_id, source_uri)` — dedup key per source |
-| Fields added | `doc_id`, `source_type`, `source_uri`, `storage_key`, `content_version`, `connector_id` |
+| Unique constraint added | `UNIQUE(kb_id, source)` — dedup key per source |
+| Fields added | `doc_id`, `source_type`, `source`, `title`, `storage_key`, `content_version`, `connector_id` |
 | Status added | `uploading` (API upload in progress), `fetching` (connector acquiring content) |
 | etag removed | replaced by `content_version TEXT` (fresh schema — not migrated) |
 
@@ -150,13 +150,13 @@ Full field definition:
 documents
 |- doc_id           UUID         PRIMARY KEY
 |- kb_id            TEXT         FK knowledge_bases (ON DELETE CASCADE)
-|- source           TEXT         user-visible display name (always human-readable; never a raw URL)
+|- title            TEXT         user-visible display name (always human-readable; never a raw URL)
 |                                  s3:         original filename (e.g. report.pdf)
-|                                  web:        page <title> — set after fetch; source_uri used as placeholder before fetch
+|                                  web:        page <title> — set after fetch; source used as placeholder before fetch
 |                                  confluence: page title from API response — set at row creation
 |                                  github:     file path (e.g. docs/guide.md) — set at row creation
 |- source_type      TEXT         s3 | web | confluence | github
-|- source_uri       TEXT         canonical unique URI (dedup key)
+|- source           TEXT         canonical unique URI (dedup key)
 |                                  s3:         {filename}  (kb_id already scoped by UNIQUE constraint)
 |                                  web:        https://...
 |                                  confluence: confluence://{space}/{page_id}
@@ -190,7 +190,7 @@ documents
 |- title_hash       TEXT
 `- content_simhash  BIGINT
 
-UNIQUE(kb_id, source_uri)
+UNIQUE(kb_id, source)
 ```
 
 #### soft delete query behavior
@@ -226,9 +226,9 @@ S3-compatible metadata headers (prefix `x-amz-meta-` in AWS/MinIO, `x-goog-meta-
 These values are written at upload time by the API or Connector.
 The pipeline does not rely on these values — it always reads from the documents table.
 
-#### source_uri normalization rules
+#### source normalization rules
 
-`source_uri` is the dedup key. The same page must produce the same URI regardless of how it is referenced.
+`source` is the dedup key. The same page must produce the same URI regardless of how it is referenced.
 Normalization is applied by the caller (upload API or connector) before INSERT/lookup.
 
 | Rule | Before | After |
@@ -242,7 +242,7 @@ Normalization is applied by the caller (upload API or connector) before INSERT/l
 
 For non-web source types, normalization rules are source-specific:
 
-| source_type | source_uri format | normalization |
+| source_type | source format | normalization |
 |---|---|---|
 | s3 | `{filename}` | none (controlled by API) |
 | confluence | `confluence://{space}/{page_id}` | lowercase space key |
@@ -493,8 +493,8 @@ Each item is independently codeable. R-03 and R-04 must be deployed together (ne
 
 | ID | Title | Depends on |
 |---|---|---|
-| R-01 | Postgres schema: create documents (doc_id UUID PK, UNIQUE(kb_id, source_uri), all fields, full status set, soft delete), connectors, simhash_bands tables — DDL + infra/postgres.py base CRUD | — |
-| R-02 | source_uri normalization: pure-function utility + unit tests | R-01 |
+| R-01 | Postgres schema: create documents (doc_id UUID PK, UNIQUE(kb_id, source), all fields, full status set, soft delete), connectors, simhash_bands tables — DDL + infra/postgres.py base CRUD | — |
+| R-02 | source normalization: pure-function utility + unit tests | R-01 |
 | R-03 | File upload flow: row-first (INSERT/UPSERT documents row -> object storage upload with metadata -> enqueue {doc_id, force=false}) | R-01, R-02 |
 | R-04 | Pipeline: consume {doc_id, force} from queue; validate / upsert / meta convert to doc_id-based; Qdrant chunk payload add doc_id / remove doc_key | R-01 |
 | R-05 | Object storage webhook: remove /internal/s3-event endpoint entirely | R-03 |

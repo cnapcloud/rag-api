@@ -42,7 +42,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     4. Enqueue ingest event
     """
     import psycopg.errors
-    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
     from pipeline.enqueue import enqueue_upload_event
     from pipeline.source_uri import normalize_source_uri
@@ -59,13 +59,13 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     storage_key = _build_storage_key(kb_id, filename)
     doc_type = Path(filename).suffix.lstrip(".").lower()
 
-    existing = get_doc_by_source_uri(kb_id, source_uri)
+    existing = get_doc_by_source(kb_id, source_uri)
     if existing is None:
         try:
             doc = create_doc(
                 kb_id=kb_id,
-                source_uri=source_uri,
-                source=filename,
+                source=source_uri,
+                title=filename,
                 source_type="s3",
                 status="uploading",
                 storage_key=storage_key,
@@ -75,7 +75,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
             )
         except psycopg.errors.UniqueViolation:
             # Race condition: concurrent upload created the row; retry lookup
-            doc = get_doc_by_source_uri(kb_id, source_uri)
+            doc = get_doc_by_source(kb_id, source_uri)
             if doc is None:
                 raise
             update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
@@ -97,7 +97,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
 
     return {
         "doc_id": doc_id,
-        "source_uri": source_uri,
+        "source": source_uri,
         "etag": etag,
         "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
     }
@@ -110,7 +110,7 @@ async def upload_docs_batch(
 ):
     """Row-first batch document upload."""
     import psycopg.errors
-    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
     from pipeline.enqueue import enqueue_upload_event
     from pipeline.source_uri import normalize_source_uri
@@ -130,13 +130,13 @@ async def upload_docs_batch(
             storage_key = _build_storage_key(kb_id, filename)
             doc_type = Path(filename).suffix.lstrip(".").lower()
 
-            existing = get_doc_by_source_uri(kb_id, source_uri)
+            existing = get_doc_by_source(kb_id, source_uri)
             if existing is None:
                 try:
                     doc = create_doc(
                         kb_id=kb_id,
-                        source_uri=source_uri,
-                        source=filename,
+                        source=source_uri,
+                        title=filename,
                         source_type="s3",
                         status="uploading",
                         storage_key=storage_key,
@@ -145,7 +145,7 @@ async def upload_docs_batch(
                         doc_created_at=datetime.now(timezone.utc),
                     )
                 except psycopg.errors.UniqueViolation:
-                    doc = get_doc_by_source_uri(kb_id, source_uri)
+                    doc = get_doc_by_source(kb_id, source_uri)
                     if doc is None:
                         raise
                     update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
@@ -167,17 +167,17 @@ async def upload_docs_batch(
 
             results.append({
                 "doc_id": doc_id,
-                "source_uri": source_uri,
+                "source": source_uri,
                 "etag": etag,
                 "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
             })
         except (IngestValidationError, ClientError) as e:
-            results.append({"source": file.filename, "error": str(e), "status": "error"})
+            results.append({"title": file.filename, "error": str(e), "status": "error"})
 
     return {"results": results}
 
 
-_SORT_FIELDS = Literal["updated_at", "created_at", "source", "chunk_count", "file_size"]
+_SORT_FIELDS = Literal["updated_at", "created_at", "title", "chunk_count", "file_size"]
 _SORT_ORDERS = Literal["asc", "desc"]
 
 

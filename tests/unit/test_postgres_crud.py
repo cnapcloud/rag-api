@@ -27,9 +27,9 @@ _SOURCE_TYPE = "s3"
 def _make_doc_row(
     doc_id: str = _DOC_ID,
     kb_id: str = _KB_ID,
-    source: str = _SOURCE,
+    title: str = _SOURCE,
     source_type: str = _SOURCE_TYPE,
-    source_uri: str = _SOURCE_URI,
+    source: str = _SOURCE_URI,
     storage_key: str | None = "kb-test/test-doc.pdf",
     content_version: str | None = "abc123",
     connector_id: str | None = None,
@@ -51,7 +51,7 @@ def _make_doc_row(
 ) -> tuple:
     """Build a tuple matching _DOC_COLS order."""
     return (
-        doc_id, kb_id, source, source_type, source_uri, storage_key,
+        doc_id, kb_id, title, source_type, source, storage_key,
         content_version, connector_id, status, deleted_at, run_id, error,
         created_at, updated_at, process_started_at, process_finished_at,
         chunk_count, file_size, doc_type, embedding_model, doc_created_at,
@@ -93,7 +93,7 @@ def test_create_doc_returns_dict():
     assert result["doc_id"] == _DOC_ID
     assert result["kb_id"] == _KB_ID
     assert result["status"] == "pending"
-    assert result["source_uri"] == _SOURCE_URI
+    assert result["source"] == _SOURCE_URI
     conn.commit.assert_called_once()
 
 
@@ -124,20 +124,20 @@ def test_get_doc_by_id_not_found():
 
 
 # ──────────────────────────────────────────────
-# get_doc_by_source_uri
+# get_doc_by_source
 # ──────────────────────────────────────────────
 
-def test_get_doc_by_source_uri_found():
+def test_get_doc_by_source_found():
     row = _make_doc_row()
     with _fake_pool(fetchone_row=row):
-        result = pg.get_doc_by_source_uri(_KB_ID, _SOURCE_URI)
+        result = pg.get_doc_by_source(_KB_ID, _SOURCE_URI)
     assert result is not None
-    assert result["source_uri"] == _SOURCE_URI
+    assert result["source"] == _SOURCE_URI
 
 
-def test_get_doc_by_source_uri_not_found():
+def test_get_doc_by_source_not_found():
     with _fake_pool(fetchone_row=None):
-        result = pg.get_doc_by_source_uri(_KB_ID, "missing.pdf")
+        result = pg.get_doc_by_source(_KB_ID, "missing.pdf")
     assert result is None
 
 

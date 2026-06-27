@@ -16,9 +16,9 @@ def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchR
         chunk_id=chunk_id,
         kb_id=kb_id,
         doc_key=f"{kb_id}/doc.pdf",
-        source="doc.pdf",
+        title="doc.pdf",
         source_type="s3",
-        source_uri=f"{kb_id}/doc.pdf",
+        source=f"{kb_id}/doc.pdf",
         doc_type="pdf",
         chunk_index=0,
         page_num=None,
@@ -67,9 +67,9 @@ class TestSearchSimilarity:
         node.node_id = node_id
         node.score = score
         node.metadata = metadata or {
-            "source": "doc.pdf",
+            "title": "doc.pdf",
             "source_type": "s3",
-            "source_uri": "kb-test/doc.pdf",
+            "source": "kb-test/doc.pdf",
             "doc_type": "pdf",
             "chunk_index": 0,
             "updated_at": "2025-06-07T00:00:00Z",

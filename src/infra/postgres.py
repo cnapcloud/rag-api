@@ -35,18 +35,18 @@ def _to_local_iso(dt: datetime | None) -> str:
 
 # Fields allowed in update_doc_fields() to prevent SQL injection via dict keys.
 _ALLOWED_UPDATE_FIELDS = frozenset({
-    "source", "source_uri", "storage_key", "content_version", "connector_id", "status",
+    "title", "source", "storage_key", "content_version", "connector_id", "status",
     "deleted_at", "run_id", "error", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
     "title_hash", "content_simhash", "duplicate_of",
 })
 
-_ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "source", "chunk_count", "file_size"})
+_ALLOWED_SORT_FIELDS = frozenset({"updated_at", "created_at", "title", "chunk_count", "file_size"})
 _NULL_LAST_FIELDS = frozenset({"chunk_count", "file_size"})
 
 # Column order for all documents SELECT queries — must match CREATE TABLE order.
 _DOC_COLS = (
-    "doc_id", "kb_id", "source", "source_type", "source_uri", "storage_key",
+    "doc_id", "kb_id", "title", "source_type", "source", "storage_key",
     "content_version", "connector_id", "status", "deleted_at", "run_id", "error",
     "created_at", "updated_at", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
@@ -232,8 +232,8 @@ def _row_to_doc(row: tuple) -> dict:
 
 def create_doc(
     kb_id: str,
-    source_uri: str,
     source: str,
+    title: str,
     source_type: str,
     *,
     status: str = "pending",
@@ -247,18 +247,18 @@ def create_doc(
     """INSERT a new document row and return it as a dict.
 
     doc_id is app-generated as a 16-char hex ID.
-    Raises psycopg.errors.UniqueViolation if (kb_id, source_uri) already exists.
+    Raises psycopg.errors.UniqueViolation if (kb_id, source) already exists.
     """
     doc_id = generate_id()
     returning = ", ".join(_DOC_COLS)
     with get_pool().connection() as conn:
         row = conn.execute(
             f"INSERT INTO documents "
-            f"(doc_id, kb_id, source_uri, source, source_type, status, "
+            f"(doc_id, kb_id, source, title, source_type, status, "
             f"storage_key, content_version, connector_id, file_size, doc_type, doc_created_at) "
             f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             f"RETURNING {returning}",
-            [doc_id, kb_id, source_uri, source, source_type, status,
+            [doc_id, kb_id, source, title, source_type, status,
              storage_key, content_version, connector_id, file_size, doc_type, doc_created_at],
         ).fetchone()
         conn.commit()
@@ -285,11 +285,11 @@ def get_doc_by_id(doc_id: str) -> dict | None:
     return _row_to_doc(row) if row else None
 
 
-def get_doc_by_source_uri(kb_id: str, source_uri: str) -> dict | None:
+def get_doc_by_source(kb_id: str, source: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(
-            _DOC_SELECT + " WHERE kb_id = %s AND source_uri = %s",
-            [kb_id, source_uri],
+            _DOC_SELECT + " WHERE kb_id = %s AND source = %s",
+            [kb_id, source],
         ).fetchone()
     return _row_to_doc(row) if row else None
 
@@ -382,7 +382,7 @@ def list_docs_paginated(
         conditions.append("source_type = %s")
         params.append(source_type)
     if search:
-        conditions.append("(source ILIKE %s OR source_uri ILIKE %s OR doc_id ILIKE %s)")
+        conditions.append("(title ILIKE %s OR source ILIKE %s OR doc_id ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where = " AND ".join(conditions)
@@ -422,7 +422,7 @@ def list_all_docs_paginated(
         conditions.append("status = %s")
         params.append(status)
     if search:
-        conditions.append("(source ILIKE %s OR source_uri ILIKE %s)")
+        conditions.append("(title ILIKE %s OR source ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%"])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
@@ -480,7 +480,7 @@ def list_docs_by_connector_paginated(
         conditions.append("status = %s")
         params.append(status)
     if search:
-        conditions.append("(source ILIKE %s OR source_uri ILIKE %s OR doc_id ILIKE %s)")
+        conditions.append("(title ILIKE %s OR source ILIKE %s OR doc_id ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where = " AND ".join(conditions)
@@ -846,8 +846,8 @@ def find_title_candidates(title: str, threshold: float, kb_id: str) -> dict[str,
         # SET does not support parameter binding; threshold is a config float (not user input).
         conn.execute(f"SET LOCAL pg_trgm.similarity_threshold = {float(threshold)!r}")
         rows = conn.execute(
-            "SELECT doc_id, similarity(source, %s) AS sim FROM documents"
-            " WHERE kb_id = %s AND source %% %s AND status != 'deleted'",
+            "SELECT doc_id, similarity(title, %s) AS sim FROM documents"
+            " WHERE kb_id = %s AND title %% %s AND status != 'deleted'",
             [title, kb_id, title],
         ).fetchall()
     return {row[0]: float(row[1]) for row in rows}

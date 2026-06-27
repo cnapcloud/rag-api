@@ -16,7 +16,7 @@ class SearchResult:
     chunk_id: str
     kb_id: str
     doc_key: str
-    source: str
+    title: str
     doc_type: str
     chunk_index: int
     page_num: int | None
@@ -25,7 +25,7 @@ class SearchResult:
     rerank_score: float | None
     updated_at: str
     source_type: str = ""
-    source_uri: str = ""
+    source: str = ""
 
 
 def _build_vector_store(kb_id: str, qdrant_client=None):
@@ -58,14 +58,14 @@ def _build_index(kb_id: str, embed_model=None):
 
 def _node_to_result(kb_id: str, node) -> SearchResult:
     meta = node.metadata
-    source_uri = meta.get("source_uri", "")
+    source = meta.get("source", "")
     return SearchResult(
         chunk_id=node.node_id,
         kb_id=kb_id,
-        doc_key=source_uri,
-        source=meta.get("source", ""),
+        doc_key=source,
+        title=meta.get("title", ""),
         source_type=meta.get("source_type", ""),
-        source_uri=source_uri,
+        source=source,
         doc_type=meta.get("doc_type", ""),
         chunk_index=int(meta.get("chunk_index", 0)),
         page_num=meta.get("page_num") or meta.get("page_label"),

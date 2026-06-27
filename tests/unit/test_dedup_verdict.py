@@ -13,6 +13,7 @@ _PG = "infra.postgres.update_doc_fields"
 _GET_DOC = "infra.postgres.get_doc_by_id"
 _UPDATE_PAYLOAD = "infra.qdrant.update_payload_by_doc_id"
 _DEL_BANDS = "infra.postgres.delete_simhash_bands"
+_DEL_MINHASH = "infra.postgres.delete_minhash_bands"
 _DEL_CHUNKS = "infra.qdrant.delete_chunks_by_doc_id"
 
 _TS_NEW = datetime(2026, 6, 26, 10, 0, 0, tzinfo=timezone.utc)
@@ -73,26 +74,27 @@ def test_run_verdict_unknown_body_match_logs_warning(caplog):
 # handle_title_changed
 # ──────────────────────────────────────────────
 
-def _make_doc(doc_id, kb_id="kb-1", source="s", source_uri="u", storage_key="k",
+def _make_doc(doc_id, kb_id="kb-1", title="s", source="u", storage_key="k",
               title_hash="h", doc_created_at=None):
     return {
-        "doc_id": doc_id, "kb_id": kb_id, "source": source,
-        "source_uri": source_uri, "storage_key": storage_key,
+        "doc_id": doc_id, "kb_id": kb_id, "title": title,
+        "source": source, "storage_key": storage_key,
         "title_hash": title_hash, "doc_created_at": doc_created_at,
     }
 
 
 def test_title_changed_a_newer_updates_c():
-    doc_a = _make_doc("doc-a", source="new.md", source_uri="uri-new", doc_created_at=_TS_NEW)
-    doc_c = _make_doc("doc-c", source="old.md", source_uri="uri-old", doc_created_at=_TS_OLD)
+    doc_a = _make_doc("doc-a", title="new.md", source="uri-new", doc_created_at=_TS_NEW)
+    doc_c = _make_doc("doc-c", title="old.md", source="uri-old", doc_created_at=_TS_OLD)
 
     with patch(_GET_DOC, side_effect=[doc_a, doc_c]), \
          patch(_PG) as mock_udf, \
          patch(_UPDATE_PAYLOAD) as mock_qpay, \
-         patch(_DEL_BANDS) as mock_del:
+         patch(_DEL_BANDS) as mock_del, \
+         patch(_DEL_MINHASH):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
-    mock_qpay.assert_called_once_with("kb-1", "doc-c", {"source": "new.md", "source_uri": "uri-new"})
+    mock_qpay.assert_called_once_with("kb-1", "doc-c", {"title": "new.md", "source": "uri-new"})
     c_call = next(c for c in mock_udf.call_args_list if c[0][0] == "doc-c")
     assert c_call[0][1]["status"] == "outdated"
     assert c_call[0][1]["duplicate_of"] == "doc-a"
@@ -112,7 +114,8 @@ def test_title_changed_c_newer_marks_a_outdated():
     with patch(_GET_DOC, side_effect=[doc_a, doc_c]), \
          patch(_PG) as mock_udf, \
          patch(_UPDATE_PAYLOAD) as mock_qpay, \
-         patch(_DEL_BANDS) as mock_del:
+         patch(_DEL_BANDS) as mock_del, \
+         patch(_DEL_MINHASH):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
     mock_qpay.assert_not_called()
@@ -122,13 +125,14 @@ def test_title_changed_c_newer_marks_a_outdated():
 
 
 def test_title_changed_c_created_at_null_treats_a_as_newer():
-    doc_a = _make_doc("doc-a", source="new.md", source_uri="u2", doc_created_at=_TS_NEW)
+    doc_a = _make_doc("doc-a", title="new.md", source="u2", doc_created_at=_TS_NEW)
     doc_c = _make_doc("doc-c", doc_created_at=None)
 
     with patch(_GET_DOC, side_effect=[doc_a, doc_c]), \
          patch(_PG), \
          patch(_UPDATE_PAYLOAD) as mock_qpay, \
-         patch(_DEL_BANDS):
+         patch(_DEL_BANDS), \
+         patch(_DEL_MINHASH):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
     mock_qpay.assert_called_once()
@@ -154,7 +158,9 @@ def test_similar_a_newer_deletes_c_chunks_and_marks_outdated():
 
     with patch(_GET_DOC, side_effect=[doc_a, doc_c]), \
          patch(_PG) as mock_udf, \
-         patch(_DEL_CHUNKS) as mock_del_chunks:
+         patch(_DEL_CHUNKS) as mock_del_chunks, \
+         patch(_DEL_BANDS), \
+         patch(_DEL_MINHASH):
         handle_similar("doc-a", result, run_id="r1")
 
     assert result.needs_indexing is True
@@ -186,7 +192,7 @@ def test_similar_c_created_at_null_treats_a_as_newer():
     doc_c = _make_doc("doc-c", doc_created_at=None)
     result = _result("similar", needs_indexing=False, duplicate_doc_id="doc-c")
 
-    with patch(_GET_DOC, side_effect=[doc_a, doc_c]), patch(_PG), patch(_DEL_CHUNKS):
+    with patch(_GET_DOC, side_effect=[doc_a, doc_c]), patch(_PG), patch(_DEL_CHUNKS), patch(_DEL_BANDS), patch(_DEL_MINHASH):
         handle_similar("doc-a", result, run_id="r1")
 
     assert result.needs_indexing is True

@@ -250,11 +250,11 @@ class WebConnector:
         Returns raw HTML if the page was fetched (for link discovery), None on hard failure.
         Unchanged pages and filtered pages return HTML but skip staging/enqueue.
         """
-        from infra.postgres import create_doc, get_doc_by_source_uri, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
         from infra.s3 import upload_object
         from pipeline.enqueue import enqueue_upload_event
 
-        doc = get_doc_by_source_uri(kb_id, source_uri)
+        doc = get_doc_by_source(kb_id, source_uri)
 
         # [3-2] Fetch content — always GET so we can discover links from unchanged pages.
         try:
@@ -265,8 +265,8 @@ class WebConnector:
             if doc is None:
                 doc = create_doc(
                     kb_id=kb_id,
-                    source_uri=source_uri,
                     source=source_uri,
+                    title=source_uri,
                     source_type="web",
                     status="failed",
                     connector_id=connector_id,
@@ -313,8 +313,8 @@ class WebConnector:
                 if doc.get("connector_id") != connector_id:
                     fields["connector_id"] = connector_id
                 new_title = _extract_title(html, source_uri)
-                if new_title != doc.get("source"):
-                    fields["source"] = new_title
+                if new_title != doc.get("title"):
+                    fields["title"] = new_title
                     logger.info(
                         "Title updated on unchanged page: source_uri=%s title=%r",
                         source_uri,
@@ -330,8 +330,8 @@ class WebConnector:
         if doc is None:
             doc = create_doc(
                 kb_id=kb_id,
-                source_uri=source_uri,
                 source=source_uri,
+                title=source_uri,
                 source_type="web",
                 status="fetching",
                 connector_id=connector_id,
@@ -368,7 +368,7 @@ class WebConnector:
         update_doc_fields(
             doc_id,
             {
-                "source": title,
+                "title": title,
                 "status": "pending",
                 "storage_key": storage_key,
                 "content_version": etag or None,

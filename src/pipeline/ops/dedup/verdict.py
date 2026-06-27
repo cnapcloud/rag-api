@@ -86,8 +86,8 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
 
     kb_id = existing_doc.get("kb_id", "")  # type: ignore[union-attr]
     update_payload_by_doc_id(kb_id, duplicate_doc_id, {
+        "title": incoming_doc.get("title", ""),  # type: ignore[union-attr]
         "source": incoming_doc.get("source", ""),  # type: ignore[union-attr]
-        "source_uri": incoming_doc.get("source_uri", ""),  # type: ignore[union-attr]
     })
     update_doc_fields(duplicate_doc_id, {
         "status": "outdated",

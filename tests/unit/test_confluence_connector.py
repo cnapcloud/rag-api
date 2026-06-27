@@ -43,9 +43,9 @@ _ATTACHMENT = {
 _BASE_PAGE_DOC = {
     "doc_id": _PAGE_DOC_ID,
     "kb_id": KB_ID,
-    "source": "My Page",
+    "title": "My Page",
     "source_type": "confluence",
-    "source_uri": _PAGE_URI,
+    "source": _PAGE_URI,
     "status": "indexed",
     "content_version": "3",
     "storage_key": f"{KB_ID}/confluence/{_PAGE_DOC_ID}.html",
@@ -56,9 +56,9 @@ _BASE_PAGE_DOC = {
 _BASE_ATT_DOC = {
     "doc_id": _ATT_DOC_ID,
     "kb_id": KB_ID,
-    "source": "report.pdf",
+    "title": "report.pdf",
     "source_type": "confluence",
-    "source_uri": _ATT_URI,
+    "source": _ATT_URI,
     "status": "indexed",
     "content_version": "2",
     "storage_key": f"{KB_ID}/confluence/{_ATT_DOC_ID}.pdf",
@@ -197,7 +197,7 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
@@ -210,7 +210,7 @@ class TestProcessPage:
         assert kwargs["source_type"] == "confluence"
         assert kwargs["doc_type"] == "html"
         assert kwargs["status"] == "fetching"
-        assert kwargs["source"] == "My Page"
+        assert kwargs["title"] == "My Page"
 
         mock_upload.assert_called_once()
         assert mock_upload.call_args.args[2] == _HTML_BODY.encode()
@@ -230,7 +230,7 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments") as mock_atts,
@@ -247,7 +247,7 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -266,7 +266,7 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=deleted_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -284,7 +284,7 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri") as mock_get,
+            patch("infra.postgres.get_doc_by_source") as mock_get,
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
@@ -300,7 +300,7 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", side_effect=Exception("S3 down")),
@@ -334,7 +334,7 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response())
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
@@ -345,7 +345,7 @@ class TestProcessAttachment:
         mock_create.assert_called_once()
         kwargs = mock_create.call_args.kwargs
         assert kwargs["doc_type"] == "pdf"
-        assert kwargs["source"] == "report.pdf"
+        assert kwargs["title"] == "report.pdf"
         assert kwargs["source_type"] == "confluence"
 
         mock_upload.assert_called_once()
@@ -362,7 +362,7 @@ class TestProcessAttachment:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri") as mock_get,
+            patch("infra.postgres.get_doc_by_source") as mock_get,
             patch("infra.s3.upload_object") as mock_upload,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
@@ -376,7 +376,7 @@ class TestProcessAttachment:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri") as mock_get,
+            patch("infra.postgres.get_doc_by_source") as mock_get,
             patch("infra.s3.upload_object") as mock_upload,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
@@ -392,7 +392,7 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response(b"x" * (9 * 1024 * 1024)))
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object"),
@@ -408,7 +408,7 @@ class TestProcessAttachment:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.s3.upload_object") as mock_upload,
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
@@ -424,7 +424,7 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response())
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=deleted_doc),
+            patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
             patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
@@ -442,7 +442,7 @@ class TestProcessAttachment:
         client.get = MagicMock(side_effect=httpx.ConnectError("timeout"))
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
@@ -462,7 +462,7 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response())
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", side_effect=Exception("S3 error")),
@@ -485,7 +485,7 @@ class TestProcessAttachment:
             att = {**_ATTACHMENT, "title": f"file{ext}"}
             new_doc = {**_BASE_ATT_DOC, "doc_type": ext.lstrip(".")}
             with (
-                patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+                patch("infra.postgres.get_doc_by_source", return_value=None),
                 patch("infra.postgres.create_doc", return_value=new_doc),
                 patch("infra.postgres.update_doc_fields"),
                 patch("infra.s3.upload_object"),
@@ -544,7 +544,7 @@ class TestSync:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value={**_BASE_PAGE_DOC, "status": "fetching"}),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object"),

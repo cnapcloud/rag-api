@@ -173,7 +173,7 @@ class GitHubConnector:
         item: dict,
     ) -> None:
         """Flow B step [3] for one repository file."""
-        from infra.postgres import create_doc, get_doc_by_source_uri, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
         from infra.s3 import upload_object
         from pipeline.enqueue import enqueue_upload_event
 
@@ -192,7 +192,7 @@ class GitHubConnector:
             )
             return
 
-        doc = get_doc_by_source_uri(kb_id, source_uri)
+        doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
             if doc.get("content_version") == sha:
@@ -202,8 +202,8 @@ class GitHubConnector:
         if doc is None:
             doc = create_doc(
                 kb_id=kb_id,
-                source_uri=source_uri,
-                source=path,
+                source=source_uri,
+                title=path,
                 source_type="github",
                 status="fetching",
                 connector_id=connector_id,
@@ -244,7 +244,7 @@ class GitHubConnector:
         update_doc_fields(
             doc_id,
             {
-                "source": path,
+                "title": path,
                 "status": "pending",
                 "storage_key": storage_key,
                 "content_version": sha,

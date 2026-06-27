@@ -53,9 +53,9 @@ _CONTENTS_RESPONSE = {
 _BASE_DOC = {
     "doc_id": _DOC_ID,
     "kb_id": KB_ID,
-    "source": _FILE_PATH,
+    "title": _FILE_PATH,
     "source_type": "github",
-    "source_uri": _SOURCE_URI,
+    "source": _SOURCE_URI,
     "status": "indexed",
     "content_version": _FILE_SHA,
     "storage_key": _STORAGE_KEY,
@@ -171,7 +171,7 @@ class TestProcessFile:
         new_doc = {"doc_id": _DOC_ID}
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object") as mock_upload,
@@ -184,7 +184,7 @@ class TestProcessFile:
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["source_type"] == "github"
         assert call_kwargs["doc_type"] == "py"
-        assert call_kwargs["source_uri"] == _SOURCE_URI
+        assert call_kwargs["source"] == _SOURCE_URI
 
         mock_upload.assert_called_once()
         mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
@@ -194,7 +194,7 @@ class TestProcessFile:
         existing = {**_BASE_DOC, "content_version": _FILE_SHA}
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing),
+            patch("infra.postgres.get_doc_by_source", return_value=existing),
             patch.object(connector, "_download_file") as mock_dl,
         ):
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
@@ -205,7 +205,7 @@ class TestProcessFile:
         connector = _make_connector({"max_file_size_mb": 1})
         item = self._item(size=10 * 1024 * 1024)  # 10 MB > 1 MB limit
 
-        with patch("infra.postgres.get_doc_by_source_uri", return_value=None) as mock_get:
+        with patch("infra.postgres.get_doc_by_source", return_value=None) as mock_get:
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, item)
 
         mock_get.assert_not_called()
@@ -215,7 +215,7 @@ class TestProcessFile:
         new_doc = {"doc_id": _DOC_ID}
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=None),
+            patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch.object(connector, "_download_file", side_effect=RuntimeError("network error")),
@@ -233,7 +233,7 @@ class TestProcessFile:
         existing = {**_BASE_DOC, "content_version": "old-sha", "status": "indexed"}
 
         with (
-            patch("infra.postgres.get_doc_by_source_uri", return_value=existing),
+            patch("infra.postgres.get_doc_by_source", return_value=existing),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
             patch("pipeline.enqueue.enqueue_upload_event"),

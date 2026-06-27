@@ -174,7 +174,7 @@ curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
 ```json
 {
   "doc_id": "b59168c41e5e4a0d",
-  "source_uri": "report.pdf",
+  "source": "report.pdf",
   "etag": "d41d8cd98f00b204e9800998ecf8427e",
   "status_url": "/api/kb/kb-01/docs/b59168c41e5e4a0d/status"
 }
@@ -191,12 +191,12 @@ curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
   "results": [
     {
       "doc_id": "b59168c41e5e4a0d",
-      "source_uri": "a.pdf",
+      "source": "a.pdf",
       "etag": "d41d8cd98f00b204e9800998ecf8427e",
       "status_url": "/api/kb/kb-01/docs/b59168c41e5e4a0d/status"
     },
     {
-      "source": "b.xyz",
+      "title": "b.xyz",
       "error": "Unsupported file format: .xyz",
       "status": "error"
     }
@@ -307,7 +307,7 @@ ETag가 동일하면 `queued: 0, skipped: 1`을 반환합니다. `force=true`이
 
 ```bash
 # 2페이지, 상태=indexed, "report" 검색, source 오름차순
-curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed&search=report&sort_by=source&sort_order=asc"
+curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed&search=report&sort_by=title&sort_order=asc"
 ```
 
 ### 응답 예시
@@ -318,9 +318,9 @@ curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed
     {
       "doc_id": "b59168c41e5e4a0d",
       "kb_id": "kb-01",
-      "source": "report.pdf",
+      "title": "report.pdf",
       "source_type": "s3",
-      "source_uri": "report.pdf",
+      "source": "report.pdf",
       "storage_key": "kb-01/report.pdf",
       "connector_id": null,
       "status": "indexed",
@@ -499,7 +499,7 @@ curl -X POST http://localhost:8000/api/connectors \
 
 파일의 git blob SHA를 `content_version`으로 저장합니다. 재sync 시 SHA가 동일하면 재인제스트를 건너뜁니다. 파일이 변경되면 SHA가 달라지므로 자동으로 재수집됩니다.
 
-**source_uri 형식**
+**source 형식**
 
 `github://{owner}/{repo}/{branch}/{file_path}`
 

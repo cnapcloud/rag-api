@@ -34,9 +34,9 @@ def run_ingest_pipeline(
 
     kb_id: str = doc["kb_id"]
     storage_key: str = doc.get("storage_key") or ""
-    source: str = doc.get("source") or ""
+    title: str = doc.get("title") or ""
     source_type: str = doc.get("source_type") or ""
-    source_uri: str = doc.get("source_uri") or ""
+    source: str = doc.get("source") or ""
 
     try:
         validate(doc_id, force=force)
@@ -69,7 +69,7 @@ def run_ingest_pipeline(
         embedded_nodes = embed(nodes)
         upsert_result = upsert(
             kb_id, doc_id, embedded_nodes,
-            source=source, source_type=source_type, source_uri=source_uri,
+            title=title, source_type=source_type, source=source,
         )
 
         cfg = get_settings().embedding

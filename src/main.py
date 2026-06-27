@@ -64,7 +64,7 @@ def ingest(
 
     import mimetypes
 
-    from infra.postgres import create_doc, get_doc_by_source_uri, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
     from infra.s3 import upload_object
     from pipeline.enqueue import enqueue_upload_event
     from pipeline.source_uri import normalize_source_uri
@@ -80,12 +80,12 @@ def ingest(
     source_uri = normalize_source_uri("s3", file.name)
     storage_key = f"{kb_id}/{file.name}"
 
-    existing = get_doc_by_source_uri(kb_id, source_uri)
+    existing = get_doc_by_source(kb_id, source_uri)
     if existing is None:
         doc = create_doc(
             kb_id=kb_id,
-            source_uri=source_uri,
-            source=file.name,
+            source=source_uri,
+            title=file.name,
             source_type="s3",
             status="uploading",
             storage_key=storage_key,

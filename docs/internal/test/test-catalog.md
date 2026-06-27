@@ -488,8 +488,8 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/integration/ -v
 | `test_create_doc_doc_id_is_string` | doc_id가 문자열 타입 |
 | `test_get_doc_by_id_found` | doc_id로 문서 조회 성공 |
 | `test_get_doc_by_id_not_found` | 없는 doc_id → None 반환 |
-| `test_get_doc_by_source_uri_found` | source_uri로 문서 조회 성공 |
-| `test_get_doc_by_source_uri_not_found` | 없는 source_uri → None 반환 |
+| `test_get_doc_by_source_found` | source로 문서 조회 성공 |
+| `test_get_doc_by_source_not_found` | 없는 source → None 반환 |
 | `test_list_docs_returns_dicts` | list_docs가 dict 리스트 반환 |
 | `test_list_docs_excludes_deleted_by_default` | 기본적으로 deleted 문서 제외 |
 | `test_list_docs_include_deleted_flag` | include_deleted=True 시 deleted 포함 |

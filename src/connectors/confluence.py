@@ -156,7 +156,7 @@ class ConfluenceConnector:
         page: dict,
     ) -> None:
         """Flow B step [3] for one Confluence page and its attachments."""
-        from infra.postgres import create_doc, get_doc_by_source_uri, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
         from infra.s3 import upload_object
         from pipeline.enqueue import enqueue_upload_event
 
@@ -180,7 +180,7 @@ class ConfluenceConnector:
             logger.debug("Page excluded by label: source_uri=%s", source_uri)
             return
 
-        doc = get_doc_by_source_uri(kb_id, source_uri)
+        doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
             if doc.get("content_version") == version:
@@ -191,8 +191,8 @@ class ConfluenceConnector:
         if doc is None:
             doc = create_doc(
                 kb_id=kb_id,
-                source_uri=source_uri,
-                source=title,
+                source=source_uri,
+                title=title,
                 source_type="confluence",
                 status="fetching",
                 connector_id=connector_id,
@@ -228,7 +228,7 @@ class ConfluenceConnector:
         update_doc_fields(
             doc_id,
             {
-                "source": title,
+                "title": title,
                 "status": "pending",
                 "storage_key": storage_key,
                 "content_version": version,
@@ -289,7 +289,7 @@ class ConfluenceConnector:
         attachment: dict,
     ) -> None:
         """Flow B step [3] for one Confluence attachment."""
-        from infra.postgres import create_doc, get_doc_by_source_uri, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
         from infra.s3 import upload_object
         from pipeline.enqueue import enqueue_upload_event
 
@@ -318,7 +318,7 @@ class ConfluenceConnector:
         download_url = self._make_download_url(download_path)
         source_uri = download_url if download_url else f"confluence://{self.space_key.lower()}/attachments/{att_id}"
 
-        doc = get_doc_by_source_uri(kb_id, source_uri)
+        doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
             if doc.get("content_version") == version:
@@ -328,8 +328,8 @@ class ConfluenceConnector:
         if doc is None:
             doc = create_doc(
                 kb_id=kb_id,
-                source_uri=source_uri,
-                source=title,
+                source=source_uri,
+                title=title,
                 source_type="confluence",
                 status="fetching",
                 connector_id=connector_id,
@@ -381,7 +381,7 @@ class ConfluenceConnector:
         update_doc_fields(
             doc_id,
             {
-                "source": title,
+                "title": title,
                 "status": "pending",
                 "storage_key": storage_key,
                 "content_version": version,
