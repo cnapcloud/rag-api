@@ -693,10 +693,156 @@ def get_kb_doc_counts(kb_id: str) -> dict[str, int]:
     return counts
 
 
+def save_simhash_bands(doc_id: str, bands: list[tuple[int, str]]) -> None:
+    """Store SimHash band entries for a document.
+
+    Looks up kb_id from the documents table. Upserts to tolerate re-ingest.
+    bands: list of (band_index, band_value_hex) as returned by get_bands().
+    """
+    with get_pool().connection() as conn:
+        row = conn.execute("SELECT kb_id FROM documents WHERE doc_id = %s", [doc_id]).fetchone()
+        if row is None:
+            raise ValueError(f"Document not found for simhash save: doc_id={doc_id}")
+        kb_id = row[0]
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO simhash_bands (band_id, doc_id, kb_id, band_index, band_value)"
+                " VALUES (%s, %s, %s, %s, %s)"
+                " ON CONFLICT (band_id) DO UPDATE SET band_value = EXCLUDED.band_value",
+                [(f"{doc_id}:{idx}", doc_id, kb_id, idx, int(val, 16)) for idx, val in bands],
+            )
+        conn.commit()
+    logger.info("SimHash bands saved: doc_id=%s num_bands=%d", doc_id, len(bands))
+
+
+def find_simhash_candidates(bands: list[tuple[int, str]]) -> set[str]:
+    """Return doc_ids that share at least one (band_index, band_value) pair.
+
+    bands: list of (band_index, band_value_hex) as returned by get_bands().
+    """
+    clauses = ["(band_index = %s AND band_value = %s)"] * len(bands)
+    params: list[Any] = []
+    for idx, val in bands:
+        params.extend([idx, int(val, 16)])
+    sql = f"SELECT DISTINCT doc_id FROM simhash_bands WHERE {' OR '.join(clauses)}"
+    with get_pool().connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return {row[0] for row in rows}
+
+
+def get_docs_fingerprints(doc_ids: list[str]) -> dict[str, dict]:
+    """Return {doc_id: {content_simhash, title_hash}} for the given doc_ids.
+
+    Used by SimHash detection to retrieve candidate fingerprints in one query.
+    content_simhash is a signed BIGINT (i64); caller converts to u64 for Hamming.
+    """
+    if not doc_ids:
+        return {}
+    placeholders = ",".join(["%s"] * len(doc_ids))
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            f"SELECT doc_id, content_simhash, title_hash FROM documents"
+            f" WHERE doc_id IN ({placeholders})",
+            doc_ids,
+        ).fetchall()
+    return {row[0]: {"content_simhash": row[1], "title_hash": row[2]} for row in rows}
+
+
 def delete_simhash_bands(doc_id: str) -> None:
     """Remove all simhash band entries for a document."""
     with get_pool().connection() as conn:
         conn.execute("DELETE FROM simhash_bands WHERE doc_id = %s", [doc_id])
         conn.commit()
     logger.info("SimHash bands deleted: doc_id=%s", doc_id)
+
+
+# ──────────────────────────────────────────────
+# MinHash band CRUD (stage 2 dedup)
+# ──────────────────────────────────────────────
+
+def save_minhash_bands(doc_id: str, signature: list[int]) -> None:
+    """Store a 128-element MinHash signature as individual rows in minhash_bands.
+
+    Each row: (doc_id, band_index=0..127, band_hash=MinHash value at that position).
+    Upserts to tolerate re-ingest of the same document.
+    """
+    with get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO minhash_bands (doc_id, band_index, band_hash) VALUES (%s, %s, %s)"
+                " ON CONFLICT (doc_id, band_index) DO UPDATE SET band_hash = EXCLUDED.band_hash",
+                [(doc_id, i, h) for i, h in enumerate(signature)],
+            )
+        conn.commit()
+    logger.info("MinHash bands saved: doc_id=%s num_values=%d", doc_id, len(signature))
+
+
+def get_minhash_signature(doc_id: str) -> list[int] | None:
+    """Return the stored MinHash signature (ordered by band_index), or None if absent."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT band_hash FROM minhash_bands WHERE doc_id = %s ORDER BY band_index",
+            [doc_id],
+        ).fetchall()
+    if not rows:
+        return None
+    return [row[0] for row in rows]
+
+
+def find_minhash_candidates(signature: list[int], num_bands: int = 16) -> set[str]:
+    """Return doc_ids that share ALL MinHash values in at least one band with the given signature.
+
+    Uses LSH band approach: the signature is split into num_bands bands of equal size.
+    A candidate doc matches a band if every position within that band has the same hash value.
+    This is more selective than any-match, reducing false positives for large corpora.
+    """
+    n = len(signature)
+    rows_per_band = n // num_bands
+
+    union_parts: list[str] = []
+    all_params: list[Any] = []
+
+    for band_idx in range(num_bands):
+        start = band_idx * rows_per_band
+        or_clauses = []
+        for row in range(rows_per_band):
+            pos = start + row
+            or_clauses.append("(band_index = %s AND band_hash = %s)")
+            all_params.extend([pos, signature[pos]])
+
+        union_parts.append(
+            f"SELECT doc_id FROM ("
+            f"SELECT doc_id, COUNT(*) AS cnt FROM minhash_bands"
+            f" WHERE {' OR '.join(or_clauses)}"
+            f" GROUP BY doc_id"
+            f") s{band_idx} WHERE cnt = {rows_per_band}"
+        )
+
+    sql = " UNION ".join(union_parts)
+    with get_pool().connection() as conn:
+        rows = conn.execute(sql, all_params).fetchall()
+    return {row[0] for row in rows}
+
+
+def find_title_candidates(title: str, threshold: float) -> dict[str, float]:
+    """Return {doc_id: similarity_score} for documents whose source matches title via pg_trgm.
+
+    Uses GIN index idx_documents_source_trgm. Excludes deleted documents.
+    """
+    with get_pool().connection() as conn:
+        conn.execute("SET pg_trgm.similarity_threshold = %s", [threshold])
+        rows = conn.execute(
+            "SELECT doc_id, similarity(source, %s) AS sim FROM documents"
+            " WHERE source %% %s AND status != 'deleted'",
+            [title, title],
+        ).fetchall()
+    return {row[0]: float(row[1]) for row in rows}
+
+
+def delete_minhash_bands(doc_id: str) -> None:
+    """Remove all MinHash band entries for a document."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM minhash_bands WHERE doc_id = %s", [doc_id])
+        conn.commit()
+    logger.info("MinHash bands deleted: doc_id=%s", doc_id)
 
