@@ -116,6 +116,7 @@ documents
 ├── doc_created_at      TIMESTAMPTZ             -- actual document creation date (source-specific)
 ├── title_hash          TEXT
 ├── content_simhash     BIGINT
+├── duplicate_of        TEXT                    -- doc_id of the superseding document (set when status = outdated)
 └── UNIQUE(kb_id, source_uri)
 ```
 
@@ -124,21 +125,44 @@ Indexes:
 - `idx_documents_title_hash` on `(kb_id, title_hash) WHERE title_hash IS NOT NULL`
 - `idx_documents_connector` on `(connector_id) WHERE connector_id IS NOT NULL`
 - `idx_documents_status` on `(kb_id, status)`
+- `idx_documents_source_trgm` on `source` using GIN (pg_trgm) — 2단계 제목 퍼지 검색용
 
 ### `simhash_bands` table
 
+1단계 dedup용 — SimHash 64비트 지문을 16비트 × 4밴드로 분할하여 저장.
+
 ```
 simhash_bands
-├── band_id     TEXT     PRIMARY KEY   -- 16-char hex, app-generated (generate_id())
+├── band_id     TEXT     PRIMARY KEY   -- "{doc_id}:{band_index}" — upsert 안정 키
 ├── doc_id      TEXT     NOT NULL FK documents(doc_id) ON DELETE CASCADE
 ├── kb_id       TEXT     NOT NULL   -- denormalized for LSH lookup without JOIN
 ├── band_index  SMALLINT NOT NULL   -- 0-3 (64-bit -> 16-bit x 4 bands)
-├── band_value  INTEGER  NOT NULL
+├── band_value  INTEGER  NOT NULL   -- 16-bit unsigned band value stored as INTEGER
 └── UNIQUE(doc_id, band_index, band_value)
 ```
 
 Index:
 - `idx_simhash_bands_lsh` on `(kb_id, band_index, band_value)` — LSH near-duplicate lookup
+
+### `minhash_bands` table
+
+2단계 dedup용 — MinHash 128개 서명을 개별 행으로 저장 (band_index 0-127).
+
+```
+minhash_bands
+├── doc_id      TEXT     NOT NULL FK documents(doc_id) ON DELETE CASCADE
+├── band_index  SMALLINT NOT NULL   -- 0-127 (128 individual MinHash values)
+├── band_hash   BIGINT   NOT NULL   -- MinHash value at this position
+└── PRIMARY KEY (doc_id, band_index)
+```
+
+Index:
+- `idx_minhash_bands_lookup` on `(band_index, band_hash)` — MinHash LSH 후보 조회
+
+LSH candidate query: 16밴드 × 8행 구조로 UNION — 한 밴드의 8개 값이 모두 일치하는 doc_id만 후보로 추출 (`COUNT(*) = 8` 조건).
+
+Extension:
+- `pg_trgm` — `documents.source` 컬럼 제목 퍼지 검색용 (`idx_documents_source_trgm` GIN 인덱스)
 
 ### Status field values
 
@@ -149,6 +173,7 @@ Index:
 | `pending` | Queued — event pushed to Redis, waiting for pipeline pickup |
 | `running` | Pipeline processing in progress |
 | `indexed` | Ingest complete, chunks stored in Qdrant |
+| `outdated` | Superseded by a newer version of the same document (dedup verdict); Qdrant chunks may still exist |
 | `deleting` | Delete in progress |
 | `deleted` | Soft-deleted — row retained, Qdrant chunks removed |
 | `failed` | Ingest or delete failed — see `error` column |

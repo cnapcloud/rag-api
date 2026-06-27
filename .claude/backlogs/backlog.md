@@ -23,3 +23,5 @@
 | [US-21](US-21-github-connector.md) | GitHubConnector implementation (R-11) | done |
 | [US-22](US-22-discard-ingest-on-deleting.md) | deleting 상태 문서의 ingest/delete 이벤트 즉시 버림 | done |
 | [US-23](US-23-dedup-stage1.md) | Dedup Stage 1 — 해시 기반 중복 감지 (SimHash + SHA-256) | done |
+| [US-24](US-24-dedup-stage2.md) | Dedup Stage 2 — MinHash Jaccard + pg_trgm 제목 퍼지 필터링 | done |
+| [US-25](US-25-kiwi-user-words.md) | Kiwi 형태소 분석기 사용자 사전 파일 지원 | done |

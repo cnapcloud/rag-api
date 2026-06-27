@@ -158,7 +158,7 @@ def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings
 
     all_candidates = body_candidates | set(title_scores)
     if not all_candidates:
-        logger.info("Stage2: no candidates doc_id=%s", doc_id)
+        logger.info("no candidates doc_id=%s", doc_id)
         return DedupResult(body_match="none", needs_indexing=True)
 
     best_doc_id: str | None = None
@@ -174,7 +174,7 @@ def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings
         t_sim = title_scores.get(cid, 0.0)
 
         logger.info(
-            "Stage2: score doc_id=%s cid=%s jaccard=%.3f title_sim=%.3f",
+            "score doc_id=%s cid=%s jaccard=%.3f title_sim=%.3f",
             doc_id, cid, j, t_sim,
         )
 
@@ -191,7 +191,7 @@ def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings
 
     if best_doc_id is not None:
         logger.info(
-            "Stage2: similar found doc_id=%s duplicate=%s jaccard=%.3f title_sim=%.3f",
+            "similar found doc_id=%s duplicate=%s jaccard=%.3f title_sim=%.3f",
             doc_id, best_doc_id, best_jaccard, best_title_sim,
         )
         return DedupResult(
@@ -201,5 +201,5 @@ def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings
             candidate_doc_ids=passed_candidates,
         )
 
-    logger.info("Stage2: no similar candidate doc_id=%s", doc_id)
+    logger.info("no similar candidate doc_id=%s", doc_id)
     return DedupResult(body_match="none", needs_indexing=True)

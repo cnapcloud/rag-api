@@ -5,12 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-DedupVerdict = Literal["identical", "title_changed", "proceed"]
+BodyMatch = Literal["identical_level", "similar", "none"]
+TitleMatch = Literal["same", "changed", "unknown"]
 
 
 @dataclass
 class DedupResult:
-    verdict: DedupVerdict
+    body_match: BodyMatch = "none"
+    title_match: TitleMatch = "unknown"
     duplicate_doc_id: str | None = None
     needs_indexing: bool = True
     title_hash: str = ""

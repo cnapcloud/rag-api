@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE IF NOT EXISTS knowledge_bases (
     kb_id        TEXT PRIMARY KEY,
     kb_name      TEXT NOT NULL DEFAULT '',
@@ -66,6 +68,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_connector_status
     ON documents (connector_id, status) WHERE connector_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_status
     ON documents (kb_id, status);
+CREATE INDEX IF NOT EXISTS idx_documents_source_trgm
+    ON documents USING GIN (source gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS simhash_bands (
     band_id     TEXT     PRIMARY KEY,
@@ -78,3 +82,13 @@ CREATE TABLE IF NOT EXISTS simhash_bands (
 
 CREATE INDEX IF NOT EXISTS idx_simhash_bands_lsh
     ON simhash_bands (kb_id, band_index, band_value);
+
+CREATE TABLE IF NOT EXISTS minhash_bands (
+    doc_id      TEXT     NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
+    band_index  SMALLINT NOT NULL,
+    band_hash   BIGINT   NOT NULL,
+    PRIMARY KEY (doc_id, band_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_minhash_bands_lookup
+    ON minhash_bands (band_index, band_hash);

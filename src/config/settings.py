@@ -136,8 +136,15 @@ class DedupSettings(BaseModel):
     num_bands: int = 4
     simhash_bits: int = 64
     hamming_identical_threshold: int = 3
+    hamming_similar_threshold: int = 10
     lock_ttl: int = 10
     lock_acquire_timeout: int = 5
+    # Stage 2 thresholds
+    jaccard_threshold: float = 0.65
+    title_fuzzy_threshold: float = 0.85
+    title_only_min_jaccard_floor: float = 0.25
+    # Kiwi user word dictionary (relative to project root; empty = no user dict)
+    user_words_path: str = ""
 
 
 class KBDefinition(BaseModel):
