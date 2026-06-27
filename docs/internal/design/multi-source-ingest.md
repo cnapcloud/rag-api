@@ -1,4 +1,4 @@
-# Multi-Source Ingest: Flow & Schema Redesign Requirements
+# Multi-Source Ingest: Flow & Schema Redesign
 
 ## 1. Current Flow Problems
 
