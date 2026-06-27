@@ -92,36 +92,18 @@ def parse_op(context: OpExecutionContext, valid_config: dict):
 
 @op(out={"to_chunk": Out(dagster_type=list, is_required=False)})
 def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
-    """Run SimHash dedup on pre-parsed documents. Emits to_chunk only when needs_indexing=True."""
-    from config.settings import get_settings
+    """Run dedup pipeline (stage 1 SimHash + stage 2 MinHash/pg_trgm) on pre-parsed documents.
 
-    if not get_settings().dedup.enabled:
-        context.log.info("Dedup disabled: doc_id=%s", valid_config["doc_id"])
-        yield Output(documents, "to_chunk")
-        return
-
-    from infra.redis import get_redis_client
-    from pipeline.ops.dedup.simhash import run_simhash_detection
-    from pipeline.ops.dedup.verdict import run_verdict
+    Emits to_chunk only when needs_indexing=True; otherwise terminates the pipeline branch.
+    """
+    from pipeline.ops.dedup import run_dedup_pipeline
 
     doc_id = valid_config["doc_id"]
-    cfg = get_settings()
-
-    title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
-    body = " ".join(d.text for d in documents)
-
-    result = run_simhash_detection(
-        doc_id=doc_id,
-        title=title,
-        body=body,
-        rc=get_redis_client(),
-        cfg=cfg.dedup,
-    )
-    run_verdict(doc_id=doc_id, result=result, run_id=context.run_id)
+    result = run_dedup_pipeline(doc_id=doc_id, run_id=context.run_id, documents=documents)
 
     context.log.info(
-        "Dedup done: verdict=%s doc_id=%s needs_indexing=%s",
-        result.verdict, doc_id, result.needs_indexing,
+        "Dedup done: body_match=%s doc_id=%s needs_indexing=%s",
+        result.body_match, doc_id, result.needs_indexing,
     )
 
     if not result.needs_indexing:
