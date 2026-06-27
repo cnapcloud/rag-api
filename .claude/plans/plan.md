@@ -21,3 +21,4 @@
 | [22](22-discard-ingest-on-deleting.md) | deleting 상태 이벤트 즉시 버림 | US-22 | done |
 | [24](24-dedup-stage2.md) | Dedup Stage 2 — MinHash + pg_trgm | US-24 | done |
 | [25](25-kiwi-user-words.md) | Kiwi 사용자 사전 파일 지원 | US-25 | done |
+| [26](26-delete-pipeline-refactor.md) | Delete Pipeline Refactor — soft/hard delete 분기 + status guard | US-26 | todo |

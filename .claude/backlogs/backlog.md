@@ -25,3 +25,4 @@
 | [US-23](US-23-dedup-stage1.md) | Dedup Stage 1 — 해시 기반 중복 감지 (SimHash + SHA-256) | done |
 | [US-24](US-24-dedup-stage2.md) | Dedup Stage 2 — MinHash Jaccard + pg_trgm 제목 퍼지 필터링 | done |
 | [US-25](US-25-kiwi-user-words.md) | Kiwi 형태소 분석기 사용자 사전 파일 지원 | done |
+| [US-26](todo/US-26-delete-pipeline-refactor.md) | Delete Pipeline Refactor — soft/hard delete 분기 + status guard | todo |
