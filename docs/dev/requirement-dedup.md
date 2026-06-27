@@ -99,13 +99,49 @@ Dagster는 `dedup_op`이 완료될 때까지 하위 op을 실행하지 않으므
 
 ### 분기 처리
 
-| verdict | needs_indexing | dedup_op 이후 동작 |
-|---|---|---|
-| 동일 | False | 로그 기록 후 job 종료 — chunk/embed/upsert/meta 모두 스킵 |
-| 제목변경 | False | 로그 기록 후 job 종료 — chunk/embed/upsert/meta 모두 스킵 |
-| 유사 | True | C측 deprecated 처리 완결 후 A 색인 진행 |
-| 관련 | True | C측 링크 메타데이터 추가 완결 후 A 색인 진행 |
-| 무관 | True | 별도 처리 없이 A 색인 진행 |
+**DedupResult 필드**
+
+| 필드 | 타입 | 의미 |
+|------|------|------|
+| `body_match` | `identical_level` / `similar` / `none` | 본문 유사도 판정 |
+| `title_match` | `same` / `changed` / `unknown` | 제목 일치 여부 (1단계만 판정) |
+| `duplicate_doc_id` | `str \| None` | 후보 중 best match 1건 (verdict 처리 대상) |
+| `candidate_doc_ids` | `list[str]` | 임계값을 통과한 전체 후보 목록 (best match 포함) |
+| `needs_indexing` | `bool` | verdict 처리 후 색인 파이프라인 진입 여부 |
+
+`candidate_doc_ids`에는 LSH 조회 결과 전체가 아닌, 임계값(Hamming 또는 Jaccard/제목)을 실제 통과한 것만 포함된다.
+`run_verdict` 진입 시 `candidate_doc_ids`와 `duplicate_doc_id`를 INFO 로그로 기록하며, 실제 처리는 `duplicate_doc_id` (best match) 단건에만 적용한다.
+
+**Verdict 구성 요소**
+
+| 차원 | 값 | 판정 기준 |
+|------|-----|----------|
+| body | `identical` | SimHash Hamming ≤ hamming_identical_threshold (1단계) |
+| body | `similar` | SimHash Hamming ≤ hamming_similar_threshold (1단계) 또는 MinHash Jaccard ≥ jaccard_threshold (2단계) |
+| body | `none` | 후보 없음 |
+| title | `identical` | SHA-256 완전 일치 (1단계) |
+| title | `similar` | pg_trgm similarity ≥ title_fuzzy_threshold (2단계) |
+| title | `none` | 불일치 |
+
+**Verdict 결합 규칙**
+
+| body | title | verdict | to_chunk |
+|------|-------|---------|----------|
+| identical | identical | `identical` | False |
+| identical | similar/none | `title_changed` | False |
+| similar | any | `similar` | False |
+| none | — | `proceed` | True |
+
+**후속 처리**
+
+| verdict | C 처리 | A 처리 |
+|---------|--------|--------|
+| `identical` | 변경 없음 | dedup_skipped |
+| `title_changed` | outdated + Qdrant payload 갱신 + simhash_bands 삭제 | indexed (신규 색인) |
+| `similar` | outdated | indexed (신규 색인) |
+| `proceed` | — | indexed (신규 색인) |
+
+> **1·2단계 구현 기간 (현재):** `similar` verdict는 to_chunk=False로 C를 outdated 처리하고 A를 신규 색인한다. 3단계 구현 시 `similar`를 auto-skip 대신 임베딩 정밀 비교로 라우팅하도록 변경한다.
 
 `needs_indexing=True` 경우, `run_dedup_pipeline()`이 C측 처리(기존 문서 상태 갱신 등)를 완결한 뒤 반환하며, 이후 표준 색인 파이프라인(chunk → embed → upsert → meta)이 A를 신규 색인한다.
 
@@ -159,87 +195,54 @@ YES        NO       │           │
 **3.1.1 제목 비교 (SHA-256 완전 일치)**
 - 제목 해시 생성 + 기존 문서 `title_hash` 백필
 - 신규 문서 해시 계산 → 조회·비교, 완전 일치 시 "제목 동일" 플래그
-**3.1.2 본문 비교 (SimHash + Redis band 인덱스)**
- 
+**3.1.2 본문 비교 (SimHash + Postgres band 인덱스)**
+
 ```
-Redis 키 구조: simhash_band:{조각순서}:{조각값} → Set<doc_id>
- 
-[사전 작업] 기존 문서마다 SimHash 계산 → 4조각 분할 → 각 조각값 Set에 SADD
- 
+Postgres 테이블: simhash_bands (band_id, doc_id, kb_id, band_index, band_value)
+
+[사전 작업] 기존 문서마다 SimHash 계산 → 4조각 분할 → simhash_bands에 INSERT
+
 [신규 문서 유입]
 SimHash 계산 → 4조각 분할
     ↓
-4개 Set을 SUNION으로 한 번에 조회 (조각 1개라도 일치 → 후보, OR조건)
+4개 (band_index, band_value) 쌍을 OR 조건으로 한 번에 조회
+(조각 1개라도 일치 → 후보, OR조건)
     ↓
-후보 doc_id 추출 (자기 자신 제외) → 전체 SimHash 일괄 조회(MGET)
+후보 doc_id 추출 (자기 자신 제외) → documents 테이블에서 content_simhash 일괄 조회
     ↓
 후보만 정밀 Hamming Distance 계산 → 임계값 이내만 최종 후보
     ↓
-신규 문서 조각도 동일하게 SADD (다음 비교 대상이 되도록)
+신규 문서 조각도 동일하게 INSERT (다음 비교 대상이 되도록)
 ```
- 
+
 - 본문 shingle: character-level n-gram, n=3 (한국어·영어 동일 처리, 공백 포함)
-- SimHash 비트 길이(64/128bit), Hamming Distance 임계값(예: 3비트 이하) 정의
-- 기존 문서 전체 SimHash 백필 + Redis persistence(AOF/RDB) 점검
-- band 키 SCARD 비정상 증가 모니터링 (템플릿 문서 군집 탐지 신호)
+- SimHash 비트 길이: 64bit, 4밴드(밴드당 16bit)
+- `content_simhash`는 Postgres BIGINT(i64)로 저장 — Hamming 비교 시 u64로 복원
 
-**3.1.3 동시성 제어 — 밴드 키 단위 락**
+**3.1.3 동시성**
 
-**문제:** "SUNION 조회 → SADD 등록" 구간이 원자적이지 않으면,
-거의 동시에 유입된 근접 중복 문서 A와 A'가 서로를 후보로 발견하지 못하고
-둘 다 "무관" 판정을 받아 중복 색인이 발생한다.
-
-**해결:** 전역 락 대신 **SimHash 밴드 키 단위 락**을 사용한다.
-
-- 락 단위: 문서의 SimHash 4개 밴드 키 각각에 Redis SETNX 기반 락
-- SimHash 계산은 락 획득 전에 완료 → 락 보유 시간 최소화 (Redis 명령 2~3개 수준)
-- 근접 중복 문서는 밴드 키를 공유하므로 자동으로 직렬화됨
-- 무관한 문서는 밴드 키가 겹치지 않으므로 병렬 처리됨
-
-Process A                    Process B
-    │                            │
-[simhash 계산, 200ms]        [simhash 계산, 200ms]
-    │                            │
-락 획득(band_0) ───────┐          │
-    │              락 대기 ←──────┤
-SUNION → 후보 없음      │         │
-SADD(doc-A)            │        │
-락 해제 ────────────────┘         │
-    │                        락 획득(band_0)
-    │                        SUNION → doc-A 발견
-    │                        Hamming distance 계산
-    │                        → near-duplicate 판정
-    ↓                            ↓
- 색인됨                      색인 스킵
-
-**타임아웃 설정**
-
-| 파라미터 | 기본값 | 설명 |
-|---|---|---|
-| lock_ttl | 10s | Redis 장애·프로세스 크래시 시 데드락 방지용 자동 만료 |
-| lock_acquire_timeout | 5s | 락 대기 최대 시간. 초과 시 → 후보 없음으로 간주하고 진행 (보수적 선택) |
-
-**오픈 이슈**
-- lock_acquire_timeout 초과 시 처리 정책: "후보 없음 간주 진행" vs "에러 처리 후 재시도" 미결정
-- lock_ttl 10s는 Redis 명령 기준 여유값이며, 운영 데이터 기반 튜닝 필요
+Postgres 트랜잭션 격리로 band 조회와 INSERT가 직렬화된다.
+동시 유입된 근접 중복 문서가 서로를 탐지하지 못할 수 있으나, 이는 허용 범위의 best-effort 동작이다.
+(이전 Redis 밴드 락은 제거됨)
 
 **출력**
- 
-| 조건 | 결과 |
-|---|---|
-| 본문≈0 AND 제목일치 | 5단계 직행 — 판정="동일" |
-| 본문≈0 AND 제목불일치 | 5단계 직행 — 판정="제목변경" |
-| 본문≈0 아님 + (제목일치 OR 본문거리 임계값 이내) | "동일 후보" → 3단계 전달 |
-| 둘 다 불충족 | 2단계로 진행 |
- 
+
+| Hamming Distance | 제목 | verdict |
+|-----------------|------|---------|
+| ≤ hamming_identical_threshold (3) | SHA-256 일치 | `identical` |
+| ≤ hamming_identical_threshold (3) | SHA-256 불일치 | `title_changed` |
+| ≤ hamming_similar_threshold (10) | any | `similar` |
+| > hamming_similar_threshold | — | 2단계로 진행 |
+| 후보 없음 | — | 2단계로 진행 |
+
 **완료 기준**
-- 제목은 완전 일치만 통과(한 글자라도 다르면 불일치)
+- `identical`/`title_changed`/`similar` 케이스가 2단계 스킵하고 5단계로 직행
 - 전체 스캔 없이 4개 키 SUNION만으로 후보 추출됨을 확인
-- "동일"/"제목변경" 케이스가 2·3·4단계 스킵하고 5단계로 바로 전달되며, 5단계에서 올바르게 분기(색인스킵 vs 제목갱신)됨을 확인
 
 **결정 사항**
 - n-gram: character-level n=3 (한국어·영어 동일, 공백 포함)
-- Hamming Distance 임계값: 설정값 `hamming_identical_threshold` (기본값 3)
+- hamming_identical_threshold: 3 (body:identical 기준)
+- hamming_similar_threshold: 10 (body:similar 기준, 초과 시 2단계로)
 
 **오픈 이슈**
 - 문서 규모 확대 시 Postgres 이전 시점/기준 미정
@@ -260,13 +263,27 @@ SADD(doc-A)            │        │
 - Kiwi 형태소 분석기 사용 (명사/동사·형용사 어간만 추출, 조사/어미 제거)
 - 정규화: 영문 소문자화, 전각/반각 통일, 마크다운 문법 제거, 코드블록 제외
 
-2) Jaccard 유사도 (본문)
-- 토큰 집합화 → 작은 집합을 해시셋에 적재, 큰 집합 순회로 교집합 산출 (O(|A|+|B|))
-- 합집합 = |A|+|B|−교집합
+2) Jaccard 유사도 (본문) — MinHash 방식
+- 토큰 원문을 저장하지 않고 **MinHash 서명(128개 해시값, 512바이트 고정)** 으로 압축하여 Postgres `doc_minhash_bands` 테이블에 저장
+  - 인제스트 시 형태소 분석 → MinHash 128개 산출 → 16밴드 × 8행 분할 → 저장 (문서당 512바이트, 10만 문서 기준 약 51MB)
+  - 비교 시 A의 밴드값으로 DB 조회 → 밴드 하나라도 일치하는 문서만 후보 추출 → 후보에 대해 `Jaccard 근사값 = 일치하는 해시 수 / 128` 계산 (오차 ±0.09)
+  - P(min_hash(A) == min_hash(B)) = Jaccard(A,B) — 최솟값 일치 확률이 Jaccard와 수학적으로 동치이므로 "Jaccard 근사"라 부름
+- SimHash(`simhash_bands`)와 동일한 밴드 조회 패턴, 나란히 관리
+
+  | | SimHash (1단계) | MinHash (2단계) |
+  |---|---|---|
+  | 계산 방식 | 토큰별 해시 비트를 TF 가중 투표 → 64비트 지문 | 128개 해시 함수로 토큰 집합의 최솟값 추출 → 128개 서명 |
+  | 비교 방식 | XOR → Hamming 거리 | 동일 위치 일치 수 / 128 |
+  | 근사 대상 | 코사인 유사도 | Jaccard 유사도 |
+  | 탐지 대상 | 거의 동일한 문서 — 문자 n-gram 변화 최소 | 내용어가 20% 이상 겹치는 문서 — 문장 구조 달라도 탐지 가능 |
 
 3) 퍼지 매칭 (Jaro-Winkler, 제목 한정)
 - 제목에만 적용 (본문은 Jaccard로 충분히 커버, 연산비용 큼). 예외: 본문 길이 < 컷오프(예: 200자) 단문은 본문에도 적용
 - Levenshtein 대신 Jaro-Winkler 채택 (접두사 가중 → 버전/수정 suffix 패턴 탐지에 적합)
+- 후보 탐색: 전수 조사 없이 `pg_trgm` GIN 인덱스 사용
+  - `documents.title` 컬럼에 trigram 인덱스 생성 (인제스트 시 별도 저장 불필요, PostgreSQL이 자동 관리)
+  - `WHERE similarity(title, $1) > title_fuzzy_threshold` 쿼리로 후보 추출
+  - MinHash 밴드 조회(본문)와 pg_trgm 조회(제목) 결과를 합집합으로 통합 → 4) 임계값 판정 진행
 
 4) 임계값 판정 (3분기)
 
@@ -277,12 +294,20 @@ SADD(doc-A)            │        │
 | Jaccard < jaccard_threshold, 제목유사도 ≥ title_fuzzy_threshold, Jaccard < title_only_min_jaccard_floor | 무관 즉시 확정 (3단계 스킵 → 5단계 직행) |
 | 둘 다 미달 | 무관 확정 (3단계 스킵 → 5단계 직행) |
 
-- 임계값은 config(yaml/json) 분리, 하드코딩 금지
-- 초기값: jaccard_threshold=0.2, title_fuzzy_threshold=0.7, title_only_min_jaccard_floor=0.05
+- 임계값은 config(yaml/json) 분리, 하드코딩 금지 — settings.yaml `dedup` 섹션에 배치
+- 초기값 및 근거:
+
+  | 변수 | 1+2단계만 운영 시 | 3단계 이후 추가 시 | 근거 |
+  |------|------------------|-------------------|------|
+  | `jaccard_threshold` | 0.65 | 0.2 | 1+2단계만: 2단계가 최종 판정이므로 오탐 방지를 위해 높게 설정. 3단계 추가 시: 이후 정밀 검증이 있으므로 후보를 넉넉히 넘김 |
+  | `title_fuzzy_threshold` | 0.85 | 0.7 | 1+2단계만: 매우 유사한 제목만 통과. 3단계 추가 시: 버전/날짜 suffix 패턴(보고서_2024Q1 → 보고서_2024Q2)까지 포함해 느슨하게 |
+  | `title_only_min_jaccard_floor` | 0.25 | 0.05 | 1+2단계만: 제목 유사 경로에서도 본문 25% 이상 겹쳐야 통과. 3단계 추가 시: 5% 최소 겹침으로 완화 |
+
 - 모든 판정(통과/제외/무관즉시확정) 점수는 로그 기록 (임계값 튜닝용)
 
 **출력**
-- 임계값 통과 후보 문서 목록 (C1, C2, ... Cn — 1개 이상 가능) → 3단계(정밀화) 전달
+- 임계값 통과 후보 문서 목록 `candidate_doc_ids` (C1, C2, ... Cn — 복수 가능) — LSH 조회 결과 전체가 아닌, Jaccard/제목 임계값을 실제로 통과한 것만 포함
+- `duplicate_doc_id` — 통과 후보 중 Jaccard가 가장 높은 best match 1건
 - 무관 즉시 확정 문서 → 3단계 스킵, 5단계(신규 색인) 직행
 - 판정 점수 로그
 
@@ -291,10 +316,10 @@ SADD(doc-A)            │        │
 - 제목만 우연히 비슷하고 본문이 무관한 경우, title_only_min_jaccard_floor에서 차단됨
 
 **오픈 이슈**
-- jaccard_threshold/title_fuzzy_threshold/title_only_min_jaccard_floor 값 운영 데이터 기반 튜닝 필요
-- 현재 전수비교 방식 — 코퍼스 수만 건 이상 확대 시 토큰 역색인(inverted index) 기반 후보 추출 전환 검토
-- 임계값 튜닝용 라벨 데이터셋은 사전 구축 없이 운영 중 오탐/누락 사례로 점진 구축 (목표 50~100쌍)
-- 
+- **(운영 후)** 초기값은 설계 근거 기반으로 설정됨 — 운영 데이터(오탐/누락 판정 로그) 기반 튜닝 필요
+- **(운영 후)** 임계값 튜닝용 라벨 데이터셋은 사전 구축 없이 운영 중 오탐/누락 사례로 점진 구축 (목표 50~100쌍)
+
+
 ---
 
 ### 3.3 [3단계] 청크 단위 정밀 비교
@@ -477,28 +502,32 @@ A가 구버전인 경우:
 
 ## 4. 처리 순서 및 동시성
 
-**결정된 사항 (파이프라인 순서 고정):** MinIO 이벤트 → dedup 파이프라인(1~5단계 판정) → (판정 완료 후, 필요한 경우에만) → 임베딩 파이프라인(표준 색인). 즉 dedup 판정이 항상 먼저 실행되고, 표준 색인(임베딩)은 dedup 결과에 따라 조건부로만 실행된다 (예: "동일"·"제목변경"은 표준 색인을 건너뛰고 5단계에서 바로 처리, "유사"·"관련"·"무관"만 실제 임베딩이 필요한 만큼 진행). 이로써 "임베딩 파이프라인과 dedup 판정이 동시/순서가 꼬여 진행되는 문제"(3.5 오픈 이슈였던 항목)는 해소됨 — 표준 색인이 dedup보다 먼저 실행될 수 없도록 순서 자체를 강제하기 때문.
+**구현 완료 — 파이프라인 순서 고정:** 문서 업로드 → dedup 판정(parse → simhash → verdict) → (필요한 경우에만) 임베딩 파이프라인(표준 색인). `ingest_job`에서 `parse_op → dedup_op → chunk_op` 순서로 강제되며, "동일"·"제목변경" 판정 시 `dedup_op`이 `to_chunk` Output을 emit하지 않아 이후 단계가 실행되지 않는다. "임베딩이 dedup보다 먼저 실행"되는 문제는 순서 자체로 해소됨.
 
-**문제:** 이 파이프라인은 "신규 문서가 현재 색인된 상태와 비교해 어떤 관계인지"를 판단하는 구조이므로, 판정 결과가 그 시점까지 색인된 상태에 의존하는 상태기반(stateful) 순차 처리다. 위에서 dedup→임베딩 순서는 고정했지만, 그 안에서도 순서/동시성이 보장되지 않으면 다음 두 가지 문제가 남는다.
+**구현 완료 — 동시 처리:** SimHash band 조회와 INSERT가 Postgres 트랜잭션 내에서 처리된다. Redis 밴드 락은 제거되었으며, 극단적 동시 유입에서의 중복 탐지 누락은 best-effort로 허용한다.
 
-1) **동시 처리 시 레이스 컨디션**: 거의 동시에 들어온 근접 중복 문서 A, A'가 있을 때, A가 색인(SimHash band SADD, title_hash 기록 등)되기 전에 A'의 1·2단계 비교가 먼저 실행되면 A'도 "후보 없음"으로 판단해 둘 다 신규로 색인되어 버린다. 서로를 후보로 보지 못하는 것이다.
-
-2) **재인덱싱(backfill) 시 순서 의존성**: 임베딩 모델 교체나 버그 수정으로 전체를 다시 인덱싱해야 할 때, 원본 문서들의 최초 도착 순서(시간순)대로 재처리하지 않으면 "어떤 문서가 기준(C)이 되고 어떤 게 업데이트(A)로 취급되는지"가 원래 운영 결과와 달라질 수 있다. 예: 원래 D1(구버전)→D2(신버전) 순서로 들어와 D2가 "유사" 판정으로 D1을 갱신했는데, 재인덱싱 시 D2→D1 순서로 처리되면 반대로 최신 버전(D2)이 구버전(D1) 내용으로 덮어써지는 사고가 날 수 있다.
-
-**완화 방향 (검토 필요, 미결정)**
-- [ ] 신규 문서의 "비교+색인" 구간(1·2단계의 candidate 조회 → SADD/title_hash 기록까지)이 동시에 여러 건 실행되지 않도록 직렬화 (단일 워커 큐, 또는 SimHash band/제목 클러스터 단위 락)
-- [ ] 재인덱싱(backfill) 시에는 반드시 원본 문서의 최초 제출 시각 기준 오름차순으로 재생(replay)
-- [ ] 처리량 확보를 위해 동시성을 허용해야 한다면, 후보가 겹칠 가능성이 있는 문서끼리만 락을 걸고 무관한 문서끼리는 병렬 처리 허용 (세분화된 락 전략)
-- [ ] 레이스 컨디션으로 누락된 중복을 사후에 잡아내는 주기적 정합성 점검 배치를 별도 운영
+**구현 완료 — 재인덱싱(backfill) 시 순서 의존성:** `handle_title_changed`에서 처리 순서가 아닌 `doc_created_at` 값을 직접 비교해 신구를 판단하므로, 백필 실행 순서와 무관하게 항상 동일한 결과를 낸다.
 
 **오픈 이슈**
-- 완전 직렬화(처리량 저하) vs 클러스터 단위 락(구현 복잡도 증가) 중 채택 방식 미정
-- Dagster의 파티션/asset 실행 모델에서 이 직렬화를 어떻게 구현할지 미정 (단일 op로 묶을지, Redis 락 같은 외부 락 서비스를 쓸지)
+- [ ] 레이스 컨디션으로 누락된 중복을 사후에 잡아내는 주기적 정합성 점검 배치 여부 미결정
 
 ---
 
-## 5. 비고
+## 5. Dev Requirements (backlog units)
 
-- 본 백로그는 설계 논의를 기반으로 정리한 초안이며, 각 단계의 구체적 구현(코드)은 별도 진행한다.
-- 단계 간 인터페이스(데이터 전달 형식)는 구현 착수 전 별도 명세가 필요하다.
-- 3.3.2와 3.4는 이전 버전에서 벡터스토어 조회·점수 집계 로직이 중복 기술되어 있었으나, 본 버전에서 3.3.2가 해당 로직을 전담하고 3.4는 그 결과(집계 점수)를 받아 임계값 판정 + LLM 호출만 수행하도록 통합했다.
+D-01과 D-02는 구현 완료. 각 항목은 독립적으로 구현 가능하며, 3단계(D-04)는 2단계(D-03) 없이도 구현할 수 있으나 2단계가 없으면 모든 문서가 임베딩 비교까지 진행된다.
+
+| ID | Title | Status | Depends on |
+|---|---|---|---|
+| D-01 | 1단계: SHA-256 title hash + SimHash 본문 비교, Postgres simhash_bands 인덱스, `동일`/`제목변경`/`similar` 5단계 직행 | done | — |
+| D-02 | 5단계: `동일`/`제목변경` 후속 처리 — `doc_created_at` 기준 신구 판단, Qdrant payload 갱신, `outdated`/`duplicate_of` 기록, simhash_bands 삭제 | done | D-01 |
+| D-03 | 2단계: MinHash Jaccard(본문) + pg_trgm(제목) 경량 필터링 — Kiwi 형태소, 밴드 인덱스 조회, 임계값 config 분리, 3분기 판정, `similar` verdict | done | D-01 |
+| D-04 | 3단계: 청크 단위 임베딩 코사인 유사도 비교, threshold 0.50 필터, Top-1 매칭, 문서 레벨 집계 점수 산출 | todo | D-02 |
+| D-05 | 4단계: 비율 기반 1차 판정 (동일/유사/관련/무관) + `유사` 구간 LLM 최종 확정, 다중 후보 C 반복 처리 | todo | D-04 |
+| D-06 | 5단계 `유사`: A 신규 색인 + C `status=deprecated`, `superseded_by`/`supersedes` 필드, `status=active` 검색 필터 | todo | D-05 |
+| D-07 | 5단계 `관련`: A 신규 색인 + 관련 링크 메타데이터 추가 | todo | D-05 |
+| D-08 | 5단계 다중 후보 배선: `동일` 판정 최우선 적용, 나머지 C 배선 재조정 규칙 | todo | D-06, D-07 |
+| D-09 | Cleanup job: 그레이스 기간 경과 `deprecated` 문서 삭제 (주기/기간 미정) | todo | D-06 |
+| D-10 | MinIO 구버전 파일 삭제: `outdated` 문서 원본 파일 정리 (grace period 방식) | todo | D-02 |
+
+Recommended implementation order: D-01 (done) → D-02 (done) → D-03 → D-04 → D-05 → D-06 + D-07 (병렬) → D-08 → D-09 + D-10 (병렬)

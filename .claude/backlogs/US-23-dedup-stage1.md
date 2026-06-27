@@ -56,14 +56,38 @@ validate_op → dedup_op → parse_op → chunk_op → embed_op → upsert_op �
 simhash_op → verdict_op
 ```
 
+## DedupResult 필드 (1단계 기준)
+
+`candidate_doc_ids`: Hamming ≤ hamming_similar_threshold를 통과한 전체 후보 (거리 오름차순 정렬).
+`duplicate_doc_id`: 후보 중 Hamming 거리가 가장 낮은 best match 1건 (verdict 처리 대상).
+`run_verdict` 진입 시 두 필드를 INFO 로그로 기록하며, 실제 처리는 `duplicate_doc_id` 단건에만 적용한다.
+
+## Verdict 구성 요소
+
+| 차원 | 값 | 판정 기준 |
+|------|-----|----------|
+| body | `identical` | SimHash Hamming ≤ hamming_identical_threshold (3) |
+| body | `similar` | SimHash Hamming ≤ hamming_similar_threshold (10) |
+| title | `identical` | SHA-256 완전 일치 |
+
+## Verdict 결합 규칙 (1단계)
+
+| body | title | verdict | to_chunk |
+|------|-------|---------|----------|
+| identical | identical | `identical` | False |
+| identical | 불일치 | `title_changed` | False |
+| similar | any | `similar` | False |
+| Hamming > similar_threshold 또는 후보 없음 | — | 2단계로 진행 | — |
+
 ## Verdict 처리 정책
 
-| verdict | 조건 | A 상태 | C 처리 |
-|---|---|---|---|
-| identical | 본문·제목 모두 동일 | dedup_skipped | 변경 없음 |
-| title_changed + A 최신 | 본문 유사, 제목 다름, A가 더 최신 | indexed | outdated + Qdrant payload 갱신 + simhash_bands 삭제 |
-| title_changed + A 구버전 | 본문 유사, 제목 다름, C가 더 최신 | outdated | 변경 없음 |
-| proceed | 후보 없음 | 정상 색인 | — |
+| verdict | C 처리 | A 처리 |
+|---------|--------|--------|
+| `identical` | 변경 없음 | dedup_skipped |
+| `title_changed` (A 최신) | outdated + Qdrant payload 갱신 + simhash_bands 삭제 | indexed |
+| `title_changed` (A 구버전) | 변경 없음 | outdated |
+| `similar` (A 최신) | outdated | indexed |
+| `similar` (A 구버전) | 변경 없음 | outdated |
 
 `doc_created_at` NULL인 경우 A를 최신으로 간주.
 
@@ -76,6 +100,7 @@ dedup:
   num_bands: 4
   simhash_bits: 64
   hamming_identical_threshold: 3
+  hamming_similar_threshold: 10
   lock_ttl: 10
   lock_acquire_timeout: 5
 ```
