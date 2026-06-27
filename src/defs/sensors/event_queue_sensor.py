@@ -183,7 +183,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
             job_name=delete_job.name,
             run_config={
                 "ops": {
-                    "delete_chunks_op": {
+                    "delete_op": {
                         "config": {
                             "doc_id": doc_id,
                         }
