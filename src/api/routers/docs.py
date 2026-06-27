@@ -240,8 +240,6 @@ async def delete_doc(kb_id: str, doc_id: str):
     status = doc.get("status", "")
     if status == "running":
         raise ConflictError(f"Document is currently being processed, try again later: doc_id={doc_id}")
-    if status == "deleting":
-        raise ConflictError(f"Document is already being deleted: doc_id={doc_id}")
 
     enqueue_delete_event(doc_id)
     return {"kb_id": kb_id, "doc_id": doc_id, "status": "pending"}
