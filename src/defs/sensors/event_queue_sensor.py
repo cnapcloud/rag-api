@@ -127,7 +127,8 @@ def event_queue_sensor(context: SensorEvaluationContext):
 
         doc = get_doc_by_id(doc_id)
         if doc and doc.get("status") == "deleting":
-            logger.warning("Upload event discarded: doc in deleting state: doc_id=%s", doc_id)
+            r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+            logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
             continue
         if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, doc_id):
             continue

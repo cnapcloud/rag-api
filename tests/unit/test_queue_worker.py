@@ -155,8 +155,8 @@ def test_poll_delete_while_processing_delays():
     assert len(zsets.get(DELETE_DELAY_KEY, {})) == 1
 
 
-def test_poll_upload_while_deleting_discards():
-    """Upload event, doc is deleting -> discarded (no delay queue, no dispatch)."""
+def test_poll_upload_while_deleting_delays():
+    """Upload event, doc is deleting -> delayed (added to delay queue, no dispatch)."""
     from pipeline.queue_worker import QueueWorker
 
     worker = QueueWorker()
@@ -179,7 +179,7 @@ def test_poll_upload_while_deleting_discards():
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
 
-    assert len(zsets.get(UPLOAD_DELAY_KEY, {})) == 0
+    assert len(zsets.get(UPLOAD_DELAY_KEY, {})) == 1
     assert len(dispatched) == 0
 
 

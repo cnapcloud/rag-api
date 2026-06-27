@@ -233,8 +233,8 @@ def test_sensor_upload_dispatch_lock_remnant_dispatches():
     assert result[0].job_name == "ingest_job"
 
 
-def test_sensor_upload_deleting_discarded():
-    """Upload event: doc is deleting -> discarded (no delay queue, no RunRequest)."""
+def test_sensor_upload_deleting_delayed():
+    """Upload event: doc is deleting -> delayed (added to delay queue, no RunRequest)."""
     for run_id in ("run-del-active", ""):
         fake_redis = _make_redis(put_events=[{"doc_id": DOC_ID, "force": False}])
         result = _run_sensor(
@@ -242,8 +242,8 @@ def test_sensor_upload_deleting_discarded():
             pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting", "run_id": run_id},
         )
 
-        assert result == [], f"Expected discard for run_id={run_id!r}"
-        assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 0, f"Expected no delay queue entry for run_id={run_id!r}"
+        assert result == [], f"Expected no RunRequest for run_id={run_id!r}"
+        assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 1, f"Expected delay queue entry for run_id={run_id!r}"
 
 
 def test_sensor_delete_deleting_discarded():

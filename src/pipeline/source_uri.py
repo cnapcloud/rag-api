@@ -25,6 +25,19 @@ def _normalize_web_url(url: str) -> str:
     return urlunparse((scheme, netloc, path, "", query, ""))
 
 
+def _normalize_github_url(url: str) -> str:
+    # https://github.com/{owner}/{repo}/blob/{branch}/{path}
+    # GitHub owner/repo names are case-insensitive; lowercase for stable dedup.
+    p: ParseResult = urlparse(url)
+    parts = p.path.lstrip("/").split("/", 2)
+    if len(parts) >= 2:
+        parts[0] = parts[0].lower()
+        parts[1] = parts[1].lower()
+        new_path = "/" + "/".join(parts)
+        return urlunparse(("https", p.netloc.lower(), new_path, "", "", ""))
+    return url
+
+
 def normalize_source_uri(source_type: str, raw: str) -> str:
     """Return the canonical source_uri for a given source_type and raw identifier.
 
@@ -32,33 +45,16 @@ def normalize_source_uri(source_type: str, raw: str) -> str:
       s3:         no normalization (filename is controlled by the API)
       web:        https, lowercase host, strip trailing slash, strip fragment,
                   remove tracking params, sort remaining query params
-      confluence: confluence://{space}/{page_id} — lowercase space key
-      github:     github://{owner}/{repo}/{ref}/{path} — lowercase owner and repo
+      confluence: same as web (Confluence page URLs are standard https URLs)
+      github:     https, lowercase owner and repo, strip fragment
     """
     if source_type == "s3":
         return raw
 
-    if source_type == "web":
+    if source_type in ("web", "confluence"):
         return _normalize_web_url(raw)
 
-    if source_type == "confluence":
-        prefix = "confluence://"
-        if raw.startswith(prefix):
-            rest = raw[len(prefix):]
-            parts = rest.split("/", 1)
-            if len(parts) == 2:
-                return f"{prefix}{parts[0].lower()}/{parts[1]}"
-        return raw.lower()
-
     if source_type == "github":
-        prefix = "github://"
-        if raw.startswith(prefix):
-            rest = raw[len(prefix):]
-            parts = rest.split("/", 3)
-            if len(parts) >= 2:
-                parts[0] = parts[0].lower()
-                parts[1] = parts[1].lower()
-                return prefix + "/".join(parts)
-        return raw
+        return _normalize_github_url(raw)
 
     return raw

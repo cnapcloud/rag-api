@@ -16,6 +16,7 @@ def _make_result(chunk_id: str) -> SearchResult:
         chunk_id=chunk_id,
         kb_id="kb-test",
         doc_key="kb-test/doc.pdf",
+        title="doc.pdf",
         source="doc.pdf",
         doc_type="pdf",
         chunk_index=0,

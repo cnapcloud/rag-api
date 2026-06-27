@@ -11,6 +11,7 @@ import httpx
 
 from exceptions import ConfigError
 from pipeline.ops.parse import SUPPORTED_EXTENSIONS
+from pipeline.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,9 @@ class GitHubConnector:
         sha: str = item["sha"]
         file_size: int = item.get("size", 0)
         ext: str = Path(path).suffix.lower()
-        source_uri = f"https://github.com/{self.owner}/{self.repo}/blob/{self.branch}/{path}"
+        source_uri = normalize_source_uri(
+            "github", f"https://github.com/{self.owner}/{self.repo}/blob/{self.branch}/{path}"
+        )
 
         if file_size > self.max_file_bytes:
             logger.info(

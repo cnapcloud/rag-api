@@ -12,6 +12,7 @@ import httpx
 
 from exceptions import ConfigError
 from pipeline.ops.parse import SUPPORTED_EXTENSIONS
+from pipeline.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,7 @@ class ConfluenceConnector:
         page_id: str = page["id"]
         title: str = page["title"]
         version: str = str(page["version"]["number"])
-        source_uri = self._page_url(page)
+        source_uri = normalize_source_uri("confluence", self._page_url(page))
 
         if self.depth is not None:
             ancestor_count = len(page.get("ancestors", []))
@@ -315,8 +316,11 @@ class ConfluenceConnector:
         att_id: str = attachment["id"]
         version: str = str(attachment["version"]["number"])
         download_path: str = attachment.get("_links", {}).get("download", "")
+        if not download_path:
+            logger.warning("Attachment skipped (no download link): title=%s id=%s", title, att_id)
+            return
         download_url = self._make_download_url(download_path)
-        source_uri = download_url if download_url else f"confluence://{self.space_key.lower()}/attachments/{att_id}"
+        source_uri = normalize_source_uri("confluence", download_url)
 
         doc = get_doc_by_source(kb_id, source_uri)
 

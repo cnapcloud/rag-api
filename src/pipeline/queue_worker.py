@@ -110,7 +110,8 @@ class QueueWorker:
             if doc:
                 s = doc.get("status", "")
                 if s == "deleting":
-                    logger.warning("Upload event discarded: doc in deleting state: doc_id=%s", doc_id)
+                    r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+                    logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
                     continue
                 if s == "running":
                     r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
