@@ -1,4 +1,4 @@
-# CNAP RAG Pipeline 요구사항 v4.0
+# RAG API 요구사항
 
 > 문서 인제스트 및 하이브리드 검색 파이프라인의 기능 요구사항 정의.
 > 구현 방식은 [architecture.md](architecture.md), API 명세는 [api-spec.md](api-spec.md) 참고.
