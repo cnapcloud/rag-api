@@ -140,7 +140,6 @@ class QueueWorker:
                 continue
 
             from infra.postgres import get_doc_by_id
-            from pipeline.ops.meta import set_deleting
 
             doc = get_doc_by_id(doc_id)
             if doc:
@@ -153,7 +152,6 @@ class QueueWorker:
                     logger.info("Delete event delayed (running): doc_id=%s", doc_id)
                     continue
 
-            set_deleting(doc_id)
             logger.info("Dequeued delete event, scheduling delete: doc_id=%s", doc_id)
             asyncio.create_task(self._run_delete(event))
             delete_count += 1

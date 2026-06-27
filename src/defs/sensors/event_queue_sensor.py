@@ -171,7 +171,6 @@ def event_queue_sensor(context: SensorEvaluationContext):
             continue
 
         from infra.postgres import get_doc_by_id
-        from pipeline.ops.meta import set_deleting
 
         doc = get_doc_by_id(doc_id)
         if doc and doc.get("status") == "deleting":
@@ -180,7 +179,6 @@ def event_queue_sensor(context: SensorEvaluationContext):
         if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, doc_id):
             continue
 
-        set_deleting(doc_id)
         kb_id = doc["kb_id"] if doc else ""
         logger.info("Dispatching delete_job from queue: doc_id=%s kb=%s", doc_id, kb_id)
         yield RunRequest(
