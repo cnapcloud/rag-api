@@ -1,4 +1,4 @@
-# System Design
+# Backend Design
 
 내부 데이터 구조, 상태 정의, 시스템 흐름에 대한 설계 문서.
 엔드포인트 계약(스키마, 파라미터)은 `/docs` (Swagger UI) 참고.
