@@ -585,8 +585,8 @@ def list_connectors(
     elif has_schedule is False:
         conditions.append("sync_schedule IS NULL")
     if search is not None:
-        conditions.append("LOWER(name) LIKE %s")
-        params.append(f"%{search.lower()}%")
+        conditions.append("(LOWER(name) LIKE %s OR LOWER(connector_id) LIKE %s)")
+        params.extend([f"%{search.lower()}%", f"%{search.lower()}%"])
 
     col = sort_by if sort_by in _ALLOWED_CONNECTOR_SORT_FIELDS else "created_at"
     direction = "ASC" if sort_order.lower() == "asc" else "DESC"
