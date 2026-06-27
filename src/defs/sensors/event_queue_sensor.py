@@ -173,9 +173,6 @@ def event_queue_sensor(context: SensorEvaluationContext):
         from infra.postgres import get_doc_by_id
 
         doc = get_doc_by_id(doc_id)
-        if doc and doc.get("status") == "deleting":
-            logger.warning("Delete event discarded: doc in deleting state: doc_id=%s", doc_id)
-            continue
         if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, doc_id):
             continue
 

@@ -144,9 +144,6 @@ class QueueWorker:
             doc = get_doc_by_id(doc_id)
             if doc:
                 s = doc.get("status", "")
-                if s == "deleting":
-                    logger.warning("Delete event discarded: doc in deleting state: doc_id=%s", doc_id)
-                    continue
                 if s == "running":
                     r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
                     logger.info("Delete event delayed (running): doc_id=%s", doc_id)

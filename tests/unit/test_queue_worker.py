@@ -183,8 +183,8 @@ def test_poll_upload_while_deleting_delays():
     assert len(dispatched) == 0
 
 
-def test_poll_delete_while_deleting_discards():
-    """Delete event, doc is already deleting -> discarded (no delay queue, no dispatch)."""
+def test_poll_delete_while_deleting_dispatched():
+    """Delete event, doc is already in deleting state -> still dispatched (no guard)."""
     from pipeline.queue_worker import QueueWorker
 
     worker = QueueWorker()
@@ -208,7 +208,7 @@ def test_poll_delete_while_deleting_discards():
         asyncio.run(worker._poll())
 
     assert len(zsets.get(DELETE_DELAY_KEY, {})) == 0
-    assert len(dispatched) == 0
+    assert len(dispatched) == 1
 
 
 def test_duplicate_delay_overwrites_not_accumulates():

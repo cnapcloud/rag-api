@@ -70,10 +70,6 @@ def delete_doc(doc_id: str, run_id: str = "direct") -> None:
     kb_id: str = doc["kb_id"]
     storage_key: str = doc.get("storage_key") or ""
 
-    if status == "deleting":
-        logger.info("delete_doc: already deleting, skip doc_id=%s", doc_id)
-        return
-
     set_deleting(doc_id, run_id=run_id)
 
     _delete_qdrant_chunks(kb_id, doc_id, status)

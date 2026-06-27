@@ -246,16 +246,16 @@ def test_sensor_upload_deleting_delayed():
         assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 1, f"Expected delay queue entry for run_id={run_id!r}"
 
 
-def test_sensor_delete_deleting_discarded():
-    """Delete event: doc already deleting -> discarded (no delay queue, no RunRequest)."""
+def test_sensor_delete_while_deleting_dispatched():
+    """Delete event: doc already in deleting state -> still dispatched (no guard)."""
     fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
     result = _run_sensor(
         fake_redis,
         pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting", "run_id": "run-del"},
     )
 
-    assert result == []
-    assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 0
+    assert len(result) == 1
+    assert result[0].job_name == "delete_job"
 
 
 def test_sensor_delete_blocked_by_active_run_delayed():
