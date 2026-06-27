@@ -54,7 +54,7 @@ def set_deleting(doc_id: str, run_id: str = "") -> None:
 
 def restore_indexed(doc_id: str) -> None:
     """Restore status to indexed after a skip (e.g. no-op re-index)."""
-    update_doc_fields(doc_id, {"status": "indexed"})
+    update_doc_fields(doc_id, {"status": "indexed", "error": None})
     logger.info("Status restored to indexed (skip): doc_id=%s", doc_id)
 
 
