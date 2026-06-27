@@ -830,7 +830,8 @@ def find_title_candidates(title: str, threshold: float) -> dict[str, float]:
     Uses GIN index idx_documents_source_trgm. Excludes deleted documents.
     """
     with get_pool().connection() as conn:
-        conn.execute("SET pg_trgm.similarity_threshold = %s", [threshold])
+        # SET does not support parameter binding; threshold is a config float (not user input).
+        conn.execute(f"SET LOCAL pg_trgm.similarity_threshold = {float(threshold)!r}")
         rows = conn.execute(
             "SELECT doc_id, similarity(source, %s) AS sim FROM documents"
             " WHERE source %% %s AND status != 'deleted'",
