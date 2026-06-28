@@ -174,16 +174,7 @@ async def trigger_sync(connector_id: str, background_tasks: BackgroundTasks):
         raise ConflictError(f"Connector is paused: {connector_id}")
 
     if connector["sync_status"] == "running":
-        sync_started_at_str = connector.get("sync_started_at")
-        if sync_started_at_str:
-            started_at = datetime.fromisoformat(sync_started_at_str).astimezone(timezone.utc)
-            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
-            if elapsed < _STALE_SYNC_TIMEOUT_SEC:
-                raise ConflictError(f"Sync already in progress: {connector_id}")
-            logger.warning(
-                "Stale sync lock detected, proceeding: connector_id=%s elapsed=%ds",
-                connector_id, int(elapsed),
-            )
+        raise ConflictError(f"Sync already in progress: {connector_id}")
 
     set_connector_sync_status(connector_id, "running")
     background_tasks.add_task(_run_sync, connector)

@@ -371,21 +371,6 @@ class TestTriggerSync:
         assert resp.status_code == 409
         assert "in progress" in resp.json()["detail"]
 
-    def test_stale_lock_allows_retrigger(self, client):
-        stale = (datetime.now(timezone.utc) - timedelta(minutes=35)).isoformat()
-        connector = {
-            **_BASE_CONNECTOR,
-            "sync_status": "running",
-            "sync_started_at": stale,
-        }
-        with (
-            patch("infra.postgres.get_connector", return_value=connector),
-            patch("infra.postgres.set_connector_sync_status"),
-            patch("infra.postgres.set_connector_status"),
-        ):
-            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
-
-        assert resp.status_code == 202
 
     def test_background_task_marks_error_on_dispatch_failure(self, client):
         status_calls = []
