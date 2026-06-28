@@ -21,12 +21,13 @@ def delete_failure_hook(context: HookContext) -> None:
 
 class DeleteConfig(Config):
     doc_id: str
+    force: bool = False
 
 
 @op
 def delete_op(context: OpExecutionContext, config: DeleteConfig):
-    """Delete a document. Soft delete for indexed, hard delete for all other statuses."""
+    """Delete a document. Soft delete for indexed unless force=True, hard delete otherwise."""
     from pipeline.ops.delete import delete_doc
 
-    delete_doc(config.doc_id, run_id=context.run_id)
-    context.log.info("Delete done: doc_id=%s", config.doc_id)
+    delete_doc(config.doc_id, run_id=context.run_id, force=config.force)
+    context.log.info("Delete done: doc_id=%s force=%s", config.doc_id, config.force)

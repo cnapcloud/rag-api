@@ -21,42 +21,32 @@ def _delete_qdrant_chunks(kb_id: str, doc_id: str, status: str) -> None:
             logger.warning("Qdrant chunk deletion failed (ignored): doc_id=%s err=%s", doc_id, e)
 
 
-def _delete_s3_object(storage_key: str, doc_id: str, status: str) -> None:
-    """Delete S3 object. Skipped for indexed (soft delete keeps S3);
-    swallows ClientError on all other statuses."""
-    if status == "indexed":
-        return
+def _delete_db_record(
+    doc_id: str,
+    status: str,
+    kb_id: str = "",
+    storage_key: str = "",
+    force: bool = False,
+) -> None:
+    """Persist delete in DB. indexed → soft delete unless force=True;
+    all else → hard delete (bands + S3 purged via purge_doc_artifacts, then CASCADE removes DB row)."""
+    from infra.postgres import hard_delete_doc, soft_delete_doc
+    from pipeline.utils.purge import purge_doc_artifacts
 
-    if not storage_key:
-        return
-
-    from botocore.exceptions import ClientError
-    from infra.s3 import delete_by_key
-
-    try:
-        delete_by_key(storage_key)
-    except ClientError as e:
-        logger.warning("S3 deletion failed (ignored): doc_id=%s storage_key=%s err=%s", doc_id, storage_key, e)
-
-
-def _delete_db_record(doc_id: str, status: str) -> None:
-    """Persist delete in DB. indexed → soft delete (status='deleted') after clearing bands;
-    all else → hard delete (CASCADE removes simhash_bands and minhash_bands)."""
-    from infra.postgres import delete_minhash_bands, delete_simhash_bands, hard_delete_doc, soft_delete_doc
-
-    if status == "indexed":
-        delete_simhash_bands(doc_id)
-        delete_minhash_bands(doc_id)
+    if status == "indexed" and not force:
+        purge_doc_artifacts(doc_id, include_chunks=False)
         soft_delete_doc(doc_id)
     else:
+        purge_doc_artifacts(doc_id, kb_id, storage_key, include_chunks=False)
         hard_delete_doc(doc_id)
 
 
-def delete_doc(doc_id: str, run_id: str = "direct") -> None:
+def delete_doc(doc_id: str, run_id: str = "direct", force: bool = False) -> None:
     """Delete a document. Branches on status at call time:
 
-    indexed  → soft delete: Qdrant chunks removed, S3 kept, dedup bands removed, DB status='deleted'.
-    all else → hard delete: Qdrant chunks attempted, S3 deleted, DB row removed.
+    indexed + force=False → soft delete: Qdrant chunks removed, S3 kept, dedup bands removed, DB status='deleted'.
+    indexed + force=True  → hard delete: same as all else.
+    all else              → hard delete: Qdrant chunks attempted, S3 deleted, DB row removed.
     """
     from infra.postgres import get_doc_by_id
     from pipeline.ops.meta import set_deleting
@@ -77,10 +67,10 @@ def delete_doc(doc_id: str, run_id: str = "direct") -> None:
     set_deleting(doc_id, run_id=run_id)
 
     _delete_qdrant_chunks(kb_id, doc_id, status)
-    _delete_s3_object(storage_key, doc_id, status)
-    _delete_db_record(doc_id, status)
+    _delete_db_record(doc_id, status, kb_id=kb_id, storage_key=storage_key, force=force)
 
-    if status == "indexed":
-        logger.info("Soft delete done: doc_id=%s kb=%s", doc_id, kb_id)
+    is_hard = status != "indexed" or force
+    if is_hard:
+        logger.info("Hard delete done: doc_id=%s kb=%s status_was=%s force=%s", doc_id, kb_id, status, force)
     else:
-        logger.info("Hard delete done: doc_id=%s kb=%s status_was=%s", doc_id, kb_id, status)
+        logger.info("Soft delete done: doc_id=%s kb=%s", doc_id, kb_id)
