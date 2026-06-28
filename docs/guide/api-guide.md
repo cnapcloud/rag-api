@@ -700,7 +700,11 @@ curl -X PATCH http://localhost:8000/api/connectors/b59168c41e5e4a0d \
 
 ### 동기화 중단 (Abort)
 
-진행 중인 sync를 중단 요청합니다. 커넥터가 현재 fetch 중인 페이지까지 처리하고 다음 페이지 요청 전에 중단합니다. 이미 S3에 staging된 파일은 인덱싱이 완료됩니다.
+진행 중인 sync를 즉시 중단합니다. 호출 즉시 `sync_status`가 `idle`로 전환되며, 다음 작업을 수행합니다.
+
+- Redis 큐에서 이 커넥터 소속 `pending` 문서를 제거하고 `failed`로 표시
+- `running` 상태 문서를 `failed`로 표시하고 Dagster run을 force-terminate
+- 커넥터 sync 루프에 중단 신호를 전달해 새 페이지 요청을 막음
 
 ```bash
 curl -X POST http://localhost:8000/api/connectors/b59168c41e5e4a0d/sync/abort
@@ -714,23 +718,9 @@ curl -X POST http://localhost:8000/api/connectors/b59168c41e5e4a0d/sync/abort
 
 | 응답 코드 | 조건 |
 |-----------|------|
-| 202 | 중단 요청 수락 |
+| 202 | 중단 요청 수락. `sync_status`는 즉시 `idle`로 전환됨 |
 | 404 | 커넥터 없음 |
 | 409 | `sync_status`가 `running`이 아님 |
-
-### 동기화 상태 초기화 (Reset)
-
-`sync_status`가 `running`에 stuck된 경우 강제로 `idle`로 초기화합니다. 실행 중인 작업을 중단하지는 않으며 상태 값만 리셋합니다.
-
-```bash
-curl -X POST http://localhost:8000/api/connectors/b59168c41e5e4a0d/sync/reset
-```
-
-응답 (HTTP 200):
-
-```json
-{ "connector_id": "b59168c41e5e4a0d", "sync_status": "idle" }
-```
 
 ### 동기화 상태 확인
 
