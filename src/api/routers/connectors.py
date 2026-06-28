@@ -257,7 +257,10 @@ def _dispatch_sync(connector: dict) -> None:
 @router.post("/{connector_id}/sync/abort", status_code=202)
 async def abort_sync(connector_id: str):
     from connectors.abort import request_abort
-    from infra.postgres import get_connector
+    from infra.dagster_utils import terminate_dagster_run
+    from infra.postgres import get_active_ingest_docs_for_connector, get_connector
+    from pipeline.queue.enqueue import dequeue_upload_events
+    from pipeline.utils.doc_state import set_failed
 
     connector = get_connector(connector_id)
     if connector is None:
@@ -266,7 +269,27 @@ async def abort_sync(connector_id: str):
         raise ConflictError(f"No sync in progress: {connector_id}")
 
     request_abort(connector_id)
-    logger.info("Sync abort requested: connector_id=%s", connector_id)
+
+    docs = get_active_ingest_docs_for_connector(connector_id)
+
+    pending_ids = [d["doc_id"] for d in docs if d["status"] == "pending"]
+    for doc_id in pending_ids:
+        dequeue_upload_events(doc_id)
+        set_failed(doc_id, "Aborted")
+
+    run_ids = {d["run_id"] for d in docs if d["status"] == "running" and d.get("run_id")}
+    for doc_id in [d["doc_id"] for d in docs if d["status"] == "running"]:
+        set_failed(doc_id, "Aborted")
+    for run_id in run_ids:
+        try:
+            terminate_dagster_run(run_id)
+        except RuntimeError as e:
+            logger.warning("Dagster terminate failed (ignored): run_id=%s err=%s", run_id, e)
+
+    logger.info(
+        "Sync aborted: connector_id=%s pending_cleared=%d runs_terminated=%d",
+        connector_id, len(pending_ids), len(run_ids),
+    )
     return {"connector_id": connector_id, "status": "abort_requested"}
 
 

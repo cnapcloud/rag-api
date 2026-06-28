@@ -276,6 +276,16 @@ def get_pending_doc_count_for_connector(connector_id: str) -> int:
     return int(row[0]) if row else 0
 
 
+def get_active_ingest_docs_for_connector(connector_id: str) -> list[dict]:
+    """Return docs owned by connector_id with status 'pending' or 'running'."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            _DOC_SELECT + " WHERE connector_id = %s AND status IN ('pending', 'running')",
+            [connector_id],
+        ).fetchall()
+    return [_row_to_doc(r) for r in rows]
+
+
 def get_doc_by_id(doc_id: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(
