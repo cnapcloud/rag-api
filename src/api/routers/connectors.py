@@ -294,18 +294,6 @@ async def abort_sync(connector_id: str):
     return {"connector_id": connector_id, "status": "abort_requested"}
 
 
-@router.post("/{connector_id}/sync/reset", status_code=200)
-async def reset_sync_status(connector_id: str):
-    from infra.postgres import get_connector, set_connector_sync_status
-
-    connector = get_connector(connector_id)
-    if connector is None:
-        raise NotFoundError(f"Connector not found: {connector_id}")
-
-    set_connector_sync_status(connector_id, "idle")
-    logger.warning("Sync status manually reset to idle: connector_id=%s", connector_id)
-    return {"connector_id": connector_id, "sync_status": "idle"}
-
 
 @router.get("/{connector_id}/sync/status")
 async def get_sync_status(connector_id: str):
