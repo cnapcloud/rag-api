@@ -93,7 +93,6 @@ def _run_sensor(fake_redis, get_run_by_id=None):
             patch("infra.postgres.get_doc_by_id", side_effect=lambda doc_id: fake_redis.get_doc(doc_id))
         )
         stack.enter_context(patch("infra.postgres.update_doc_fields"))
-        stack.enter_context(patch("pipeline.ops.meta.update_doc_fields"))
         if get_run_by_id is not None:
             mock_instance = MagicMock()
             mock_instance.get_run_by_id.side_effect = get_run_by_id
@@ -185,7 +184,6 @@ class TestQueueWorkerConcurrencyGuard:
             patch("infra.redis.get_redis_client", return_value=fake_redis),
             patch("infra.postgres.get_doc_by_id", side_effect=lambda doc_id: fake_redis.get_doc(doc_id)),
             patch("infra.postgres.update_doc_fields"),
-            patch("pipeline.ops.meta.update_doc_fields"),
             patch("asyncio.create_task", side_effect=fake_create_task),
             patch("config.settings.get_settings") as mock_cfg,
         ):
