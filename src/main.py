@@ -64,10 +64,11 @@ def ingest(
 
     import mimetypes
 
-    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids
     from infra.s3 import upload_object
-    from pipeline.enqueue import enqueue_upload_event
-    from pipeline.source_uri import normalize_source_uri
+    from pipeline.queue.enqueue import enqueue_upload_event
+    from pipeline.utils.doc_state import set_pending, set_uploading
+    from pipeline.utils.source_uri import normalize_source_uri
 
     if kb_id not in list_kb_ids():
         typer.echo(f"KB not found: {kb_id}", err=True)
@@ -94,7 +95,7 @@ def ingest(
         )
     else:
         doc = existing
-        update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+        set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
 
     doc_id: str = doc["doc_id"]
 
@@ -102,7 +103,7 @@ def ingest(
     etag = upload_object(kb_id=kb_id, source=file.name, data=content, content_type=content_type)
     typer.echo(f"Uploaded: etag={etag}")
 
-    update_doc_fields(doc_id, {"content_version": etag, "status": "pending"})
+    set_pending(doc_id, content_version=etag)
     enqueue_upload_event(doc_id=doc_id, force=force)
     typer.echo(f"Queued for ingest: kb={kb_id} doc_id={doc_id} force={force}")
 

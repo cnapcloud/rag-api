@@ -18,7 +18,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from pipeline.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
+from pipeline.queue.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +38,12 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
         doc_id = event.get("doc_id", "")
         if doc_id:
             try:
-                from infra.postgres import get_doc_by_id, update_doc_fields
+                from infra.postgres import get_doc_by_id
+                from pipeline.utils.doc_state import set_pending
                 doc = get_doc_by_id(doc_id)
                 current = doc.get("status", "") if doc else ""
                 if current not in ("running", "deleting"):
-                    update_doc_fields(doc_id, {"status": "pending"})
+                    set_pending(doc_id)
             except Exception as e:
                 logger.warning("drain_delay: status update failed: doc_id=%s err=%s", doc_id, e)
         r.lpush(main_key, item)
@@ -160,7 +161,7 @@ class QueueWorker:
         doc_id = event.get("doc_id", "")
         force = event.get("force", False)
         async with self._semaphore:
-            from pipeline.ops.runner import run_ingest_pipeline
+            from pipeline.runner import run_ingest_pipeline
             loop = asyncio.get_running_loop()
             logger.info("ingest_job started: doc_id=%s", doc_id)
             try:
@@ -175,14 +176,15 @@ class QueueWorker:
     async def _run_delete(self, event: dict) -> None:
         assert self._semaphore is not None
         doc_id = event.get("doc_id", "")
+        force = event.get("force", False)
         async with self._semaphore:
-            from pipeline.ops.runner import run_delete_pipeline
+            from pipeline.runner import run_delete_pipeline
             loop = asyncio.get_running_loop()
-            logger.info("delete_job started: doc_id=%s", doc_id)
+            logger.info("delete_job started: doc_id=%s force=%s", doc_id, force)
             try:
                 await loop.run_in_executor(
                     self._executor,
-                    lambda: run_delete_pipeline(doc_id=doc_id),
+                    lambda: run_delete_pipeline(doc_id=doc_id, force=force),
                 )
                 logger.info("delete_job completed: doc_id=%s", doc_id)
             except Exception as e:

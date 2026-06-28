@@ -23,7 +23,7 @@ def test_embed_returns_embedded_nodes():
 
     with (
         patch("pipeline.ops.embed.build_embed_model", return_value=mock_model),
-        patch("pipeline.ops.sparse.compute_sparse_tf", side_effect=_sparse_side_effect),
+        patch("pipeline.utils.sparse.compute_sparse_tf", side_effect=_sparse_side_effect),
     ):
         from pipeline.ops.embed import embed
 
@@ -44,7 +44,7 @@ def test_embed_adds_metadata():
 
     with (
         patch("pipeline.ops.embed.build_embed_model", return_value=mock_model),
-        patch("pipeline.ops.sparse.compute_sparse_tf", side_effect=_sparse_side_effect),
+        patch("pipeline.utils.sparse.compute_sparse_tf", side_effect=_sparse_side_effect),
     ):
         from pipeline.ops.embed import embed
 

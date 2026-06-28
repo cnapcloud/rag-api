@@ -201,7 +201,7 @@ class TestProcessPage:
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
 
@@ -232,7 +232,7 @@ class TestProcessPage:
         with (
             patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments") as mock_atts,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -250,7 +250,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments"),
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -269,7 +269,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments"),
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -286,7 +286,7 @@ class TestProcessPage:
         with (
             patch("infra.postgres.get_doc_by_source") as mock_get,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, page)
 
@@ -304,7 +304,7 @@ class TestProcessPage:
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", side_effect=Exception("S3 down")),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments") as mock_atts,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -338,7 +338,7 @@ class TestProcessAttachment:
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -396,7 +396,7 @@ class TestProcessAttachment:
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
 
@@ -410,7 +410,7 @@ class TestProcessAttachment:
         with (
             patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -427,7 +427,7 @@ class TestProcessAttachment:
             patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -446,7 +446,7 @@ class TestProcessAttachment:
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -466,7 +466,7 @@ class TestProcessAttachment:
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", side_effect=Exception("S3 error")),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -489,7 +489,7 @@ class TestProcessAttachment:
                 patch("infra.postgres.create_doc", return_value=new_doc),
                 patch("infra.postgres.update_doc_fields"),
                 patch("infra.s3.upload_object"),
-                patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+                patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             ):
                 c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
             mock_enqueue.assert_called_once()
@@ -548,7 +548,7 @@ class TestSync:
             patch("infra.postgres.create_doc", return_value={**_BASE_PAGE_DOC, "status": "fetching"}),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object"),
-            patch("pipeline.enqueue.enqueue_upload_event"),
+            patch("pipeline.queue.enqueue.enqueue_upload_event"),
             patch.object(
                 c, "_iter_attachments", side_effect=Exception("attachment API down")
             ),

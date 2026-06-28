@@ -180,7 +180,8 @@ def test_similar_c_newer_marks_a_outdated_no_indexing():
     doc_c = _make_doc("doc-c", doc_created_at=_TS_NEW)
     result = _result("similar", needs_indexing=False, duplicate_doc_id="doc-c")
 
-    with patch(_GET_DOC, side_effect=[doc_a, doc_c]), patch(_PG) as mock_udf:
+    with patch(_GET_DOC, side_effect=[doc_a, doc_c]), patch(_PG) as mock_udf, \
+            patch(_DEL_BANDS), patch(_DEL_MINHASH):
         handle_similar("doc-a", result, run_id="r1")
 
     assert result.needs_indexing is False
@@ -201,7 +202,8 @@ def test_similar_c_created_at_null_treats_a_as_newer():
 def test_similar_no_duplicate_marks_outdated_no_indexing():
     result = _result("similar", needs_indexing=False, duplicate_doc_id=None)
 
-    with patch(_GET_DOC) as mock_get, patch(_PG) as mock_udf:
+    with patch(_GET_DOC) as mock_get, patch(_PG) as mock_udf, \
+            patch(_DEL_BANDS), patch(_DEL_MINHASH):
         handle_similar("doc-a", result, run_id="r1")
 
     mock_get.assert_not_called()

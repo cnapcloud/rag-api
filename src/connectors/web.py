@@ -12,7 +12,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 import httpx
 
 from exceptions import ConfigError
-from pipeline.source_uri import normalize_source_uri
+from pipeline.utils.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +252,8 @@ class WebConnector:
         """
         from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
         from infra.s3 import upload_object
-        from pipeline.enqueue import enqueue_upload_event
+        from pipeline.queue.enqueue import enqueue_upload_event
+        from pipeline.utils.doc_state import set_fetch_failed, set_fetching, set_staged
 
         doc = get_doc_by_source(kb_id, source_uri)
 
@@ -274,7 +275,7 @@ class WebConnector:
                 )
                 update_doc_fields(doc["doc_id"], {"error": err_msg})
             else:
-                update_doc_fields(doc["doc_id"], {"status": "failed", "error": err_msg, "connector_id": connector_id})
+                set_fetch_failed(doc["doc_id"], err_msg, connector_id=connector_id)
             logger.warning("Failed to fetch page: source_uri=%s err=%s", source_uri, e)
             return None
 
@@ -338,7 +339,7 @@ class WebConnector:
                 doc_type="html",
             )
         else:
-            update_doc_fields(doc["doc_id"], {"status": "fetching", "connector_id": connector_id})
+            set_fetching(doc["doc_id"], connector_id=connector_id)
 
         doc_id = doc["doc_id"]
         title = _extract_title(html, source_uri)
@@ -360,20 +361,17 @@ class WebConnector:
                 },
             )
         except Exception as e:
-            update_doc_fields(doc_id, {"status": "failed", "error": str(e)[:500]})
+            set_fetch_failed(doc_id, str(e))
             logger.warning("S3 stage failed: source_uri=%s err=%s", source_uri, e)
             return html  # Return HTML for link discovery even on stage failure.
 
         # [3-4] Update doc.
-        update_doc_fields(
+        set_staged(
             doc_id,
-            {
-                "title": title,
-                "status": "pending",
-                "storage_key": storage_key,
-                "content_version": etag or None,
-                "file_size": len(file_bytes),
-            },
+            title=title,
+            storage_key=storage_key,
+            content_version=etag or None,
+            file_size=len(file_bytes),
         )
 
         # [3-5] Enqueue.

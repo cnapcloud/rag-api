@@ -169,7 +169,7 @@ class TestSensorConcurrencyGuard:
 class TestQueueWorkerConcurrencyGuard:
 
     def _run_poll(self, fake_redis):
-        from pipeline.queue_worker import QueueWorker
+        from pipeline.queue.queue_worker import QueueWorker
 
         worker = QueueWorker()
         worker._semaphore = asyncio.Semaphore(4)

@@ -32,7 +32,7 @@ def _build_vector_store(kb_id: str, qdrant_client=None):
     from llama_index.vector_stores.qdrant import QdrantVectorStore
 
     from infra.qdrant import get_qdrant_client
-    from pipeline.ops.sparse import compute_sparse_tf
+    from pipeline.utils.sparse import compute_sparse_tf
 
     client = qdrant_client or get_qdrant_client()
     return QdrantVectorStore(
