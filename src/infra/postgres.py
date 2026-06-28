@@ -270,7 +270,7 @@ def get_pending_doc_count_for_connector(connector_id: str) -> int:
     with get_pool().connection() as conn:
         row = conn.execute(
             "SELECT COUNT(*) FROM documents "
-            "WHERE connector_id = %s AND status NOT IN ('indexed', 'failed', 'deleted', 'deleting')",
+            "WHERE connector_id = %s AND status NOT IN ('indexed', 'failed', 'deleted', 'deleting', 'outdated')",
             [connector_id],
         ).fetchone()
     return int(row[0]) if row else 0
@@ -690,7 +690,7 @@ def get_connector_doc_counts(connector_id: str) -> dict[str, int]:
             "SELECT status, COUNT(*) FROM documents WHERE connector_id = %s GROUP BY status",
             [connector_id],
         ).fetchall()
-    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
+    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0, "outdated": 0}
     for status, n in rows:
         counts[status] = int(n)
     counts["total"] = sum(v for k, v in counts.items() if k != "total")
@@ -704,7 +704,7 @@ def get_kb_doc_counts(kb_id: str) -> dict[str, int]:
             "SELECT status, COUNT(*) FROM documents WHERE kb_id = %s GROUP BY status",
             [kb_id],
         ).fetchall()
-    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
+    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0, "outdated": 0}
     for status, n in rows:
         counts[status] = int(n)
     counts["total"] = sum(v for k, v in counts.items() if k != "total")

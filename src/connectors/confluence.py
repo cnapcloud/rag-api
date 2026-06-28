@@ -185,7 +185,8 @@ class ConfluenceConnector:
         doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
-            if doc.get("content_version") == version:
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            if doc.get("content_version") == version and not aborted:
                 logger.info("Page unchanged: source_uri=%s version=%s", source_uri, version)
                 self._process_page_attachments(client, kb_id, connector_id, page_id)
                 return
@@ -318,7 +319,8 @@ class ConfluenceConnector:
         doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
-            if doc.get("content_version") == version:
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            if doc.get("content_version") == version and not aborted:
                 logger.info("Attachment unchanged: source_uri=%s", source_uri)
                 return
 

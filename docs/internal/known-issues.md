@@ -11,6 +11,7 @@
 3. [커넥터 동기화 중단 불가](#3-커넥터-동기화-중단-불가)
 4. [Delete + Reindex race condition](#4-delete--reindex-race-condition)
 5. [SimHash/MinHash 동시 유사 문서 누락](#5-simhashminhash-동시-유사-문서-누락)
+6. [Connector abort 시 DagsterExecutionInterruptedError STEP_FAILURE 로그](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그)
 
 ---
 
@@ -176,3 +177,46 @@ SimHash/MinHash 탐지는 Postgres에 이미 저장된 simhash/minhash band 값�
 **향후 해결 방안**
 
 SimHash/MinHash 탐지-저장 구간을 Redis 분산 락(예: `SET NX PX` 또는 Redlock)으로 보호하여, 동일 KB 내에서 한 번에 하나의 인제스트만 dedup 단계를 원자적으로 수행하도록 직렬화한다. 락 범위는 KB 단위로 하되, 락 TTL은 단일 dedup 처리 예상 시간보다 충분히 크게 설정해야 한다.
+
+---
+
+## 6. Connector abort 시 DagsterExecutionInterruptedError STEP_FAILURE 로그
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-06-28 |
+| 심각도 | LOW |
+
+**증상**
+
+`POST /api/connectors/{id}/sync/abort` 호출 시, 실행 중이던 Dagster step이 `DagsterExecutionInterruptedError`로 STEP_FAILURE를 남긴다.
+
+```
+dagster._core.errors.DagsterExecutionInterruptedError
+  File "pipeline/ops/dedup/minhash.py", line 161, in run_minhash_detection
+      logger.info("no candidates doc_id=%s", doc_id)
+  ...
+  File "dagster/_utils/interrupts.py", line 81, in _new_signal_handler
+      raise error_cls()
+```
+
+**원인**
+
+`abort_sync`가 `terminate_dagster_run(run_id)`을 호출하면 Dagster가 워커 프로세스에 SIGTERM을 보내고 signal handler를 등록한다. 이 handler는 다음 Python bytecode 실행 시 `DagsterExecutionInterruptedError`를 발생시킨다. 타이밍에 따라 Dagster 내부 로깅 코드(`psycopg2.connect`)에서 인터럽트가 발생해 스택 트레이스가 길게 찍힌다.
+
+**상태 일관성**
+
+버그가 아니며 데이터 정합성 문제 없음:
+
+- `abort_sync`는 `terminate_dagster_run` 호출 **전에** `set_failed(doc_id, "Aborted")`를 호출하므로 doc status는 항상 올바르게 세팅됨
+- `minhash_bands`는 `ON CONFLICT DO UPDATE` upsert이므로 재인제스트 시 덮어씌워짐
+- `body_candidates.discard(doc_id)`로 자기 자신과의 중복 매칭 방지됨
+
+**현재 동작**
+
+로그 노이즈. 이후 동일 doc에 대한 새 run이 `validate_op`에서 `status == "failed"` 감지 후 조기 종료됨.
+
+**해결 방안**
+
+수정 불필요. 알람/모니터링에서 `DagsterExecutionInterruptedError`를 abort로 구분하고 싶다면 run tag나 Dagster run status(`CANCELED` vs `FAILURE`)로 필터링한다.

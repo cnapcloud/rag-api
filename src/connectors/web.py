@@ -309,7 +309,8 @@ class WebConnector:
         # [3-1] Compare content_version for existing non-deleted docs.
         if doc is not None and doc.get("status") != "deleted":
             stored = doc.get("content_version") or ""
-            if etag and etag == stored:
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            if etag and etag == stored and not aborted:
                 fields: dict = {}
                 if doc.get("connector_id") != connector_id:
                     fields["connector_id"] = connector_id
