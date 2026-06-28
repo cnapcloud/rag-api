@@ -70,8 +70,9 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
     remove existing dedup bands, mark incoming indexed.
     Incoming older: mark incoming outdated only.
     """
-    from infra.postgres import delete_minhash_bands, delete_simhash_bands, update_doc_fields
+    from infra.postgres import update_doc_fields
     from infra.qdrant import update_payload_by_doc_id
+    from pipeline.utils.purge import purge_doc_artifacts
 
     if not duplicate_doc_id:
         _mark_outdated(doc_id, "title_changed", None)
@@ -95,8 +96,7 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
         "run_id": run_id,
         "process_finished_at": datetime.now(timezone.utc).isoformat(),
     })
-    delete_simhash_bands(duplicate_doc_id)
-    delete_minhash_bands(duplicate_doc_id)
+    purge_doc_artifacts(duplicate_doc_id, include_chunks=False)
     update_doc_fields(doc_id, {
         "status": "indexed",
         "error": None,
@@ -111,13 +111,15 @@ def handle_similar(doc_id: str, result: DedupResult, run_id: str = "") -> None:
 
     Mutates result.needs_indexing: True if incoming wins and needs fresh vectors.
     When incoming wins, existing Qdrant chunks are deleted (body differs, no reuse possible).
+    When incoming loses, its simhash/minhash bands (saved during detection) are removed.
     """
-    from infra.postgres import delete_minhash_bands, delete_simhash_bands, update_doc_fields
-    from infra.qdrant import delete_chunks_by_doc_id
+    from infra.postgres import update_doc_fields
+    from pipeline.utils.purge import purge_doc_artifacts
 
     duplicate_doc_id = result.duplicate_doc_id
     if not duplicate_doc_id:
         _mark_outdated(doc_id, "similar", None)
+        purge_doc_artifacts(doc_id, include_chunks=False)
         result.needs_indexing = False
         return
 
@@ -125,9 +127,7 @@ def handle_similar(doc_id: str, result: DedupResult, run_id: str = "") -> None:
 
     if winner == "incoming":
         kb_id = existing_doc.get("kb_id", "")  # type: ignore[union-attr]
-        delete_chunks_by_doc_id(kb_id, duplicate_doc_id)
-        delete_simhash_bands(duplicate_doc_id)
-        delete_minhash_bands(duplicate_doc_id)
+        purge_doc_artifacts(duplicate_doc_id, kb_id, include_chunks=True)
         update_doc_fields(duplicate_doc_id, {
             "status": "outdated",
             "duplicate_of": doc_id,
@@ -138,6 +138,7 @@ def handle_similar(doc_id: str, result: DedupResult, run_id: str = "") -> None:
         logger.info("similar: incoming newer, existing chunks deleted incoming=%s existing=%s", doc_id, duplicate_doc_id)
     else:
         _mark_outdated(doc_id, "similar", duplicate_doc_id)
+        purge_doc_artifacts(doc_id, include_chunks=False)
         result.needs_indexing = False
         logger.info("similar: incoming older incoming=%s existing=%s", doc_id, duplicate_doc_id)
 
