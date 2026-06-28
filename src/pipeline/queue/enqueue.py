@@ -66,6 +66,9 @@ def enqueue_delete_event(doc_id: str, force: bool = False) -> None:
         return
 
     current = doc.get("status", "")
+    if current == "deleted":
+        logger.warning("enqueue_delete_event: delete event dropped for deleted doc: doc_id=%s", doc_id)
+        return
     if current not in ("running", "deleting"):
         set_pending(doc_id)
 

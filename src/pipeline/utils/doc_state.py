@@ -127,3 +127,15 @@ def set_fetch_failed(doc_id: str, error: str, *, connector_id: str | None = None
         fields["connector_id"] = connector_id
     _pg.update_doc_fields(doc_id, fields)
     logger.warning("Fetch failed: doc_id=%s error=%s", doc_id, error[:200])
+
+
+_STABLE_STATUSES = frozenset({"indexed", "failed", "deleted", "outdated"})
+
+
+def is_active(status: str) -> bool:
+    """Return True if the document is in an active processing state.
+
+    Defined as the complement of stable statuses so that any new status added
+    in the future is automatically treated as active (safe default).
+    """
+    return status not in _STABLE_STATUSES

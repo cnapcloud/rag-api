@@ -81,6 +81,11 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
                 raise
             set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
     else:
+        from pipeline.utils.doc_state import is_active
+        ex_status = existing.get("status", "")
+        if is_active(ex_status):
+            logger.warning("Upload blocked — doc active: kb=%s doc_id=%s status=%s", kb_id, existing["doc_id"], ex_status)
+            raise ConflictError(f"Document is active, try again later: doc_id={existing['doc_id']} status={ex_status}")
         doc = existing
         update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
 
@@ -152,6 +157,16 @@ async def upload_docs_batch(
                         raise
                     set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
             else:
+                from pipeline.utils.doc_state import is_active
+                ex_status = existing.get("status", "")
+                if is_active(ex_status):
+                    logger.warning(
+                        "Upload blocked — doc active: kb=%s doc_id=%s status=%s",
+                        kb_id, existing["doc_id"], ex_status,
+                    )
+                    raise ConflictError(
+                        f"Document is active, try again later: doc_id={existing['doc_id']} status={ex_status}"
+                    )
                 doc = existing
                 set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
 
@@ -231,17 +246,18 @@ async def get_doc_status(kb_id: str, doc_id: str):
 
 @router.delete("/kb/{kb_id}/docs/{doc_id}", status_code=202)
 async def delete_doc(kb_id: str, doc_id: str, force: bool = Query(False)):
-    from exceptions import ConflictError
     from infra.postgres import get_doc_by_id
     from pipeline.queue.enqueue import enqueue_delete_event
+    from pipeline.utils.doc_state import is_active
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
         raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
 
     status = doc.get("status", "")
-    if status == "running":
-        raise ConflictError(f"Document is currently being processed, try again later: doc_id={doc_id}")
+    if is_active(status):
+        logger.warning("Delete blocked — doc active: kb=%s doc_id=%s status=%s", kb_id, doc_id, status)
+        raise ConflictError(f"Document is active, try again later: doc_id={doc_id} status={status}")
 
     enqueue_delete_event(doc_id, force=force)
     return {"kb_id": kb_id, "doc_id": doc_id, "status": "pending"}
@@ -261,12 +277,26 @@ async def reindex_kb(
     from infra.postgres import list_docs as pg_list_docs, update_doc_fields
     from infra.s3 import get_object_meta
     from pipeline.queue.enqueue import enqueue_upload_event
+    from pipeline.utils.doc_state import is_active
 
     docs = pg_list_docs(kb_id, include_deleted=False)
     queued = 0
     skipped = 0
 
     for doc in docs:
+        doc_id = doc["doc_id"]
+        status = doc.get("status", "")
+
+        if status == "outdated":
+            logger.debug("Reindex skipped — doc outdated: doc_id=%s", doc_id)
+            skipped += 1
+            continue
+
+        if is_active(status):
+            logger.debug("Reindex skipped — doc active: doc_id=%s status=%s", doc_id, status)
+            skipped += 1
+            continue
+
         storage_key = doc.get("storage_key") or ""
         if not storage_key:
             skipped += 1
@@ -278,7 +308,7 @@ async def reindex_kb(
                 skipped += 1
                 continue
 
-        enqueue_upload_event(doc_id=doc["doc_id"], force=force)
+        enqueue_upload_event(doc_id=doc_id, force=force)
         queued += 1
 
     logger.info("Reindex KB: kb=%s queued=%d skipped=%d force=%s", kb_id, queued, skipped, force)
@@ -295,6 +325,7 @@ async def reindex_doc(
     from infra.postgres import get_doc_by_id
     from infra.s3 import get_object_meta
     from pipeline.queue.enqueue import enqueue_upload_event
+    from pipeline.utils.doc_state import is_active
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
@@ -303,6 +334,11 @@ async def reindex_doc(
     storage_key = doc.get("storage_key") or ""
     if not storage_key:
         raise NotFoundError(f"Document has no storage_key: doc_id={doc_id}")
+
+    status = doc.get("status", "")
+    if is_active(status):
+        logger.warning("Reindex blocked — doc active: kb=%s doc_id=%s status=%s", kb_id, doc_id, status)
+        raise ConflictError(f"Document is active, try again later: doc_id={doc_id} status={status}")
 
     if not force:
         source = storage_key.split("/", 1)[-1] if "/" in storage_key else storage_key

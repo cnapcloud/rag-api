@@ -29,3 +29,5 @@
 | [US-27](US-27-force-fail-api.md) | Force Fail API — 진행 중 문서 강제 실패 처리 + Dagster job terminate | done |
 | [US-28](US-28-force-delete.md) | Force Delete — indexed 문서 hard delete + outdated 자동 force 처리 | done |
 | [US-29](US-29-purge-doc-artifacts.md) | purge_doc_artifacts 공통 함수 추출 — Qdrant/S3/dedup 밴드 정리 통합 | done |
+| [US-30](US-30-api-status-guard.md) | API Status Guard — 활성 상태 문서 upload/delete/reindex 차단 | done |
+| [US-31](US-31-admin-ui-status-guard.md) | Admin UI Status Guard — proactive 체크 + 409 에러 토스트 (rag-admin) | done |

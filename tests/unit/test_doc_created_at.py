@@ -235,7 +235,7 @@ class TestReindexKb:
     def test_reindex_skips_docs_with_matching_etag(self):
         """Docs with matching S3 ETag and content_version are skipped."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a"},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a", "status": "indexed"},
         ]
 
         enqueued = []
@@ -255,7 +255,7 @@ class TestReindexKb:
     def test_reindex_enqueues_docs_with_changed_etag(self):
         """Docs with different S3 ETag are enqueued."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "old-etag"},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "old-etag", "status": "indexed"},
         ]
 
         enqueued = []
@@ -275,7 +275,7 @@ class TestReindexKb:
     def test_reindex_force_enqueues_all(self):
         """force=True enqueues all docs regardless of ETag."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a"},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a", "status": "indexed"},
         ]
 
         enqueued = []
@@ -293,7 +293,7 @@ class TestReindexKb:
     def test_reindex_skips_docs_without_storage_key(self):
         """Docs with no storage_key are skipped."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": None, "content_version": None},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": None, "content_version": None, "status": "indexed"},
         ]
 
         enqueued = []
