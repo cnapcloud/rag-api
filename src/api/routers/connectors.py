@@ -258,7 +258,7 @@ def _dispatch_sync(connector: dict) -> None:
 async def abort_sync(connector_id: str):
     from connectors.abort import request_abort
     from infra.dagster_utils import terminate_dagster_run
-    from infra.postgres import get_active_ingest_docs_for_connector, get_connector
+    from infra.postgres import get_active_ingest_docs_for_connector, get_connector, set_connector_sync_status
     from pipeline.queue.enqueue import dequeue_upload_events
     from pipeline.utils.doc_state import set_failed
 
@@ -269,6 +269,7 @@ async def abort_sync(connector_id: str):
         raise ConflictError(f"No sync in progress: {connector_id}")
 
     request_abort(connector_id)
+    set_connector_sync_status(connector_id, "idle")
 
     docs = get_active_ingest_docs_for_connector(connector_id)
 
