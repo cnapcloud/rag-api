@@ -84,7 +84,6 @@ bulk 요청 특성상 일부 실패로 전체를 중단하지 않는다.
 |---|---|---|---|---|
 | `pending` | 409 | 409 | 409 | skipped |
 | `uploading` | 409 | 409 | 409 | skipped |
-| `fetching` | 409 | 409 | 409 | skipped |
 | `running` | 409 | 409 | 409 | skipped |
 | `deleting` | 409 | 409 | 409 | skipped |
 
