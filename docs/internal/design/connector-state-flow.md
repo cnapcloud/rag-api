@@ -31,13 +31,13 @@
     │     PATCH(resume)     │
     └───────────────────────┘
 
-  active/paused ──(sync 실패)──► error
-  error         ──(sync 성공)──► (error 유지, sync_status만 idle로)
+  active/paused ──(sync 실패: 예외 발생)──► error
+  error         ──(sync 재시도 성공)──► (error 유지, sync_status만 idle로)
 
   any ──(DELETE 호출)──► deleting ──(cascade 완료)──► (레코드 삭제)
 ```
 
-> `error` → `active` 자동 복구는 현재 미구현. sync 재시도 성공 후에도 `status`는 `error`로 유지된다.
+> `error` → `active` 자동 복구는 미구현. sync 재시도 성공 후에도 `status`는 `error`로 유지된다.
 
 ---
 
@@ -129,23 +129,25 @@ pause는 sync를 강제 종료하지 않는다. 진행 중인 sync를 즉시 멈
 
 ---
 
-## 6. 실패 시 상태
+## 6. sync 실패 시 상태
+
+sync 실패란 `_dispatch_sync()`(커넥터 크롤/페치 루프)가 처리되지 않은 예외를 던지는 경우다. 개별 문서 인덱싱 실패(`doc.status → failed`)는 sync 실패가 아니며 커넥터 상태에 영향을 주지 않는다.
 
 ### 수동/자동 sync 실패 (abort 없이 예외 발생)
 
 ```
-connector.status    → "error"
+connector.status      → "error"
 connector.sync_status → "idle"
 ```
 
-### abort 중 예외 발생
+### abort 진행 중 예외 발생
 
 ```
-connector.status    → 변경 없음 (error로 찍히지 않음)
-connector.sync_status → "idle" (abort 시점에 이미 전환됨)
+connector.status      → 변경 없음 (error로 기록하지 않음)
+connector.sync_status → "idle" (abort 호출 시점에 이미 전환됨)
 ```
 
-abort가 진행 중일 때 백그라운드 스레드에서 예외가 발생하면 로그만 남기고 상태 변경은 하지 않는다.
+abort 중 백그라운드 스레드에서 예외가 발생하면 로그만 남긴다. abort는 사용자의 의도적인 중단이므로 sync 실패와 구분한다.
 
 ---
 
