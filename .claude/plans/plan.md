@@ -22,3 +22,4 @@
 | [24](24-dedup-stage2.md) | Dedup Stage 2 — MinHash + pg_trgm | US-24 | done |
 | [25](25-kiwi-user-words.md) | Kiwi 사용자 사전 파일 지원 | US-25 | done |
 | [26](26-delete-pipeline-refactor.md) | Delete Pipeline Refactor — soft/hard delete 분기 + status guard | US-26 | todo |
+| [27](27-force-fail-api.md) | Force Fail API — 진행 중 문서 강제 실패 처리 + Dagster job terminate | US-27 | done |

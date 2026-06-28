@@ -252,6 +252,12 @@ curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/reindex?force=tru
 
 # stuck 문서 복구 — status=running 인 경우에만 사용
 curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/recover"
+
+# 문서 강제 실패 처리 — uploading / pending / running / deleting 상태에서 사용
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/fail"
+
+# 실패 사유 지정
+curl -X POST "http://localhost:8000/api/kb/kb-01/docs/{doc_id}/fail?reason=Manually+canceled"
 ```
 
 ### 응답 형식
@@ -280,9 +286,57 @@ ETag가 동일하면 `queued: 0, skipped: 1`을 반환합니다. `force=true`이
 
 `status=running`이 아닌 문서에 복구를 요청하면 HTTP 409 반환.
 
+**강제 실패 처리 (HTTP 200)**
+
+```json
+{ "kb_id": "kb-01", "doc_id": "b59168c41e5e4a0d", "status": "failed" }
+```
+
+`uploading`, `pending`, `running`, `deleting` 외 상태에서 요청하면 HTTP 409 반환.
+
+queue_worker 모드에서 `running` / `deleting` 문서에 적용하면 asyncio 태스크를 실제로 종료할 수 없으므로 응답에 `warning` 필드가 추가됩니다.
+
+```json
+{
+  "kb_id": "kb-01",
+  "doc_id": "b59168c41e5e4a0d",
+  "status": "failed",
+  "warning": "Status set to failed, but the background task is still running and may overwrite this status (queue_worker mode has no terminate support)."
+}
+```
+
+## 5. 문서 삭제
+
+`DELETE /api/kb/{kb_id}/docs/{doc_id}`
+
+```bash
+# Soft delete (indexed 문서 — S3 파일 보존, 검색에서 제외)
+curl -X DELETE "http://localhost:8000/api/kb/kb-01/docs/{doc_id}"
+
+# Hard delete (S3 파일 포함 완전 삭제)
+curl -X DELETE "http://localhost:8000/api/kb/kb-01/docs/{doc_id}?force=true"
+```
+
+| 상태 | `force=false` | `force=true` |
+|------|---------------|--------------|
+| `indexed` | soft delete — DB row `status=deleted`, S3 유지 | hard delete |
+| 그 외 (`failed`, `pending` 등) | hard delete | hard delete |
+
+- `running` 상태 문서는 삭제 요청 불가 — HTTP 409. 먼저 force-fail 후 삭제.
+- Soft delete된 문서는 `status=deleted` 필터로 목록 조회 가능. 검색에는 포함되지 않음.
+- Hard delete는 Qdrant 청크, S3 파일, DB row를 모두 제거.
+
+**응답 (HTTP 202)**
+
+```json
+{ "kb_id": "kb-01", "doc_id": "b59168c41e5e4a0d", "status": "pending" }
+```
+
+삭제는 비동기로 처리됩니다. 완료 여부는 문서 상태 조회(`GET .../docs/{doc_id}/status`)로 확인하거나, soft delete의 경우 `status=deleted`, hard delete의 경우 404로 확인합니다.
+
 ---
 
-## 5. 문서 목록 조회
+## 6. 문서 목록 조회
 
 `GET /api/kb/{kb_id}/docs`
 
@@ -355,7 +409,7 @@ curl "http://localhost:8000/api/docs?status=failed&search=report&sort_by=updated
 
 ---
 
-## 6. 커넥터 (Connector)
+## 7. 커넥터 (Connector)
 
 커넥터는 외부 소스(웹 크롤러, Confluence, GitHub)에서 문서를 자동으로 수집해 KB에 인덱싱합니다.
 파일 직접 업로드(section 3)와 달리, 커넥터는 sync 트리거 시 소스를 순회하며 변경된 문서만 재인덱싱합니다.
@@ -783,7 +837,7 @@ curl "http://localhost:8000/api/connectors/b59168c41e5e4a0d/docs?status=failed&s
 
 ---
 
-## 7. 문서 상태 집계 조회
+## 8. 문서 상태 집계 조회
 
 처리 중인 문서가 있는지 확인하거나 전체 현황을 파악할 때 사용합니다.
 개별 문서를 전부 조회하지 않고 상태별 카운트만 반환하므로 대량 문서 환경에서도 가볍습니다.
@@ -890,7 +944,7 @@ print('active' if active > 0 else 'done', f'(pending={d[\"pending\"]} running={d
 
 ---
 
-## 8. 검색
+## 9. 검색
 
 ### hybrid 모드 (기본)
 

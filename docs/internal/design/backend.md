@@ -29,7 +29,8 @@ API 사용법(curl 예시)은 [guide/api-guide.md](../guide/api-guide.md) 참고
 
 | 값 | 의미 |
 |----|------|
-| `pending` | Redis 큐에 대기 중 (Worker/Sensor가 아직 미수령) |
+| `uploading` | S3 업로드 진행 중 (row 생성 ~ S3 완료 전) |
+| `pending` | Redis 큐 대기 중 (S3 완료 후 ~ Worker/Sensor 수령 전) |
 | `running` | 파이프라인 처리 중 |
 | `indexed` | 인덱싱 완료 |
 | `failed` | 파이프라인 실패 |
@@ -38,8 +39,15 @@ API 사용법(curl 예시)은 [guide/api-guide.md](../guide/api-guide.md) 참고
 ### 상태 전이
 
 ```
-신규 업로드 / reindex 요청
-  └─ pending
+신규 업로드
+  └─ uploading (row 생성 + S3 업로드 중)
+       └─ S3 완료 → pending (Redis 큐 push)
+            └─ Worker/Sensor 수령 → running
+                 ├─ 성공 → indexed
+                 └─ 실패 → failed
+
+reindex 요청
+  └─ pending (Redis 큐 push)
        └─ Worker/Sensor 수령 → running
             ├─ 성공 → indexed
             └─ 실패 → failed
@@ -50,10 +58,17 @@ running / deleting 중 동일 문서 재요청
             └─ Worker가 대기 이벤트 수령 → pending → running
 
 삭제 요청
-  └─ deleting → (완료 시 Postgres 행 삭제)
+  └─ deleting
+       ├─ indexed였던 경우 → soft delete (Qdrant 청크 삭제, DB status=deleted)
+       └─ 그 외 → hard delete (Qdrant + S3 + DB row 삭제)
 
 recover API (status=running 전용)
   └─ running → failed → pending → running (재큐잉)
+
+force-fail API (status=uploading / pending / running / deleting)
+  └─ run_id 있으면 Dagster job force terminate
+       └─ → failed
+  ※ pending 문서는 Redis 큐 이벤트가 잔류하여 Worker가 나중에 재처리할 수 있음
 ```
 
 ---
