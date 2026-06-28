@@ -182,6 +182,8 @@ curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
 
 `doc_id`는 이후 상태 확인, 삭제, 재인덱싱, 복구, 다운로드 요청에 사용합니다.
 
+**동일 파일명 재업로드**: 같은 KB에 같은 파일명을 다시 업로드하면 기존 `doc_id`를 재사용하고 새 내용으로 재인덱싱됩니다. 문서가 현재 처리 중인 경우(`pending`, `uploading`, `running`, `deleting`) HTTP 409를 반환합니다.
+
 ### 배치 업로드 응답 (HTTP 202)
 
 파일별 결과를 `results` 배열로 반환합니다. 일부 파일이 실패해도 나머지는 처리됩니다.
