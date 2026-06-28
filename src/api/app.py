@@ -139,6 +139,11 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def conflict_error_handler(_request: Request, exc: ConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
+    @app.exception_handler(RuntimeError)
+    async def runtime_error_handler(_request: Request, exc: RuntimeError) -> JSONResponse:
+        logger.error("Unexpected runtime error: %s", exc)
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
+
 
 def _start_queue_worker(app: FastAPI) -> None:
     from config.settings import get_settings
@@ -147,7 +152,7 @@ def _start_queue_worker(app: FastAPI) -> None:
         return
     import asyncio
 
-    from pipeline.queue_worker import QueueWorker
+    from pipeline.queue.queue_worker import QueueWorker
     worker = QueueWorker(
         max_workers=cfg.queue_worker.max_workers,
         poll_interval_sec=cfg.queue_poll.poll_interval_sec,

@@ -42,10 +42,11 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     4. Enqueue ingest event
     """
     import psycopg.errors
-    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids
     from infra.s3 import upload_object
-    from pipeline.enqueue import enqueue_upload_event
-    from pipeline.source_uri import normalize_source_uri
+    from pipeline.queue.enqueue import enqueue_upload_event
+    from pipeline.utils.doc_state import set_pending, set_uploading
+    from pipeline.utils.source_uri import normalize_source_uri
 
     if kb_id not in list_kb_ids():
         raise NotFoundError(f"KB not found: {kb_id}")
@@ -78,7 +79,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
             doc = get_doc_by_source(kb_id, source_uri)
             if doc is None:
                 raise
-            update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+            set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
     else:
         doc = existing
         update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
@@ -110,10 +111,11 @@ async def upload_docs_batch(
 ):
     """Row-first batch document upload."""
     import psycopg.errors
-    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
+    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids
     from infra.s3 import upload_object
-    from pipeline.enqueue import enqueue_upload_event
-    from pipeline.source_uri import normalize_source_uri
+    from pipeline.queue.enqueue import enqueue_upload_event
+    from pipeline.utils.doc_state import set_pending, set_uploading
+    from pipeline.utils.source_uri import normalize_source_uri
 
     if kb_id not in list_kb_ids():
         raise NotFoundError(f"KB not found: {kb_id}")
@@ -148,10 +150,10 @@ async def upload_docs_batch(
                     doc = get_doc_by_source(kb_id, source_uri)
                     if doc is None:
                         raise
-                    update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+                    set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
             else:
                 doc = existing
-                update_doc_fields(doc["doc_id"], {"status": "uploading", "file_size": file_size, "storage_key": storage_key})
+                set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
 
             doc_id: str = doc["doc_id"]
 
@@ -162,7 +164,7 @@ async def upload_docs_batch(
                 content_type=file.content_type or "application/octet-stream",
             )
 
-            update_doc_fields(doc_id, {"content_version": etag, "status": "pending"})
+            set_pending(doc_id, content_version=etag)
             enqueue_upload_event(doc_id=doc_id)
 
             results.append({
@@ -228,10 +230,10 @@ async def get_doc_status(kb_id: str, doc_id: str):
 
 
 @router.delete("/kb/{kb_id}/docs/{doc_id}", status_code=202)
-async def delete_doc(kb_id: str, doc_id: str):
+async def delete_doc(kb_id: str, doc_id: str, force: bool = Query(False)):
     from exceptions import ConflictError
     from infra.postgres import get_doc_by_id
-    from pipeline.enqueue import enqueue_delete_event
+    from pipeline.queue.enqueue import enqueue_delete_event
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
@@ -241,7 +243,7 @@ async def delete_doc(kb_id: str, doc_id: str):
     if status == "running":
         raise ConflictError(f"Document is currently being processed, try again later: doc_id={doc_id}")
 
-    enqueue_delete_event(doc_id)
+    enqueue_delete_event(doc_id, force=force)
     return {"kb_id": kb_id, "doc_id": doc_id, "status": "pending"}
 
 
@@ -258,7 +260,7 @@ async def reindex_kb(
     """
     from infra.postgres import list_docs as pg_list_docs, update_doc_fields
     from infra.s3 import get_object_meta
-    from pipeline.enqueue import enqueue_upload_event
+    from pipeline.queue.enqueue import enqueue_upload_event
 
     docs = pg_list_docs(kb_id, include_deleted=False)
     queued = 0
@@ -292,7 +294,7 @@ async def reindex_doc(
     """Re-index a single document by doc_id."""
     from infra.postgres import get_doc_by_id
     from infra.s3 import get_object_meta
-    from pipeline.enqueue import enqueue_upload_event
+    from pipeline.queue.enqueue import enqueue_upload_event
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
@@ -313,11 +315,65 @@ async def reindex_doc(
     return {"kb_id": kb_id, "doc_id": doc_id, "queued": 1, "skipped": 0}
 
 
+@router.post("/kb/{kb_id}/docs/{doc_id}/fail", status_code=200)
+async def force_fail_doc(
+    kb_id: str,
+    doc_id: str,
+    reason: str = Query(default="Manually failed via API"),
+):
+    """Force-fail a document in uploading / pending / running / deleting state.
+
+    If a Dagster run_id is present, the run is force-terminated first.
+    Pending documents have their Redis queue events removed before failing.
+    """
+    from infra.dagster_utils import terminate_dagster_run
+    from infra.postgres import get_doc_by_id
+    from pipeline.queue.enqueue import dequeue_upload_events
+    from pipeline.ops.meta import set_failed
+
+    doc = get_doc_by_id(doc_id)
+    if doc is None or doc.get("kb_id") != kb_id:
+        raise NotFoundError(f"Document not found: kb={kb_id} doc_id={doc_id}")
+
+    status = doc.get("status", "")
+    if status not in ("uploading", "pending", "running", "deleting"):
+        raise ConflictError(
+            f"Cannot force-fail document in current state: status={status}"
+        )
+
+    run_id = doc.get("run_id") or ""
+    if run_id:
+        terminate_dagster_run(run_id)
+
+    from config.settings import get_settings
+    worker_mode_active = get_settings().queue_worker.enabled and status in ("running", "deleting")
+    if worker_mode_active:
+        logger.warning(
+            "Force fail set but background task cannot be terminated in queue_worker mode"
+            " (task may still be running): doc_id=%s status_was=%s",
+            doc_id,
+            status,
+        )
+
+    dequeue_upload_events(doc_id)
+
+    set_failed(doc_id, reason[:500], run_id=run_id)
+    logger.info("Force fail applied: kb=%s doc_id=%s status_was=%s", kb_id, doc_id, status)
+
+    response: dict = {"kb_id": kb_id, "doc_id": doc_id, "status": "failed"}
+    if worker_mode_active:
+        response["warning"] = (
+            "Status set to failed, but the background task is still running"
+            " and may overwrite this status (queue_worker mode has no terminate support)."
+        )
+    return response
+
+
 @router.post("/kb/{kb_id}/docs/{doc_id}/recover", status_code=202)
 async def recover_doc(kb_id: str, doc_id: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
     from infra.postgres import get_doc_by_id
-    from pipeline.enqueue import enqueue_upload_event
+    from pipeline.queue.enqueue import enqueue_upload_event
     from pipeline.ops.meta import set_failed
 
     doc = get_doc_by_id(doc_id)
