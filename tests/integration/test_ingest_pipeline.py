@@ -68,10 +68,10 @@ def test_ingest_job_validate_passes(ingest_run_config):
         patch("pipeline.ops.dedup.run_verdict"),
         patch("pipeline.ops.chunk.chunk", return_value=[MagicMock()]),
         patch("pipeline.ops.embed.embed", return_value=[]),
-        patch("pipeline.ops.upsert.upsert") as mock_upsert,
+        patch("pipeline.utils.upsert.upsert") as mock_upsert,
         patch("pipeline.ops.meta.update_meta"),
     ):
-        from pipeline.ops.upsert import UpsertResult
+        from pipeline.utils.upsert import UpsertResult
         mock_upsert.return_value = UpsertResult(kb_id="kb-test", doc_id=DOC_ID, chunk_count=1, doc_created_at="")
         result = ingest_job.execute_in_process(run_config=ingest_run_config)
         assert result.success

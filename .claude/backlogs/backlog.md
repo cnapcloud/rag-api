@@ -26,3 +26,10 @@
 | [US-24](US-24-dedup-stage2.md) | Dedup Stage 2 — MinHash Jaccard + pg_trgm 제목 퍼지 필터링 | done |
 | [US-25](US-25-kiwi-user-words.md) | Kiwi 형태소 분석기 사용자 사전 파일 지원 | done |
 | [US-26](todo/US-26-delete-pipeline-refactor.md) | Delete Pipeline Refactor — soft/hard delete 분기 + status guard | todo |
+| [US-27](US-27-force-fail-api.md) | Force Fail API — 진행 중 문서 강제 실패 처리 + Dagster job terminate | done |
+| [US-28](US-28-force-delete.md) | Force Delete — indexed 문서 hard delete + outdated 자동 force 처리 | done |
+| [US-29](US-29-purge-doc-artifacts.md) | purge_doc_artifacts 공통 함수 추출 — Qdrant/S3/dedup 밴드 정리 통합 | done |
+| [US-30](US-30-api-status-guard.md) | API Status Guard — 활성 상태 문서 upload/delete/reindex 차단 | done |
+| [US-31](US-31-admin-ui-status-guard.md) | Admin UI Status Guard — proactive 체크 + 409 에러 토스트 (rag-admin) | done |
+| [US-32](US-32-connector-schedule-hot-reload.md) | Connector Schedule Hot Reload via Dagster Code Location Reload | done |
+| [US-33](US-33-connector-config-validation.md) | Connector Config Numeric Field Validation — type/range 검증 + min_content_chars settings 이전 | done |

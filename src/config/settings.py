@@ -52,6 +52,7 @@ class QdrantSettings(BaseModel):
 
 class IngestionSettings(BaseModel):
     max_file_size_mb: int = 200
+    min_content_chars: int = 200
 
 
 class QueueWorkerSettings(BaseModel):
@@ -137,8 +138,6 @@ class DedupSettings(BaseModel):
     simhash_bits: int = 64
     hamming_identical_threshold: int = 3
     hamming_similar_threshold: int = 10
-    lock_ttl: int = 10
-    lock_acquire_timeout: int = 5
     # Stage 2 thresholds
     jaccard_threshold: float = 0.65
     title_fuzzy_threshold: float = 0.85

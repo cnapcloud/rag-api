@@ -36,8 +36,14 @@ class IngestConfig(Config):
 @op(out={"valid_config": Out(dagster_type=dict, is_required=False)})
 def validate_op(context: OpExecutionContext, config: IngestConfig):
     """File size validation. Emits valid_config dict on success."""
+    from infra.postgres import get_doc_by_id
     from pipeline.ops.meta import set_failed, set_processing
     from pipeline.ops.validate import validate
+
+    doc = get_doc_by_id(config.doc_id)
+    if doc and doc.get("status") == "failed":
+        context.log.warning("Job aborted: doc was force-failed before validate_op started: doc_id=%s", config.doc_id)
+        return
 
     set_processing(config.doc_id, run_id=context.run_id)
 
@@ -139,7 +145,7 @@ def embed_op(context: OpExecutionContext, nodes):
 @op
 def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
     """Delete existing Qdrant chunks then insert new ones."""
-    from pipeline.ops.upsert import upsert
+    from pipeline.utils.upsert import upsert
 
     result = upsert(
         kb_id=valid_config["kb_id"],

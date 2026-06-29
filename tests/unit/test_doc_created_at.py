@@ -121,21 +121,21 @@ class TestUpsertDocCreatedAt:
         )
 
     def test_upsert_result_carries_doc_created_at(self, mock_qdrant):
-        from pipeline.ops.upsert import upsert
+        from pipeline.utils.upsert import upsert
 
         en = self._make_embedded_node("2023-05-15T10:30:00+00:00")
         with (
-            patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks"),
+            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks"),
         ):
             result = upsert("kb-test", DOC_ID, [en])
 
         assert result.doc_created_at == "2023-05-15T10:30:00+00:00"
 
     def test_qdrant_payload_includes_doc_created_at(self, mock_qdrant):
-        from pipeline.ops.upsert import upsert
+        from pipeline.utils.upsert import upsert
 
         expected = "2023-05-15T10:30:00+00:00"
         en = self._make_embedded_node(expected)
@@ -146,10 +146,10 @@ class TestUpsertDocCreatedAt:
             captured_points.extend(points)
 
         with (
-            patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks", side_effect=capture_upsert),
+            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks", side_effect=capture_upsert),
         ):
             upsert("kb-test", DOC_ID, [en])
 
@@ -158,16 +158,16 @@ class TestUpsertDocCreatedAt:
 
     def test_qdrant_payload_uses_doc_id_not_doc_key(self, mock_qdrant):
         """Payload contains doc_id field (not doc_key or doc_source)."""
-        from pipeline.ops.upsert import upsert
+        from pipeline.utils.upsert import upsert
 
         en = self._make_embedded_node("2023-05-15T10:30:00+00:00")
         captured_points = []
 
         with (
-            patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks", side_effect=lambda kb, pts, client=None: captured_points.extend(pts)),
+            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks", side_effect=lambda kb, pts, client=None: captured_points.extend(pts)),
         ):
             upsert("kb-test", DOC_ID, [en])
 
@@ -177,13 +177,13 @@ class TestUpsertDocCreatedAt:
         assert "doc_source" not in payload
 
     def test_empty_embedded_nodes_doc_created_at_is_empty(self, mock_qdrant):
-        from pipeline.ops.upsert import upsert
+        from pipeline.utils.upsert import upsert
 
         with (
-            patch("pipeline.ops.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.ops.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.ops.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.ops.upsert.qdrant_infra.upsert_chunks"),
+            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks"),
         ):
             result = upsert("kb-test", DOC_ID, [])
 
@@ -235,7 +235,7 @@ class TestReindexKb:
     def test_reindex_skips_docs_with_matching_etag(self):
         """Docs with matching S3 ETag and content_version are skipped."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a"},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a", "status": "indexed"},
         ]
 
         enqueued = []
@@ -243,7 +243,7 @@ class TestReindexKb:
         with (
             patch("infra.postgres.list_docs", return_value=docs),
             patch("infra.s3.get_object_meta", return_value=("etag-a", 1024)),
-            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
             from api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
@@ -255,7 +255,7 @@ class TestReindexKb:
     def test_reindex_enqueues_docs_with_changed_etag(self):
         """Docs with different S3 ETag are enqueued."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "old-etag"},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "old-etag", "status": "indexed"},
         ]
 
         enqueued = []
@@ -263,7 +263,7 @@ class TestReindexKb:
         with (
             patch("infra.postgres.list_docs", return_value=docs),
             patch("infra.s3.get_object_meta", return_value=("new-etag", 1024)),
-            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
             from api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
@@ -275,14 +275,14 @@ class TestReindexKb:
     def test_reindex_force_enqueues_all(self):
         """force=True enqueues all docs regardless of ETag."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a"},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/a.pdf", "content_version": "etag-a", "status": "indexed"},
         ]
 
         enqueued = []
 
         with (
             patch("infra.postgres.list_docs", return_value=docs),
-            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
             from api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=True))
@@ -293,14 +293,14 @@ class TestReindexKb:
     def test_reindex_skips_docs_without_storage_key(self):
         """Docs with no storage_key are skipped."""
         docs = [
-            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": None, "content_version": None},
+            {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": None, "content_version": None, "status": "indexed"},
         ]
 
         enqueued = []
 
         with (
             patch("infra.postgres.list_docs", return_value=docs),
-            patch("pipeline.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
             from api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))

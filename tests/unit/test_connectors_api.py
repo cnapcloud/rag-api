@@ -371,21 +371,6 @@ class TestTriggerSync:
         assert resp.status_code == 409
         assert "in progress" in resp.json()["detail"]
 
-    def test_stale_lock_allows_retrigger(self, client):
-        stale = (datetime.now(timezone.utc) - timedelta(minutes=35)).isoformat()
-        connector = {
-            **_BASE_CONNECTOR,
-            "sync_status": "running",
-            "sync_started_at": stale,
-        }
-        with (
-            patch("infra.postgres.get_connector", return_value=connector),
-            patch("infra.postgres.set_connector_sync_status"),
-            patch("infra.postgres.set_connector_status"),
-        ):
-            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
-
-        assert resp.status_code == 202
 
     def test_background_task_marks_error_on_dispatch_failure(self, client):
         status_calls = []
@@ -428,40 +413,6 @@ class TestGetSyncStatus:
 
         assert resp.status_code == 404
 
-
-# ──────────────────────────────────────────────
-# POST /api/connectors/{connector_id}/sync/reset
-# ──────────────────────────────────────────────
-
-class TestResetSyncStatus:
-
-    def test_resets_running_to_idle(self, client):
-        running = {**_BASE_CONNECTOR, "sync_status": "running"}
-        with (
-            patch("infra.postgres.get_connector", return_value=running),
-            patch("infra.postgres.set_connector_sync_status") as mock_set,
-        ):
-            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/reset")
-
-        assert resp.status_code == 200
-        assert resp.json()["sync_status"] == "idle"
-        mock_set.assert_called_once_with(CONNECTOR_ID, "idle")
-
-    def test_resets_idle_connector_too(self, client):
-        with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.set_connector_sync_status") as mock_set,
-        ):
-            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/reset")
-
-        assert resp.status_code == 200
-        mock_set.assert_called_once_with(CONNECTOR_ID, "idle")
-
-    def test_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_connector", return_value=None):
-            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/reset")
-
-        assert resp.status_code == 404
 
 
 # ──────────────────────────────────────────────

@@ -1,3 +1,6 @@
+dagster:
+  endpoint: "http://localhost:3000"
+
 s3:
   endpoint: "http://<minio-host>:9000"
   access_key: "<access-key>"
@@ -29,6 +32,7 @@ redis:
 
 ingestion:
   max_file_size_mb: 200
+  min_content_chars: 200
 
 queue_worker:
   enabled: true   # true: FastAPI QueueWorker, false: Dagster sensor

@@ -270,10 +270,20 @@ def get_pending_doc_count_for_connector(connector_id: str) -> int:
     with get_pool().connection() as conn:
         row = conn.execute(
             "SELECT COUNT(*) FROM documents "
-            "WHERE connector_id = %s AND status NOT IN ('indexed', 'failed', 'deleted', 'deleting')",
+            "WHERE connector_id = %s AND status NOT IN ('indexed', 'failed', 'deleted', 'deleting', 'outdated')",
             [connector_id],
         ).fetchone()
     return int(row[0]) if row else 0
+
+
+def get_active_ingest_docs_for_connector(connector_id: str) -> list[dict]:
+    """Return docs owned by connector_id with status 'pending' or 'running'."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            _DOC_SELECT + " WHERE connector_id = %s AND status IN ('pending', 'running')",
+            [connector_id],
+        ).fetchall()
+    return [_row_to_doc(r) for r in rows]
 
 
 def get_doc_by_id(doc_id: str) -> dict | None:
@@ -680,7 +690,7 @@ def get_connector_doc_counts(connector_id: str) -> dict[str, int]:
             "SELECT status, COUNT(*) FROM documents WHERE connector_id = %s GROUP BY status",
             [connector_id],
         ).fetchall()
-    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
+    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0, "outdated": 0}
     for status, n in rows:
         counts[status] = int(n)
     counts["total"] = sum(v for k, v in counts.items() if k != "total")
@@ -694,7 +704,7 @@ def get_kb_doc_counts(kb_id: str) -> dict[str, int]:
             "SELECT status, COUNT(*) FROM documents WHERE kb_id = %s GROUP BY status",
             [kb_id],
         ).fetchall()
-    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0}
+    counts: dict[str, int] = {"indexed": 0, "pending": 0, "running": 0, "failed": 0, "deleted": 0, "outdated": 0}
     for status, n in rows:
         counts[status] = int(n)
     counts["total"] = sum(v for k, v in counts.items() if k != "total")
@@ -728,11 +738,15 @@ def find_simhash_candidates(bands: list[tuple[int, str]], kb_id: str) -> set[str
 
     bands: list of (band_index, band_value_hex) as returned by get_bands().
     """
-    clauses = ["(band_index = %s AND band_value = %s)"] * len(bands)
+    clauses = ["(sb.band_index = %s AND sb.band_value = %s)"] * len(bands)
     params: list[Any] = [kb_id]
     for idx, val in bands:
         params.extend([idx, int(val, 16)])
-    sql = f"SELECT DISTINCT doc_id FROM simhash_bands WHERE kb_id = %s AND ({' OR '.join(clauses)})"
+    sql = (
+        f"SELECT DISTINCT sb.doc_id FROM simhash_bands sb"
+        f" JOIN documents d ON d.doc_id = sb.doc_id"
+        f" WHERE sb.kb_id = %s AND d.status = 'indexed' AND ({' OR '.join(clauses)})"
+    )
     with get_pool().connection() as conn:
         rows = conn.execute(sql, params).fetchall()
     return {row[0] for row in rows}
@@ -819,15 +833,16 @@ def find_minhash_candidates(signature: list[int], kb_id: str, num_bands: int = 1
         or_clauses = []
         for row in range(rows_per_band):
             pos = start + row
-            or_clauses.append("(band_index = %s AND band_hash = %s)")
+            or_clauses.append("(mb.band_index = %s AND mb.band_hash = %s)")
             all_params.extend([pos, signature[pos]])
 
         all_params.append(kb_id)
         union_parts.append(
             f"SELECT doc_id FROM ("
-            f"SELECT doc_id, COUNT(*) AS cnt FROM minhash_bands"
-            f" WHERE ({' OR '.join(or_clauses)}) AND kb_id = %s"
-            f" GROUP BY doc_id"
+            f"SELECT mb.doc_id, COUNT(*) AS cnt FROM minhash_bands mb"
+            f" JOIN documents d ON d.doc_id = mb.doc_id"
+            f" WHERE ({' OR '.join(or_clauses)}) AND mb.kb_id = %s AND d.status = 'indexed'"
+            f" GROUP BY mb.doc_id"
             f") s{band_idx} WHERE cnt = {rows_per_band}"
         )
 
@@ -847,7 +862,7 @@ def find_title_candidates(title: str, threshold: float, kb_id: str) -> dict[str,
         conn.execute(f"SET LOCAL pg_trgm.similarity_threshold = {float(threshold)!r}")
         rows = conn.execute(
             "SELECT doc_id, similarity(title, %s) AS sim FROM documents"
-            " WHERE kb_id = %s AND title %% %s AND status != 'deleted'",
+            " WHERE kb_id = %s AND title %% %s AND status = 'indexed'",
             [title, kb_id, title],
         ).fetchall()
     return {row[0]: float(row[1]) for row in rows}

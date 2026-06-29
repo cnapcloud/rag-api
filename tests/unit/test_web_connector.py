@@ -69,7 +69,7 @@ class TestProcessPage:
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="etag-s3") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
@@ -105,7 +105,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="New Title"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
@@ -127,7 +127,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="Same Title"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
@@ -149,7 +149,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="s3-etag"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
@@ -172,7 +172,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", return_value="s3-etag"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
@@ -201,7 +201,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -250,7 +250,7 @@ class TestProcessPage:
             patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -272,7 +272,7 @@ class TestProcessPage:
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object", side_effect=Exception("S3 down")),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
@@ -462,7 +462,7 @@ class TestContentFilter:
             patch("infra.postgres.get_doc_by_source", return_value=None),
             patch("infra.postgres.create_doc") as mock_create,
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             connector = WebConnector({"seed_urls": [_URL], "skip_seed_pages": True})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=0)
@@ -484,7 +484,7 @@ class TestContentFilter:
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object", return_value="etag"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="Title"),
             patch("connectors.web._has_sufficient_content", return_value=True),
         ):
@@ -522,7 +522,7 @@ class TestContentFilter:
             patch("infra.postgres.create_doc", return_value=new_doc),
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object", return_value="etag"),
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch("connectors.web._extract_title", return_value="Title"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "skip_seed_pages": False, "min_content_chars": 0})

@@ -175,7 +175,7 @@ class TestProcessFile:
             patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
             patch("infra.postgres.update_doc_fields"),
             patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(connector, "_download_file", return_value=b'print("hello")'),
         ):
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
@@ -236,7 +236,7 @@ class TestProcessFile:
             patch("infra.postgres.get_doc_by_source", return_value=existing),
             patch("infra.postgres.update_doc_fields") as mock_update,
             patch("infra.s3.upload_object"),
-            patch("pipeline.enqueue.enqueue_upload_event"),
+            patch("pipeline.queue.enqueue.enqueue_upload_event"),
             patch.object(connector, "_download_file", return_value=b"new content"),
         ):
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())

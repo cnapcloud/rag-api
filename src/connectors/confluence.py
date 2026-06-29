@@ -12,7 +12,7 @@ import httpx
 
 from exceptions import ConfigError
 from pipeline.ops.parse import SUPPORTED_EXTENSIONS
-from pipeline.source_uri import normalize_source_uri
+from pipeline.utils.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
 
@@ -157,9 +157,10 @@ class ConfluenceConnector:
         page: dict,
     ) -> None:
         """Flow B step [3] for one Confluence page and its attachments."""
-        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source
         from infra.s3 import upload_object
-        from pipeline.enqueue import enqueue_upload_event
+        from pipeline.queue.enqueue import enqueue_upload_event
+        from pipeline.utils.doc_state import set_fetch_failed, set_fetching, set_staged
 
         page_id: str = page["id"]
         title: str = page["title"]
@@ -184,7 +185,8 @@ class ConfluenceConnector:
         doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
-            if doc.get("content_version") == version:
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            if doc.get("content_version") == version and not aborted:
                 logger.info("Page unchanged: source_uri=%s version=%s", source_uri, version)
                 self._process_page_attachments(client, kb_id, connector_id, page_id)
                 return
@@ -200,7 +202,7 @@ class ConfluenceConnector:
                 doc_type="html",
             )
         else:
-            update_doc_fields(doc["doc_id"], {"status": "fetching", "connector_id": connector_id})
+            set_fetching(doc["doc_id"], connector_id=connector_id)
 
         doc_id: str = doc["doc_id"]
         html_body: str = page.get("body", {}).get("view", {}).get("value", "")
@@ -221,21 +223,12 @@ class ConfluenceConnector:
                 },
             )
         except Exception as e:
-            update_doc_fields(doc_id, {"status": "failed", "error": str(e)[:500]})
+            set_fetch_failed(doc_id, str(e))
             logger.warning("S3 stage failed for page: source_uri=%s err=%s", source_uri, e)
             self._process_page_attachments(client, kb_id, connector_id, page_id)
             return
 
-        update_doc_fields(
-            doc_id,
-            {
-                "title": title,
-                "status": "pending",
-                "storage_key": storage_key,
-                "content_version": version,
-                "file_size": len(file_bytes),
-            },
-        )
+        set_staged(doc_id, title=title, storage_key=storage_key, content_version=version, file_size=len(file_bytes))
         enqueue_upload_event(doc_id, force=False)
         logger.info(
             "Confluence page staged: source_uri=%s doc_id=%s title=%r",
@@ -290,9 +283,10 @@ class ConfluenceConnector:
         attachment: dict,
     ) -> None:
         """Flow B step [3] for one Confluence attachment."""
-        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source
         from infra.s3 import upload_object
-        from pipeline.enqueue import enqueue_upload_event
+        from pipeline.queue.enqueue import enqueue_upload_event
+        from pipeline.utils.doc_state import set_fetch_failed, set_fetching, set_staged
 
         title: str = attachment["title"]
         ext = Path(title).suffix.lower()
@@ -325,7 +319,8 @@ class ConfluenceConnector:
         doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
-            if doc.get("content_version") == version:
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            if doc.get("content_version") == version and not aborted:
                 logger.info("Attachment unchanged: source_uri=%s", source_uri)
                 return
 
@@ -340,7 +335,7 @@ class ConfluenceConnector:
                 doc_type=ext.lstrip("."),
             )
         else:
-            update_doc_fields(doc["doc_id"], {"status": "fetching", "connector_id": connector_id})
+            set_fetching(doc["doc_id"], connector_id=connector_id)
 
         doc_id: str = doc["doc_id"]
 
@@ -351,7 +346,7 @@ class ConfluenceConnector:
             resp.raise_for_status()
             content = resp.content
         except Exception as e:
-            update_doc_fields(doc_id, {"status": "failed", "error": str(e)[:500]})
+            set_fetch_failed(doc_id, str(e))
             logger.warning(
                 "Attachment download failed: source_uri=%s err=%s", source_uri, e
             )
@@ -376,22 +371,13 @@ class ConfluenceConnector:
                 },
             )
         except Exception as e:
-            update_doc_fields(doc_id, {"status": "failed", "error": str(e)[:500]})
+            set_fetch_failed(doc_id, str(e))
             logger.warning(
                 "S3 stage failed for attachment: source_uri=%s err=%s", source_uri, e
             )
             return
 
-        update_doc_fields(
-            doc_id,
-            {
-                "title": title,
-                "status": "pending",
-                "storage_key": storage_key,
-                "content_version": version,
-                "file_size": len(content),
-            },
-        )
+        set_staged(doc_id, title=title, storage_key=storage_key, content_version=version, file_size=len(content))
         enqueue_upload_event(doc_id, force=False)
         logger.info(
             "Confluence attachment staged: source_uri=%s doc_id=%s title=%r",

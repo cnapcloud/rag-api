@@ -11,7 +11,7 @@ import httpx
 
 from exceptions import ConfigError
 from pipeline.ops.parse import SUPPORTED_EXTENSIONS
-from pipeline.source_uri import normalize_source_uri
+from pipeline.utils.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
 
@@ -174,9 +174,10 @@ class GitHubConnector:
         item: dict,
     ) -> None:
         """Flow B step [3] for one repository file."""
-        from infra.postgres import create_doc, get_doc_by_source, update_doc_fields
+        from infra.postgres import create_doc, get_doc_by_source
         from infra.s3 import upload_object
-        from pipeline.enqueue import enqueue_upload_event
+        from pipeline.queue.enqueue import enqueue_upload_event
+        from pipeline.utils.doc_state import set_fetch_failed, set_fetching, set_staged
 
         path: str = item["path"]
         sha: str = item["sha"]
@@ -198,7 +199,8 @@ class GitHubConnector:
         doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
-            if doc.get("content_version") == sha:
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            if doc.get("content_version") == sha and not aborted:
                 logger.info("File unchanged: source_uri=%s sha=%s", source_uri, sha)
                 return
 
@@ -213,14 +215,14 @@ class GitHubConnector:
                 doc_type=ext.lstrip("."),
             )
         else:
-            update_doc_fields(doc["doc_id"], {"status": "fetching", "connector_id": connector_id})
+            set_fetching(doc["doc_id"], connector_id=connector_id)
 
         doc_id: str = doc["doc_id"]
 
         try:
             content = self._download_file(client, path)
         except Exception as e:
-            update_doc_fields(doc_id, {"status": "failed", "error": str(e)[:500]})
+            set_fetch_failed(doc_id, str(e))
             logger.warning("File download failed: source_uri=%s err=%s", source_uri, e)
             return
 
@@ -240,20 +242,11 @@ class GitHubConnector:
                 },
             )
         except Exception as e:
-            update_doc_fields(doc_id, {"status": "failed", "error": str(e)[:500]})
+            set_fetch_failed(doc_id, str(e))
             logger.warning("S3 stage failed for file: source_uri=%s err=%s", source_uri, e)
             return
 
-        update_doc_fields(
-            doc_id,
-            {
-                "title": path,
-                "status": "pending",
-                "storage_key": storage_key,
-                "content_version": sha,
-                "file_size": len(content),
-            },
-        )
+        set_staged(doc_id, title=path, storage_key=storage_key, content_version=sha, file_size=len(content))
         enqueue_upload_event(doc_id, force=False)
         logger.info(
             "GitHub file staged: source_uri=%s doc_id=%s path=%r",

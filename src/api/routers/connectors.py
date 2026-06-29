@@ -19,6 +19,47 @@ _INDEXING_POLL_INTERVAL_SEC = 5
 _INDEXING_TIMEOUT_SEC = 1800  # 30 minutes
 
 
+_SOURCE_INT_FIELDS: dict[str, dict[str, tuple[int, int]]] = {
+    "web": {
+        "depth": (1, 10),
+        "max_pages": (1, 500),
+        "request_timeout_sec": (1, 300),
+        "request_delay_ms": (0, 5000),
+        "min_content_chars": (0, 10000),
+    },
+    "confluence": {
+        "max_pages": (1, 500),
+        "depth": (1, 10),
+    },
+}
+
+_ALL_INT_FIELDS: dict[str, tuple[int, int]] = {
+    field: bounds
+    for fields in _SOURCE_INT_FIELDS.values()
+    for field, bounds in fields.items()
+}
+
+
+def _validate_int_fields(config: dict, fields: dict[str, tuple[int, int]]) -> None:
+    for field, (lo, hi) in fields.items():
+        val = config.get(field)
+        if val is None:
+            continue
+        if not isinstance(val, int) or isinstance(val, bool):
+            raise ValueError(f"config.{field} must be an integer, got {type(val).__name__}")
+        if not (lo <= val <= hi):
+            raise ValueError(f"config.{field} must be between {lo} and {hi}, got {val}")
+
+
+def _validate_cron(value: str | None, field: str = "sync_schedule") -> str | None:
+    if value is None:
+        return value
+    from dagster._core.definitions.schedule_definition import is_valid_cron_schedule
+    if not is_valid_cron_schedule(value):
+        raise ValueError(f"Invalid cron expression for {field}: '{value}'")
+    return value
+
+
 class ConnectorCreate(BaseModel):
     kb_id: str
     name: str
@@ -33,6 +74,9 @@ class ConnectorCreate(BaseModel):
             seed_urls = self.config.get("seed_urls")
             if not seed_urls:
                 raise ValueError("config.seed_urls is required for source_type='web'")
+        if self.source_type in _SOURCE_INT_FIELDS:
+            _validate_int_fields(self.config, _SOURCE_INT_FIELDS[self.source_type])
+        _validate_cron(self.sync_schedule)
         return self
 
 
@@ -43,9 +87,16 @@ class ConnectorPatch(BaseModel):
     schedule_enabled: bool | None = None
     status: Literal["active", "paused"] | None = None
 
+    @model_validator(mode="after")
+    def validate_patch(self) -> "ConnectorPatch":
+        if self.config:
+            _validate_int_fields(self.config, _ALL_INT_FIELDS)
+        _validate_cron(self.sync_schedule)
+        return self
+
 
 @router.post("", status_code=201)
-async def create_connector(body: ConnectorCreate):
+async def create_connector(body: ConnectorCreate, background_tasks: BackgroundTasks):
     import psycopg.errors
 
     from infra.crypto import encrypt_config, mask_config
@@ -65,6 +116,10 @@ async def create_connector(body: ConnectorCreate):
         )
     except psycopg.errors.UniqueViolation as e:
         raise ConflictError(f"Connector already exists in KB: {body.kb_id}") from e
+
+    if body.sync_schedule is not None:
+        from infra.dagster_utils import reload_code_location
+        background_tasks.add_task(reload_code_location)
 
     return {**connector, "config": mask_config(connector.get("config") or {})}
 
@@ -104,7 +159,7 @@ async def get_connector_endpoint(connector_id: str):
 
 
 @router.patch("/{connector_id}")
-async def patch_connector(connector_id: str, body: ConnectorPatch):
+async def patch_connector(connector_id: str, body: ConnectorPatch, background_tasks: BackgroundTasks):
     from infra.crypto import encrypt_config, mask_config
     from infra.postgres import get_connector, update_connector
 
@@ -116,6 +171,10 @@ async def patch_connector(connector_id: str, body: ConnectorPatch):
         fields["config"] = encrypt_config(fields["config"])
     updated = update_connector(connector_id, fields)
 
+    if "sync_schedule" in fields:
+        from infra.dagster_utils import reload_code_location
+        background_tasks.add_task(reload_code_location)
+
     return {**updated, "config": mask_config(updated.get("config") or {})}
 
 
@@ -123,11 +182,16 @@ async def patch_connector(connector_id: str, body: ConnectorPatch):
 async def delete_connector_endpoint(connector_id: str, background_tasks: BackgroundTasks):
     from infra.postgres import get_connector, set_connector_status
 
-    if get_connector(connector_id) is None:
+    connector = get_connector(connector_id)
+    if connector is None:
         raise NotFoundError(f"Connector not found: {connector_id}")
 
+    had_schedule = connector.get("sync_schedule") is not None
     set_connector_status(connector_id, "deleting")
     background_tasks.add_task(_cascade_delete, connector_id)
+    if had_schedule:
+        from infra.dagster_utils import reload_code_location
+        background_tasks.add_task(reload_code_location)
     return {"connector_id": connector_id, "status": "deleting"}
 
 
@@ -174,16 +238,7 @@ async def trigger_sync(connector_id: str, background_tasks: BackgroundTasks):
         raise ConflictError(f"Connector is paused: {connector_id}")
 
     if connector["sync_status"] == "running":
-        sync_started_at_str = connector.get("sync_started_at")
-        if sync_started_at_str:
-            started_at = datetime.fromisoformat(sync_started_at_str).astimezone(timezone.utc)
-            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
-            if elapsed < _STALE_SYNC_TIMEOUT_SEC:
-                raise ConflictError(f"Sync already in progress: {connector_id}")
-            logger.warning(
-                "Stale sync lock detected, proceeding: connector_id=%s elapsed=%ds",
-                connector_id, int(elapsed),
-            )
+        raise ConflictError(f"Sync already in progress: {connector_id}")
 
     set_connector_sync_status(connector_id, "running")
     background_tasks.add_task(_run_sync, connector)
@@ -221,9 +276,12 @@ def _run_sync(connector: dict) -> None:
             logger.info("Connector sync complete: connector_id=%s", connector_id)
         set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(timezone.utc))
     except Exception as e:
-        set_connector_status(connector_id, "error")
+        if is_abort_requested(connector_id):
+            logger.info("Connector sync interrupted by abort: connector_id=%s err=%s", connector_id, e)
+        else:
+            set_connector_status(connector_id, "error")
+            logger.error("Connector sync failed: connector_id=%s err=%s", connector_id, e)
         set_connector_sync_status(connector_id, "idle")
-        logger.error("Connector sync failed: connector_id=%s err=%s", connector_id, e)
     finally:
         clear_abort(connector_id)
 
@@ -257,7 +315,10 @@ def _dispatch_sync(connector: dict) -> None:
 @router.post("/{connector_id}/sync/abort", status_code=202)
 async def abort_sync(connector_id: str):
     from connectors.abort import request_abort
-    from infra.postgres import get_connector
+    from infra.dagster_utils import terminate_dagster_run
+    from infra.postgres import get_active_ingest_docs_for_connector, get_connector, set_connector_sync_status
+    from pipeline.queue.enqueue import dequeue_upload_events
+    from pipeline.utils.doc_state import set_failed
 
     connector = get_connector(connector_id)
     if connector is None:
@@ -266,21 +327,30 @@ async def abort_sync(connector_id: str):
         raise ConflictError(f"No sync in progress: {connector_id}")
 
     request_abort(connector_id)
-    logger.info("Sync abort requested: connector_id=%s", connector_id)
+    set_connector_sync_status(connector_id, "idle")
+
+    docs = get_active_ingest_docs_for_connector(connector_id)
+
+    pending_ids = [d["doc_id"] for d in docs if d["status"] == "pending"]
+    for doc_id in pending_ids:
+        dequeue_upload_events(doc_id)
+        set_failed(doc_id, "Aborted")
+
+    run_ids = {d["run_id"] for d in docs if d["status"] == "running" and d.get("run_id")}
+    for doc_id in [d["doc_id"] for d in docs if d["status"] == "running"]:
+        set_failed(doc_id, "Aborted")
+    for run_id in run_ids:
+        try:
+            terminate_dagster_run(run_id)
+        except RuntimeError as e:
+            logger.warning("Dagster terminate failed (ignored): run_id=%s err=%s", run_id, e)
+
+    logger.info(
+        "Sync aborted: connector_id=%s pending_cleared=%d runs_terminated=%d",
+        connector_id, len(pending_ids), len(run_ids),
+    )
     return {"connector_id": connector_id, "status": "abort_requested"}
 
-
-@router.post("/{connector_id}/sync/reset", status_code=200)
-async def reset_sync_status(connector_id: str):
-    from infra.postgres import get_connector, set_connector_sync_status
-
-    connector = get_connector(connector_id)
-    if connector is None:
-        raise NotFoundError(f"Connector not found: {connector_id}")
-
-    set_connector_sync_status(connector_id, "idle")
-    logger.warning("Sync status manually reset to idle: connector_id=%s", connector_id)
-    return {"connector_id": connector_id, "sync_status": "idle"}
 
 
 @router.get("/{connector_id}/sync/status")

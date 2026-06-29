@@ -25,7 +25,7 @@ def run_ingest_pipeline(
     from pipeline.ops.embed import embed
     from pipeline.ops.meta import restore_indexed, set_failed, set_processing, update_meta
     from pipeline.ops.parse import parse
-    from pipeline.ops.upsert import upsert
+    from pipeline.utils.upsert import upsert
     from pipeline.ops.validate import validate
 
     doc = get_doc_by_id(doc_id)
@@ -90,13 +90,13 @@ def run_ingest_pipeline(
         raise
 
 
-def run_delete_pipeline(doc_id: str) -> None:
+def run_delete_pipeline(doc_id: str, force: bool = False) -> None:
     """Delete a document. Delegates to delete_doc() for status-based soft/hard delete logic."""
     from pipeline.ops.delete import delete_doc
     from pipeline.ops.meta import set_failed
 
     try:
-        delete_doc(doc_id, run_id="direct")
+        delete_doc(doc_id, run_id="direct", force=force)
     except Exception as e:
         set_failed(doc_id, f"delete_pipeline failed: {e}")
         logger.exception("Delete pipeline failed: doc_id=%s", doc_id)

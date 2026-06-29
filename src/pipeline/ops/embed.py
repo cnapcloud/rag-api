@@ -62,7 +62,7 @@ async def _embed_batch_async(
     batch_size: int = 32,
 ) -> list[tuple[list[float], list[int], list[float]]]:
     """Dense + Sparse 벡터를 asyncio.gather로 병렬 생성한다."""
-    from pipeline.ops.sparse import compute_sparse_tf
+    from pipeline.utils.sparse import compute_sparse_tf
 
     async def embed_dense_batch(batch: list[str]) -> list[list[float]]:
         loop = asyncio.get_event_loop()

@@ -18,8 +18,9 @@ def enqueue_upload_event(doc_id: str, force: bool = False) -> None:
 
     Sets status=pending unless the doc is already running or deleting.
     """
-    from infra.postgres import get_doc_by_id, update_doc_fields
+    from infra.postgres import get_doc_by_id
     from infra.redis import get_redis_client
+    from pipeline.utils.doc_state import set_pending
 
     doc = get_doc_by_id(doc_id)
     if doc is None:
@@ -27,21 +28,37 @@ def enqueue_upload_event(doc_id: str, force: bool = False) -> None:
         return
 
     current = doc.get("status", "")
+    if current == "deleted":
+        logger.warning("enqueue_upload_event: upload event dropped for deleted doc: doc_id=%s", doc_id)
+        return
     if current not in ("running", "deleting"):
-        update_doc_fields(doc_id, {"status": "pending"})
+        set_pending(doc_id)
 
     payload = json.dumps({"doc_id": doc_id, "force": force})
     get_redis_client().lpush(UPLOAD_QUEUE_KEY, payload)
     logger.info("Upload event enqueued: doc_id=%s", doc_id)
 
 
-def enqueue_delete_event(doc_id: str) -> None:
+def dequeue_upload_events(doc_id: str) -> None:
+    """Remove all upload events for doc_id from upload queue and delay queue."""
+    from infra.redis import get_redis_client
+
+    r = get_redis_client()
+    for force in (False, True):
+        payload = json.dumps({"doc_id": doc_id, "force": force})
+        r.lrem(UPLOAD_QUEUE_KEY, 0, payload)
+        r.zrem(UPLOAD_DELAY_KEY, payload)
+    logger.info("Upload events dequeued: doc_id=%s", doc_id)
+
+
+def enqueue_delete_event(doc_id: str, force: bool = False) -> None:
     """Push a delete event to the Redis delete queue.
 
     Sets status=pending unless the doc is already running or deleting.
     """
-    from infra.postgres import get_doc_by_id, update_doc_fields
+    from infra.postgres import get_doc_by_id
     from infra.redis import get_redis_client
+    from pipeline.utils.doc_state import set_pending
 
     doc = get_doc_by_id(doc_id)
     if doc is None:
@@ -49,9 +66,12 @@ def enqueue_delete_event(doc_id: str) -> None:
         return
 
     current = doc.get("status", "")
+    if current == "deleted":
+        logger.warning("enqueue_delete_event: delete event dropped for deleted doc: doc_id=%s", doc_id)
+        return
     if current not in ("running", "deleting"):
-        update_doc_fields(doc_id, {"status": "pending"})
+        set_pending(doc_id)
 
-    payload = json.dumps({"doc_id": doc_id})
+    payload = json.dumps({"doc_id": doc_id, "force": force})
     get_redis_client().lpush(DELETE_QUEUE_KEY, payload)
-    logger.info("Delete event enqueued: doc_id=%s", doc_id)
+    logger.info("Delete event enqueued: doc_id=%s force=%s", doc_id, force)

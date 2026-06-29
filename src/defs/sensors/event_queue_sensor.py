@@ -12,7 +12,7 @@ from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, Sk
 from defs.jobs.delete_job import delete_job
 from defs.jobs.ingest_job import ingest_job
 
-from pipeline.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
+from pipeline.queue.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,12 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
             event = {}
         doc_id = event.get("doc_id", "")
         if doc_id:
-            from infra.postgres import get_doc_by_id, update_doc_fields
+            from infra.postgres import get_doc_by_id
+            from pipeline.utils.doc_state import set_pending
             doc = get_doc_by_id(doc_id)
             current = doc.get("status", "") if doc else ""
             if current not in ("running", "deleting"):
-                update_doc_fields(doc_id, {"status": "pending"})
+                set_pending(doc_id)
         r.lpush(main_key, item)
     logger.debug("Drained %d item(s) from %s to %s", len(items), delay_key, main_key)
 
@@ -166,6 +167,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
             continue
 
         doc_id = event.get("doc_id", "")
+        force = event.get("force", False)
         if not doc_id:
             logger.warning("DELETE event missing doc_id (skipped): %s", raw)
             continue
@@ -177,7 +179,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
             continue
 
         kb_id = doc["kb_id"] if doc else ""
-        logger.info("Dispatching delete_job from queue: doc_id=%s kb=%s", doc_id, kb_id)
+        logger.info("Dispatching delete_job from queue: doc_id=%s kb=%s force=%s", doc_id, kb_id, force)
         yield RunRequest(
             run_key=str(uuid4()),
             job_name=delete_job.name,
@@ -186,6 +188,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
                     "delete_op": {
                         "config": {
                             "doc_id": doc_id,
+                            "force": force,
                         }
                     }
                 }
