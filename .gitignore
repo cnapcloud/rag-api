@@ -34,6 +34,8 @@ dagster_home/
 
 # Data / uploads
 data/
+!docker/data/
+!docker/data/kiwi_user_words.tsv
 
 # IDE
 .vscode/
