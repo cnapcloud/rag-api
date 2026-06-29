@@ -6,6 +6,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_RELOAD_MUTATION = """
+mutation {
+  reloadWorkspace {
+    __typename
+    ... on Workspace { locationEntries { name loadStatus } }
+    ... on PythonError { message }
+  }
+}
+"""
+
 _TERMINATE_MUTATION = """
 mutation TerminateRun($runId: String!) {
   terminateRun(runId: $runId, terminatePolicy: MARK_AS_CANCELED_IMMEDIATELY) {
@@ -16,6 +26,41 @@ mutation TerminateRun($runId: String!) {
   }
 }
 """
+
+
+def reload_code_location() -> None:
+    """Reload all Dagster workspace locations to pick up connector schedule changes.
+
+    Non-fatal: logs warning on failure. No-op in queue_worker mode.
+    """
+    from config.settings import get_settings
+    cfg = get_settings()
+
+    if cfg.queue_worker.enabled:
+        logger.info("Queue worker mode: Dagster reload skipped")
+        return
+
+    import httpx
+
+    url = f"{cfg.dagster.endpoint}/graphql"
+    try:
+        resp = httpx.post(url, json={"query": _RELOAD_MUTATION}, timeout=10.0)
+        resp.raise_for_status()
+        data = resp.json().get("data", {}).get("reloadWorkspace", {})
+        typename = data.get("__typename", "")
+        if typename == "Workspace":
+            entries = data.get("locationEntries", [])
+            logger.info(
+                "Dagster workspace reloaded: locations=%s",
+                [e["name"] for e in entries],
+            )
+        else:
+            logger.warning(
+                "Dagster workspace reload unexpected response: type=%s msg=%s",
+                typename, data.get("message", ""),
+            )
+    except Exception as e:
+        logger.warning("Dagster workspace reload failed (ignored): err=%s", e)
 
 
 def terminate_dagster_run(run_id: str) -> None:

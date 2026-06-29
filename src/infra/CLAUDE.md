@@ -4,22 +4,26 @@
 
 | 파일 | 역할 |
 |------|------|
-| `s3.py` | S3(boto3) 클라이언트 팩토리, 이벤트 폴링, 파일 CRUD |
-| `redis.py` | ETag 캐시 + KB/문서 메타데이터 CRUD (싱글턴 클라이언트) |
+| `postgres.py` | 커넥션 풀, 마이그레이션, KB/문서/커넥터 메타데이터 CRUD |
 | `qdrant.py` | QdrantClient 팩토리, 컬렉션 관리, 청크 CRUD |
+| `redis.py` | ETag 캐시, 이벤트 큐(lpush/rpop) |
+| `s3.py` | S3(boto3) 클라이언트 팩토리, 파일 CRUD |
+| `dagster_utils.py` | Dagster GraphQL API — workspace reload, run terminate |
+| `crypto.py` | 커넥터 config 필드 암호화/복호화/마스킹 (Fernet) |
 
 ## 주의사항
 
 - `redis.py`와 `s3.py`는 과거에 내용이 뒤바뀌는 버그가 있었음 (minio.py 시절). 파일을 새로 작성할 때 내용 확인 필수.
+- `dagster_utils.py`의 함수는 `queue_worker.enabled = true`일 때 no-op. Dagster 없이 동작하는 배포 모드를 고려할 것.
 
 ## Redis 키 컨벤션
 
 ```
 etag:{kb_id}:{doc_source}      # ETag 캐시
-kb:{kb_id}                     # KB 메타데이터 (hash)
-doc:{kb_id}:{doc_key}          # 문서 메타데이터 (hash)
-docs:{kb_id}                   # 문서 목록 (set)
-queue:ingest                   # Dagster 트리거 큐 (list, lpush/rpop)
+queue:upload                   # ingest 이벤트 큐 (list, lpush/rpop)
+queue:delete                   # delete 이벤트 큐 (list, lpush/rpop)
+queue:upload:delay             # ingest 재시도 대기 (sorted set, score=timestamp)
+queue:delete:delay             # delete 재시도 대기 (sorted set, score=timestamp)
 ```
 
 ## 클라이언트 싱글턴 패턴

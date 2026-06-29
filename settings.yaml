@@ -32,6 +32,7 @@ redis:
 
 ingestion:
   max_file_size_mb: 10
+  min_content_chars: 200
 
 dedup:
   enabled: true

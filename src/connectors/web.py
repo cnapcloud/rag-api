@@ -140,7 +140,10 @@ class WebConnector:
         self.timeout: int = int(config.get("request_timeout_sec", 30))
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.skip_seed_pages: bool = bool(config.get("skip_seed_pages", True))
-        self.min_content_chars: int = int(config.get("min_content_chars", 200))
+        from config.settings import get_settings
+        self.min_content_chars: int = int(
+            config.get("min_content_chars", get_settings().ingestion.min_content_chars)
+        )
         self.auth_headers: dict[str, str] = config.get("auth_headers") or {}
         self.auth_basic: tuple[str, str] | None = (
             (str(cfg["username"]), str(cfg["password"]))

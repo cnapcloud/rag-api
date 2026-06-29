@@ -31,3 +31,5 @@
 | [US-29](US-29-purge-doc-artifacts.md) | purge_doc_artifacts 공통 함수 추출 — Qdrant/S3/dedup 밴드 정리 통합 | done |
 | [US-30](US-30-api-status-guard.md) | API Status Guard — 활성 상태 문서 upload/delete/reindex 차단 | done |
 | [US-31](US-31-admin-ui-status-guard.md) | Admin UI Status Guard — proactive 체크 + 409 에러 토스트 (rag-admin) | done |
+| [US-32](US-32-connector-schedule-hot-reload.md) | Connector Schedule Hot Reload via Dagster Code Location Reload | done |
+| [US-33](US-33-connector-config-validation.md) | Connector Config Numeric Field Validation — type/range 검증 + min_content_chars settings 이전 | done |

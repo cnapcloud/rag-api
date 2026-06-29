@@ -52,6 +52,7 @@ class QdrantSettings(BaseModel):
 
 class IngestionSettings(BaseModel):
     max_file_size_mb: int = 200
+    min_content_chars: int = 200
 
 
 class QueueWorkerSettings(BaseModel):

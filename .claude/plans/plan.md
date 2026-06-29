@@ -25,3 +25,4 @@
 | [27](27-force-fail-api.md) | Force Fail API — 진행 중 문서 강제 실패 처리 + Dagster job terminate | US-27 | done |
 | [30](30-api-status-guard.md) | API Status Guard — 활성 상태 문서 upload/delete/reindex 차단 | US-30 | done |
 | [31](31-admin-ui-status-guard.md) | Admin UI Status Guard — proactive 체크 + 409 에러 토스트 | US-31 | done |
+| [32](32-connector-schedule-hot-reload.md) | Connector Schedule Hot Reload | US-32 | done |
