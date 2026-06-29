@@ -5,10 +5,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from rag.merger import rrf_merge
-from rag.retriever import SearchResult, search
+from rag_api.rag.merger import rrf_merge
+from rag_api.rag.retriever import SearchResult, search
 
 
 def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchResult:
@@ -81,6 +79,7 @@ class TestSearchSimilarity:
         s = MagicMock()
         s.retrieval.top_k = top_k
         s.retrieval.hybrid.alpha = 0.5
+        s.retrieval.rerank.enabled = False
         return s
 
     def test_uses_dense_only_mode(self):
@@ -90,8 +89,8 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = []
 
         with (
-            patch("rag.retriever._build_index", return_value=mock_index),
-            patch("config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
         ):
             asyncio.run(search("query", ["kb-test"], mode="similarity"))
 
@@ -110,8 +109,8 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = nodes
 
         with (
-            patch("rag.retriever._build_index", return_value=mock_index),
-            patch("config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.4))
 
@@ -127,8 +126,8 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = nodes
 
         with (
-            patch("rag.retriever._build_index", return_value=mock_index),
-            patch("config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.0))
 
@@ -142,8 +141,8 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = nodes
 
         with (
-            patch("rag.retriever._build_index", return_value=mock_index),
-            patch("config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.5))
 

@@ -54,7 +54,7 @@ def html_no_body_file():
 
 
 def test_html_clean_reader_strips_nav_footer_script(html_file):
-    from pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.ops.parse import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file)
 
@@ -74,7 +74,7 @@ def test_html_clean_reader_strips_nav_footer_script(html_file):
 
 
 def test_html_clean_reader_returns_single_document(html_file):
-    from pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.ops.parse import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file)
 
@@ -83,7 +83,7 @@ def test_html_clean_reader_returns_single_document(html_file):
 
 
 def test_html_clean_reader_metadata_contains_file_path(html_file):
-    from pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.ops.parse import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file)
 
@@ -91,7 +91,7 @@ def test_html_clean_reader_metadata_contains_file_path(html_file):
 
 
 def test_html_clean_reader_extra_info_merged(html_file):
-    from pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.ops.parse import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file, extra_info={"doc_id": "abc-123"})
 
@@ -100,7 +100,7 @@ def test_html_clean_reader_extra_info_merged(html_file):
 
 
 def test_html_clean_reader_no_body_tag(html_no_body_file):
-    from pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.ops.parse import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_no_body_file)
 

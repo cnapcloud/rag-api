@@ -178,7 +178,9 @@ class SyncStatusResponse(BaseModel):
 ## Step 4 — app.py 라우터 등록
 
 ```python
-from api.routers import connectors
+
+from rag_api.api.routers import connectors
+
 app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
 ```
 

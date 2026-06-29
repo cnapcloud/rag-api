@@ -67,7 +67,7 @@ def delete_doc(doc_id: str, run_id: str = "direct") -> None:
 ```python
 @op
 def delete_op(context: OpExecutionContext, config: DeleteConfig):
-    from pipeline.ops.delete import delete_doc
+    from rag_api.pipeline.ops import delete_doc
     delete_doc(config.doc_id, run_id=context.run_id)
     context.log.info("Delete done: doc_id=%s", config.doc_id)
 ```
@@ -92,8 +92,8 @@ def delete_job():
 
 ```python
 def run_delete_pipeline(doc_id: str) -> None:
-    from pipeline.ops.delete import delete_doc
-    from pipeline.ops.meta import set_failed
+    from rag_api.pipeline.ops import delete_doc
+    from rag_api.pipeline.ops.meta import set_failed
 
     try:
         delete_doc(doc_id, run_id="direct")

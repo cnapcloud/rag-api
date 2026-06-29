@@ -345,14 +345,14 @@ embeddings = {
 ```python
 from llama_index.core import VectorStoreIndex
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-from pipeline.ops.sparse import compute_sparse_tf
+from rag_api.pipeline import compute_sparse_tf
 
 vector_store = QdrantVectorStore(
     client=qdrant_client,
     collection_name=kb_id,
     enable_hybrid=True,
-    sparse_doc_fn=compute_sparse_tf,   # 인덱싱 시 TF sparse 벡터 생성
-    sparse_query_fn=compute_sparse_tf, # 쿼리 시 TF sparse 벡터 생성
+    sparse_doc_fn=compute_sparse_tf,  # 인덱싱 시 TF sparse 벡터 생성
+    sparse_query_fn=compute_sparse_tf,  # 쿼리 시 TF sparse 벡터 생성
     dense_vector_name="dense",
     sparse_vector_name="sparse",
 )
@@ -379,10 +379,10 @@ FastEmbed BM25를 직접 사용하지 않고, 순수 Python으로 구현한 TF �
 ```python
 # src/defs/definitions.py
 from dagster import Definitions
-from defs.jobs.ingest_job import ingest_job
-from defs.jobs.delete_job import delete_job
-from defs.sensors.event_queue_sensor import event_queue_sensor
-from defs.resources.resources import build_resources_from_settings
+from rag_api.defs.jobs.ingest_job import ingest_job
+from rag_api.defs.jobs import delete_job
+from rag_api.defs.sensors.event_queue_sensor import event_queue_sensor
+from rag_api.defs.resources.resources import build_resources_from_settings
 
 defs = Definitions(
     jobs=[ingest_job, delete_job],

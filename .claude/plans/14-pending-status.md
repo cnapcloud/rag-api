@@ -51,7 +51,7 @@ def set_pending(kb_id: str, doc_source: str) -> None:
 ```python
 def enqueue_upload_event(kb_id, doc_source, etag, file_size=0, force=False):
     from infra import postgres as pg
-    from pipeline.ops.meta import set_pending
+    from rag_api.pipeline.ops.meta import set_pending
 
     r = get_redis_client()
     payload = json.dumps({...})
@@ -59,7 +59,7 @@ def enqueue_upload_event(kb_id, doc_source, etag, file_size=0, force=False):
     doc = pg.get_doc_status(kb_id, doc_source)
     current_status = doc.get("status", "") if doc else ""
     if current_status not in ("running", "deleting"):
-        set_pending(kb_id, doc_source)   # Option A: 상태 변경 없음이면 pending 설정
+        set_pending(kb_id, doc_source)  # Option A: 상태 변경 없음이면 pending 설정
 
     r.lpush(UPLOAD_QUEUE_KEY, payload)
 ```
@@ -89,7 +89,7 @@ def _drain_delay_queue(r, delay_key: str, main_key: str) -> None:
         doc_source = event.get("doc_source", "")
         if kb_id and doc_source:
             from infra import postgres as pg
-            from pipeline.ops.meta import set_pending
+            from rag_api.pipeline.ops.meta import set_pending
             doc = pg.get_doc_status(kb_id, doc_source)
             current = doc.get("status", "") if doc else ""
             if current not in ("running", "deleting"):
@@ -105,7 +105,7 @@ asyncio.sleep 후 re-push 시 상태 체크:
 
 ```python
 async def _requeue_after_delay(self, queue_key: str, raw: str) -> None:
-    from config.settings import get_settings
+    from rag_api.config.settings import get_settings
     from infra.redis import get_redis_client
 
     delay = get_settings().queue_poll.retry_interval_sec
@@ -117,7 +117,7 @@ async def _requeue_after_delay(self, queue_key: str, raw: str) -> None:
         doc_source = event.get("doc_source", "")
         if kb_id and doc_source:
             from infra import postgres as pg
-            from pipeline.ops.meta import set_pending
+            from rag_api.pipeline.ops.meta import set_pending
             doc = pg.get_doc_status(kb_id, doc_source)
             current = doc.get("status", "") if doc else ""
             if current not in ("running", "deleting"):
@@ -139,7 +139,7 @@ async def _requeue_after_delay(self, queue_key: str, raw: str) -> None:
 async def recover_doc(kb_id: str, source: str):
     from dagster_pipeline.sensors.event_queue_sensor import enqueue_upload_event
     from infra.postgres import get_doc_status
-    from pipeline.ops.meta import set_failed
+    from rag_api.pipeline.ops.meta import set_failed
 
     data = get_doc_status(kb_id, source)
     if not data:

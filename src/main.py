@@ -20,13 +20,13 @@ from typing import Optional
 import typer
 
 def _configure_logging() -> None:
-    from config.settings import get_settings
+    from rag_api.config.settings import get_settings
 
     cfg = get_settings()
     level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
 
     if cfg.tracing.enabled:
-        from tracing.setup import OtelContextFilter
+        from rag_api.tracing import OtelContextFilter
 
         fmt = "%(asctime)s %(levelname)s [%(trace_id)s:%(span_id)s] %(name)s: %(message)s"
         logging.basicConfig(level=level, format=fmt, datefmt="%Y-%m-%d %H:%M:%S")
@@ -64,11 +64,11 @@ def ingest(
 
     import mimetypes
 
-    from infra.postgres import create_doc, get_doc_by_source, list_kb_ids
-    from infra.s3 import upload_object
-    from pipeline.queue.enqueue import enqueue_upload_event
-    from pipeline.utils.doc_state import set_pending, set_uploading
-    from pipeline.utils.source_uri import normalize_source_uri
+    from rag_api.infra.postgres import create_doc, get_doc_by_source, list_kb_ids
+    from rag_api.infra.s3 import upload_object
+    from rag_api.pipeline.queue.enqueue import enqueue_upload_event
+    from rag_api.pipeline.utils.doc_state import set_pending, set_uploading
+    from rag_api.pipeline.utils import normalize_source_uri
 
     if kb_id not in list_kb_ids():
         typer.echo(f"KB not found: {kb_id}", err=True)
@@ -118,8 +118,8 @@ def serve_mcp(
     port: Optional[int] = typer.Option(None, "--port", help="HTTP port for sse/streamable-http (overrides settings.yaml)"),
 ):
     """Start the MCP server (stdio, SSE, or streamable-http transport)."""
-    from config.settings import get_settings
-    from mcp_server.server import create_mcp_server
+    from rag_api.config.settings import get_settings
+    from rag_api.mcp_server.server import create_mcp_server
 
     cfg = get_settings().mcp
     if not cfg.enabled:
@@ -148,7 +148,7 @@ def serve_mcp(
 @app.command()
 def migrate():
     """Apply pending Postgres schema migrations."""
-    from infra.postgres import run_migrations
+    from rag_api.infra.postgres import run_migrations
 
     run_migrations()
     typer.echo("Migrations applied.")
@@ -163,10 +163,8 @@ def serve(
     """FastAPI 서버 실행."""
     import uvicorn
 
-    from api.app import create_app
-
     uvicorn.run(
-        "api.app:create_app",
+        "rag_api.api.app:create_app",
         host=host,
         port=port,
         reload=reload,
@@ -189,7 +187,7 @@ def search(
     """Hybrid search (CLI test)."""
     import asyncio
 
-    from rag.retriever import search as retriever_search
+    from rag_api.rag import search as retriever_search
 
     results, total, provider, fallback = asyncio.run(
         retriever_search(query=query, kb_ids=kb_ids, top_k=top_k, rerank_enabled=rerank)
@@ -217,8 +215,8 @@ def kb_create(
     tags: list[str] = typer.Option([], "--tag"),
 ):
     """KB 생성 (Postgres + Qdrant)."""
-    from infra.postgres import register_kb
-    from infra.qdrant import ensure_collection
+    from rag_api.infra.postgres import register_kb
+    from rag_api.infra.qdrant import ensure_collection
 
     register_kb(kb_id, kb_name, description, tags)
     ensure_collection(kb_id)
@@ -228,7 +226,7 @@ def kb_create(
 @kb_app.command("list")
 def kb_list():
     """KB 목록 조회."""
-    from infra.postgres import list_kb_ids
+    from rag_api.infra.postgres import list_kb_ids
 
     ids = list_kb_ids()
     if not ids:
@@ -241,9 +239,9 @@ def kb_list():
 @kb_app.command("delete")
 def kb_delete(kb_id: str = typer.Option(..., "--kb-id")):
     """KB 삭제 (Qdrant + S3 + Postgres)."""
-    from infra.postgres import delete_kb_meta
-    from infra.qdrant import drop_collection
-    from infra.s3 import delete_kb_prefix
+    from rag_api.infra.postgres import delete_kb_meta
+    from rag_api.infra.qdrant import drop_collection
+    from rag_api.infra.s3 import delete_kb_prefix
 
     drop_collection(kb_id)
     delete_kb_prefix(kb_id)

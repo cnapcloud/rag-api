@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -65,7 +65,7 @@ _BASE_DOC = {
 
 
 def _make_connector(extra: dict | None = None):
-    from connectors.github import GitHubConnector
+    from rag_api.connectors.github import GitHubConnector
 
     config: dict = {
         "owner": OWNER,
@@ -95,13 +95,13 @@ def _json_response(data) -> MagicMock:
 
 class TestConstructor:
     def test_requires_owner(self):
-        from exceptions import ConfigError
+        from rag_api.exceptions import ConfigError
 
         with pytest.raises(ConfigError, match="owner"):
             _make_connector({"owner": ""})
 
     def test_requires_repo(self):
-        from exceptions import ConfigError
+        from rag_api.exceptions import ConfigError
 
         with pytest.raises(ConfigError, match="repo"):
             _make_connector({"repo": ""})
@@ -171,11 +171,11 @@ class TestProcessFile:
         new_doc = {"doc_id": _DOC_ID}
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
-            patch("infra.postgres.update_doc_fields"),
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc) as mock_create,
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(connector, "_download_file", return_value=b'print("hello")'),
         ):
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
@@ -194,7 +194,7 @@ class TestProcessFile:
         existing = {**_BASE_DOC, "content_version": _FILE_SHA}
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing),
             patch.object(connector, "_download_file") as mock_dl,
         ):
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
@@ -205,7 +205,7 @@ class TestProcessFile:
         connector = _make_connector({"max_file_size_mb": 1})
         item = self._item(size=10 * 1024 * 1024)  # 10 MB > 1 MB limit
 
-        with patch("infra.postgres.get_doc_by_source", return_value=None) as mock_get:
+        with patch("rag_api.infra.postgres.get_doc_by_source", return_value=None) as mock_get:
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, item)
 
         mock_get.assert_not_called()
@@ -215,9 +215,9 @@ class TestProcessFile:
         new_doc = {"doc_id": _DOC_ID}
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
             patch.object(connector, "_download_file", side_effect=RuntimeError("network error")),
         ):
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
@@ -233,10 +233,10 @@ class TestProcessFile:
         existing = {**_BASE_DOC, "content_version": "old-sha", "status": "indexed"}
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event"),
             patch.object(connector, "_download_file", return_value=b"new content"),
         ):
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
@@ -252,7 +252,7 @@ class TestChunkCodeRouting:
         from llama_index.core import Document
         from unittest.mock import patch as _patch
 
-        from pipeline.ops.chunk import chunk
+        from rag_api.pipeline.ops.chunk import chunk
 
         doc = Document(text="def hello():\n    return 'world'\n" * 10, metadata={"doc_type": "py"})
 
@@ -263,7 +263,7 @@ class TestChunkCodeRouting:
         mock_parser = MagicMock()
         mock_parser.get_nodes_from_documents.return_value = [mock_node]
 
-        with _patch("pipeline.ops.chunk._build_code_parser", return_value=mock_parser) as mock_build:
+        with _patch("rag_api.pipeline.ops.chunk._build_code_parser", return_value=mock_parser) as mock_build:
             nodes = chunk([doc])
 
         mock_build.assert_called_once()
@@ -274,11 +274,11 @@ class TestChunkCodeRouting:
         from llama_index.core import Document
         from unittest.mock import patch as _patch
 
-        from pipeline.ops.chunk import chunk
+        from rag_api.pipeline.ops.chunk import chunk
 
         doc = Document(text="sample text " * 200, metadata={"doc_type": "pdf"})
 
-        with _patch("pipeline.ops.chunk._build_code_parser") as mock_code:
+        with _patch("rag_api.pipeline.ops.chunk._build_code_parser") as mock_code:
             nodes = chunk([doc], strategy="recursive", chunk_size=128, chunk_overlap=16)
 
         mock_code.assert_not_called()
@@ -290,12 +290,12 @@ class TestChunkCodeRouting:
 
 class TestParseCodeExtensions:
     def test_code_extensions_subset_of_supported(self):
-        from pipeline.ops.parse import CODE_EXTENSIONS, SUPPORTED_EXTENSIONS
+        from rag_api.pipeline.ops.parse import CODE_EXTENSIONS, SUPPORTED_EXTENSIONS
 
         assert CODE_EXTENSIONS.issubset(SUPPORTED_EXTENSIONS)
 
     def test_code_language_map_covers_all_code_extensions(self):
-        from pipeline.ops.parse import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
+        from rag_api.pipeline.ops.parse import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
 
         for ext in CODE_EXTENSIONS:
             assert ext in CODE_LANGUAGE_MAP, f"Missing language mapping for {ext}"

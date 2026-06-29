@@ -58,19 +58,19 @@ def _make_client(response: MagicMock) -> MagicMock:
 class TestProcessPage:
 
     def test_new_doc_creates_row_stages_and_enqueues(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         resp = _make_response()
         client = _make_client(resp)
         new_doc = {**_BASE_DOC, "status": "fetching"}
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object", return_value="etag-s3") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="Test Page"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc) as mock_create,
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object", return_value="etag-s3") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -95,18 +95,18 @@ class TestProcessPage:
         mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
 
     def test_unchanged_etag_updates_title_if_changed(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "title": _URL}
         resp = _make_response(etag="etag-v2")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="New Title"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="New Title"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -117,18 +117,18 @@ class TestProcessPage:
         mock_update.assert_called_once_with(_DOC_ID, {"title": "New Title"})
 
     def test_unchanged_etag_title_same_skips_all(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "title": "Same Title"}
         resp = _make_response(etag="etag-v2")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="Same Title"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Same Title"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -139,18 +139,18 @@ class TestProcessPage:
         mock_update.assert_not_called()
 
     def test_changed_etag_restages_and_reenqueues(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         existing_doc = {**_BASE_DOC, "content_version": "etag-old"}
         resp = _make_response(etag="etag-new")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object", return_value="s3-etag"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="Test Page"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object", return_value="s3-etag"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -162,18 +162,18 @@ class TestProcessPage:
         mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
 
     def test_deleted_doc_is_refetched(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         deleted_doc = {**_BASE_DOC, "status": "deleted", "content_version": "etag-v2"}
         resp = _make_response(etag="etag-v2")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object", return_value="s3-etag"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="Test Page"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=deleted_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object", return_value="s3-etag"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -183,7 +183,7 @@ class TestProcessPage:
         mock_enqueue.assert_called_once()
 
     def test_http_failure_sets_failed_on_existing_doc(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         existing_doc = {**_BASE_DOC}
         resp = MagicMock(spec=httpx.Response)
@@ -198,10 +198,10 @@ class TestProcessPage:
         ))
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -213,17 +213,17 @@ class TestProcessPage:
         assert "failed" in statuses
 
     def test_http_failure_creates_failed_doc_for_new_url(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         failed_doc = {**_BASE_DOC, "status": "failed"}
         client = _make_client(MagicMock())
         client.get = MagicMock(side_effect=httpx.ConnectError("timeout"))
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=failed_doc) as mock_create,
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object") as mock_upload,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=failed_doc) as mock_create,
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -238,7 +238,7 @@ class TestProcessPage:
         mock_upload.assert_not_called()
 
     def test_non_html_content_type_skips_processing(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         resp = MagicMock(spec=httpx.Response)
         resp.status_code = 200
@@ -247,10 +247,10 @@ class TestProcessPage:
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc") as mock_create,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc") as mock_create,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -261,19 +261,19 @@ class TestProcessPage:
         mock_enqueue.assert_not_called()
 
     def test_s3_failure_sets_failed_and_returns_html_for_link_discovery(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         new_doc = {**_BASE_DOC, "status": "fetching"}
         resp = _make_response()
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object", side_effect=Exception("S3 down")),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="Test Page"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object", side_effect=Exception("S3 down")),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Test Page"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -292,7 +292,7 @@ class TestShouldProcess:
 
     def test_no_patterns_restricts_to_seed_prefix(self):
         """Without include_patterns, only URLs under the seed_url path are allowed."""
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com/docs"]})
         assert c._should_process("https://example.com/docs/page") is True
@@ -302,7 +302,7 @@ class TestShouldProcess:
 
     def test_empty_seed_prefixes_blocks_all(self):
         """Empty _seed_prefixes blocks every URL."""
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         # Bypass __init__ validation to test _should_process in isolation.
         c = WebConnector.__new__(WebConnector)
@@ -314,7 +314,7 @@ class TestShouldProcess:
 
     def test_include_pattern_filters_within_seed_scope(self):
         """include_patterns is an additional filter within the seed prefix scope."""
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({
             "seed_urls": ["https://example.com/docs"],
@@ -325,7 +325,7 @@ class TestShouldProcess:
         assert c._should_process("https://external.com/docs/guide/intro") is False  # outside scope
 
     def test_include_pattern_filters_non_matching(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({
             "seed_urls": ["https://example.com"],
@@ -335,7 +335,7 @@ class TestShouldProcess:
         assert c._should_process("https://example.com/blog/post") is False
 
     def test_exclude_pattern_blocks_matching(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({
             "seed_urls": ["https://example.com"],
@@ -345,7 +345,7 @@ class TestShouldProcess:
         assert c._should_process("https://example.com/docs/page") is True
 
     def test_exclude_takes_precedence_over_include(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({
             "seed_urls": ["https://example.com"],
@@ -356,7 +356,7 @@ class TestShouldProcess:
         assert c._should_process("https://example.com/docs/page") is True
 
     def test_exclude_takes_precedence_over_domain_restriction(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({
             "seed_urls": ["https://example.com"],
@@ -372,7 +372,7 @@ class TestShouldProcess:
         Staging is skipped inside _process_page, not here.
         URLs outside seed scope are still blocked.
         """
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com/blog"]})
         assert c._should_process("https://example.com/blog/page/2") is True
@@ -385,7 +385,7 @@ class TestShouldProcess:
 
         Staging is skipped inside _process_page, not here.
         """
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com"]})
         assert c._should_process("https://example.com/blog?page=2") is True
@@ -396,21 +396,21 @@ class TestShouldProcess:
 class TestIsPaginationUrl:
 
     def test_path_page_number(self):
-        from connectors.web import _is_pagination_url
+        from rag_api.connectors.web import _is_pagination_url
 
         assert _is_pagination_url("https://example.com/blog/page/2") is True
         assert _is_pagination_url("https://example.com/blog/page/2/") is True
         assert _is_pagination_url("https://example.com/posts/page/10/") is True
 
     def test_query_page_param(self):
-        from connectors.web import _is_pagination_url
+        from rag_api.connectors.web import _is_pagination_url
 
         assert _is_pagination_url("https://example.com/blog?page=2") is True
         assert _is_pagination_url("https://example.com/blog?p=3") is True
         assert _is_pagination_url("https://example.com/blog?category=tech&page=2") is True
 
     def test_non_pagination_urls(self):
-        from connectors.web import _is_pagination_url
+        from rag_api.connectors.web import _is_pagination_url
 
         assert _is_pagination_url("https://example.com/blog/my-article") is False
         assert _is_pagination_url("https://example.com/blog/page-title") is False
@@ -420,31 +420,31 @@ class TestIsPaginationUrl:
 class TestHasSufficientContent:
 
     def test_long_content_returns_true(self):
-        from connectors.web import _has_sufficient_content
+        from rag_api.connectors.web import _has_sufficient_content
 
         with patch("trafilatura.extract", return_value="x" * 500):
             assert _has_sufficient_content("<html/>", 200) is True
 
     def test_short_content_returns_false(self):
-        from connectors.web import _has_sufficient_content
+        from rag_api.connectors.web import _has_sufficient_content
 
         with patch("trafilatura.extract", return_value="short"):
             assert _has_sufficient_content("<html/>", 200) is False
 
     def test_none_extraction_returns_false(self):
-        from connectors.web import _has_sufficient_content
+        from rag_api.connectors.web import _has_sufficient_content
 
         with patch("trafilatura.extract", return_value=None):
             assert _has_sufficient_content("<html/>", 200) is False
 
     def test_min_chars_zero_always_true(self):
-        from connectors.web import _has_sufficient_content
+        from rag_api.connectors.web import _has_sufficient_content
 
         with patch("trafilatura.extract", return_value=None):
             assert _has_sufficient_content("<html/>", 0) is True
 
     def test_extraction_error_fails_open(self):
-        from connectors.web import _has_sufficient_content
+        from rag_api.connectors.web import _has_sufficient_content
 
         with patch("trafilatura.extract", side_effect=Exception("boom")):
             assert _has_sufficient_content("<html/>", 200) is True
@@ -453,16 +453,16 @@ class TestHasSufficientContent:
 class TestContentFilter:
 
     def test_depth_zero_skips_staging_returns_html(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         resp = _make_response(etag="etag-v1")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc") as mock_create,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc") as mock_create,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             connector = WebConnector({"seed_urls": [_URL], "skip_seed_pages": True})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=0)
@@ -473,20 +473,20 @@ class TestContentFilter:
         mock_enqueue.assert_not_called()
 
     def test_depth_zero_skip_disabled_proceeds_to_stage(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         new_doc = {**_BASE_DOC, "status": "fetching"}
         resp = _make_response(etag="etag-new")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields"),
-            patch("infra.s3.upload_object", return_value="etag"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="Title"),
-            patch("connectors.web._has_sufficient_content", return_value=True),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object", return_value="etag"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Title"),
+            patch("rag_api.connectors.web._has_sufficient_content", return_value=True),
         ):
             connector = WebConnector({"seed_urls": [_URL], "skip_seed_pages": False})
             connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=0)
@@ -494,15 +494,15 @@ class TestContentFilter:
         mock_enqueue.assert_called_once()
 
     def test_insufficient_content_skips_staging_returns_html(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         resp = _make_response(etag="etag-v1")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc") as mock_create,
-            patch("connectors.web._has_sufficient_content", return_value=False),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc") as mock_create,
+            patch("rag_api.connectors.web._has_sufficient_content", return_value=False),
         ):
             connector = WebConnector({"seed_urls": [_URL], "skip_seed_pages": False, "min_content_chars": 200})
             result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -511,19 +511,19 @@ class TestContentFilter:
         mock_create.assert_not_called()
 
     def test_min_content_chars_zero_disables_check(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         new_doc = {**_BASE_DOC, "status": "fetching"}
         resp = _make_response(etag="etag-new")
         client = _make_client(resp)
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields"),
-            patch("infra.s3.upload_object", return_value="etag"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
-            patch("connectors.web._extract_title", return_value="Title"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object", return_value="etag"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Title"),
         ):
             connector = WebConnector({"seed_urls": [_URL], "skip_seed_pages": False, "min_content_chars": 0})
             connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
@@ -538,7 +538,7 @@ class TestContentFilter:
 class TestSync:
 
     def test_max_pages_limits_crawl(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         seed = ["https://example.com/p1", "https://example.com/p2", "https://example.com/p3"]
 
@@ -549,7 +549,7 @@ class TestSync:
         assert mock_process.call_count == 2
 
     def test_bfs_discovers_links_at_depth_1(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         html_with_link = '<html><body><a href="https://example.com/docs/page2">Next</a></body></html>'
         seed = ["https://example.com/docs"]
@@ -569,7 +569,7 @@ class TestSync:
         assert "https://example.com/docs/page2" in processed_urls
 
     def test_bfs_does_not_revisit_urls(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         seed = ["https://example.com/page", "https://example.com/page"]
 
@@ -580,7 +580,7 @@ class TestSync:
         assert mock_process.call_count == 1
 
     def test_depth_zero_does_not_follow_links(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         html_with_link = '<html><body><a href="https://example.com/page2">Next</a></body></html>'
         seed = ["https://example.com/page1"]
@@ -598,7 +598,7 @@ class TestSync:
 
     def test_queue_size_cap_prevents_memory_bloat(self):
         """Links beyond max_pages * 20 are dropped from queue."""
-        from connectors.web import WebConnector, _QUEUE_SIZE_MULTIPLIER
+        from rag_api.connectors.web import WebConnector, _QUEUE_SIZE_MULTIPLIER
 
         max_pages = 2
         cap = max_pages * _QUEUE_SIZE_MULTIPLIER
@@ -623,7 +623,7 @@ class TestSync:
 
     def test_external_domain_blocked_without_include_patterns(self):
         """Auto domain restriction prevents crawling external sites."""
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         external_html = '<html><body><a href="https://external.com/evil">ext</a></body></html>'
         seed = ["https://example.com/docs"]
@@ -642,27 +642,27 @@ class TestSync:
         assert not any("external.com" in u for u in processed_urls)
 
     def test_default_max_pages_is_50(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com"]})
         assert c.max_pages == 50
 
     def test_default_depth_is_2(self):
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         c = WebConnector({"seed_urls": ["https://example.com"]})
         assert c.depth == 2
 
     def test_missing_seed_urls_raises_config_error(self):
-        from exceptions import ConfigError
-        from connectors.web import WebConnector
+        from rag_api.exceptions import ConfigError
+        from rag_api.connectors.web import WebConnector
 
         with pytest.raises(ConfigError, match="seed_url"):
             WebConnector({})
 
     def test_empty_seed_urls_raises_config_error(self):
-        from exceptions import ConfigError
-        from connectors.web import WebConnector
+        from rag_api.exceptions import ConfigError
+        from rag_api.connectors.web import WebConnector
 
         with pytest.raises(ConfigError, match="seed_url"):
             WebConnector({"seed_urls": []})
@@ -676,7 +676,7 @@ class TestAuthConfig:
 
     def _captured_client_kwargs(self, config: dict) -> dict:
         """Run sync() with a no-op _process_page and capture httpx.Client kwargs."""
-        from connectors.web import WebConnector
+        from rag_api.connectors.web import WebConnector
 
         captured: dict = {}
 
@@ -690,7 +690,7 @@ class TestAuthConfig:
             def get(self, *_, **__):
                 return MagicMock()
 
-        with patch("connectors.web.httpx.Client", FakeClient):
+        with patch("rag_api.connectors.web.httpx.Client", FakeClient):
             with patch.object(WebConnector, "_process_page", return_value=None):
                 WebConnector(config).sync(KB_ID, CONNECTOR_ID)
 
@@ -743,7 +743,7 @@ class TestAuthConfig:
 class TestDispatchSync:
 
     def test_web_connector_dispatched_for_web_source_type(self):
-        from api.routers.connectors import _dispatch_sync
+        from rag_api.api.routers.connectors import _dispatch_sync
 
         connector = {
             "connector_id": CONNECTOR_ID,
@@ -752,7 +752,7 @@ class TestDispatchSync:
             "config": {"seed_urls": ["https://example.com"]},
         }
 
-        with patch("connectors.web.WebConnector.sync") as mock_sync:
+        with patch("rag_api.connectors.web.WebConnector.sync") as mock_sync:
             _dispatch_sync(connector)
 
         mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
@@ -760,7 +760,7 @@ class TestDispatchSync:
     def test_github_connector_dispatched(self):
         from unittest.mock import MagicMock, patch
 
-        from api.routers.connectors import _dispatch_sync
+        from rag_api.api.routers.connectors import _dispatch_sync
 
         connector = {
             "connector_id": CONNECTOR_ID,
@@ -769,7 +769,7 @@ class TestDispatchSync:
             "config": {"owner": "my-org", "repo": "my-repo"},
         }
 
-        with patch("connectors.github.GitHubConnector") as mock_cls:
+        with patch("rag_api.connectors.github.GitHubConnector") as mock_cls:
             mock_instance = MagicMock()
             mock_cls.return_value = mock_instance
             _dispatch_sync(connector)
@@ -785,7 +785,7 @@ class TestDispatchSync:
 class TestExtractTitle:
 
     def test_og_title_wins(self):
-        from connectors.web import _extract_title
+        from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head>
@@ -796,7 +796,7 @@ class TestExtractTitle:
         assert _extract_title(html, "fallback") == "OG Title"
 
     def test_article_h1_wins_over_h1(self):
-        from connectors.web import _extract_title
+        from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head><title>HTML Title</title></head>
@@ -805,7 +805,7 @@ class TestExtractTitle:
         assert _extract_title(html, "fallback") == "Article H1"
 
     def test_h1_wins_over_title(self):
-        from connectors.web import _extract_title
+        from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head><title>HTML Title</title></head>
@@ -814,7 +814,7 @@ class TestExtractTitle:
         assert _extract_title(html, "fallback") == "Page H1"
 
     def test_html_title_used_when_no_h1(self):
-        from connectors.web import _extract_title
+        from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head><title>HTML Title</title></head>
@@ -823,13 +823,13 @@ class TestExtractTitle:
         assert _extract_title(html, "fallback") == "HTML Title"
 
     def test_fallback_url_used_when_no_metadata(self):
-        from connectors.web import _extract_title
+        from rag_api.connectors.web import _extract_title
 
         html = "<html><body><p>No metadata.</p></body></html>"
         assert _extract_title(html, "https://example.com/page") == "https://example.com/page"
 
     def test_empty_og_content_falls_through(self):
-        from connectors.web import _extract_title
+        from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head>
@@ -840,7 +840,7 @@ class TestExtractTitle:
         assert _extract_title(html, "fallback") == "HTML Title"
 
     def test_empty_h1_falls_through_to_title(self):
-        from connectors.web import _extract_title
+        from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head><title>HTML Title</title></head>

@@ -27,18 +27,18 @@ def ingest_run_config():
 def test_ingest_job_success(ingest_run_config):
     """ingest_job full flow integration test (requires infrastructure)."""
     from dagster import execute_in_process
-    from defs.jobs.ingest_job import ingest_job
+    from rag_api.defs.jobs.ingest_job import ingest_job
 
     doc = {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/test.pdf", "file_size": 1024, "status": "pending"}
 
     with (
-        patch("infra.postgres.get_doc_by_id", return_value=doc),
-        patch("infra.postgres.update_doc_fields"),
-        patch("pipeline.ops.parse.download_by_key"),
-        patch("pipeline.ops.parse.SimpleDirectoryReader") as mock_reader,
-        patch("pipeline.ops.embed.build_embed_model") as mock_embed,
-        patch("pipeline.ops.embed.build_sparse_model", return_value=None),
-        patch("infra.qdrant.get_qdrant_client") as mock_qdrant_client,
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value=doc),
+        patch("rag_api.infra.postgres.update_doc_fields"),
+        patch("rag_api.pipeline.ops.parse.download_by_key"),
+        patch("rag_api.pipeline.ops.parse.SimpleDirectoryReader") as mock_reader,
+        patch("rag_api.pipeline.ops.embed.build_embed_model") as mock_embed,
+        patch("rag_api.pipeline.ops.embed.build_sparse_model", return_value=None),
+        patch("rag_api.infra.qdrant.get_qdrant_client") as mock_qdrant_client,
     ):
         from llama_index.core import Document
         mock_reader.return_value.load_data.return_value = [Document(text="test document content")]
@@ -53,25 +53,25 @@ def test_ingest_job_success(ingest_run_config):
 
 def test_ingest_job_validate_passes(ingest_run_config):
     """validate_op emits valid_config when doc exists and file size is within limits."""
-    from defs.jobs.ingest_job import ingest_job
+    from rag_api.defs.jobs.ingest_job import ingest_job
 
     doc = {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/test.pdf", "file_size": 1024, "status": "pending"}
 
-    from pipeline.ops.dedup.types import DedupResult
+    from rag_api.pipeline.ops.dedup.types import DedupResult
 
     with (
-        patch("infra.postgres.get_doc_by_id", return_value=doc),
-        patch("infra.postgres.update_doc_fields"),
-        patch("pipeline.ops.parse.parse", return_value=[]),
-        patch("pipeline.ops.dedup.run_simhash_detection",
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value=doc),
+        patch("rag_api.infra.postgres.update_doc_fields"),
+        patch("rag_api.pipeline.ops.parse.parse", return_value=[]),
+        patch("rag_api.pipeline.ops.dedup.run_simhash_detection",
               return_value=DedupResult(body_match="identical_level", needs_indexing=True)),
-        patch("pipeline.ops.dedup.run_verdict"),
-        patch("pipeline.ops.chunk.chunk", return_value=[MagicMock()]),
-        patch("pipeline.ops.embed.embed", return_value=[]),
-        patch("pipeline.utils.upsert.upsert") as mock_upsert,
-        patch("pipeline.ops.meta.update_meta"),
+        patch("rag_api.pipeline.ops.dedup.run_verdict"),
+        patch("rag_api.pipeline.ops.chunk.chunk", return_value=[MagicMock()]),
+        patch("rag_api.pipeline.ops.embed.embed", return_value=[]),
+        patch("rag_api.pipeline.utils.upsert.upsert") as mock_upsert,
+        patch("rag_api.pipeline.ops.meta.update_meta"),
     ):
-        from pipeline.utils.upsert import UpsertResult
+        from rag_api.pipeline.utils.upsert import UpsertResult
         mock_upsert.return_value = UpsertResult(kb_id="kb-test", doc_id=DOC_ID, chunk_count=1, doc_created_at="")
         result = ingest_job.execute_in_process(run_config=ingest_run_config)
         assert result.success

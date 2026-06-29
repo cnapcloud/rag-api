@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import infra.postgres as pg
+import rag_api.infra.postgres as pg
 
 
 # ──────────────────────────────────────────────
@@ -74,7 +74,7 @@ def _fake_pool(fetchone_row=None, fetchall_rows=None):
     pool.connection.return_value.__enter__ = lambda s: conn
     pool.connection.return_value.__exit__ = MagicMock(return_value=False)
 
-    with patch("infra.postgres.get_pool", return_value=pool):
+    with patch("rag_api.infra.postgres.get_pool", return_value=pool):
         yield conn, cursor
 
 

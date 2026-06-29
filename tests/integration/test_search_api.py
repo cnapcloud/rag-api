@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
-from rag.retriever import SearchResult
+from rag_api.api.app import create_app
+from rag_api.rag.retriever import SearchResult
 
 
 def _make_result(chunk_id: str) -> SearchResult:
@@ -30,7 +30,7 @@ def _make_result(chunk_id: str) -> SearchResult:
 
 @pytest.fixture
 def client():
-    with patch("api.app._init_infrastructure"):
+    with patch("rag_api.api.app._init_infrastructure"):
         app = create_app()
     return TestClient(app)
 
@@ -47,8 +47,8 @@ def test_search_returns_results(client):
     mock_settings.retrieval.similarity.min_score = 0.0
 
     with (
-        patch("rag.retriever.search", new=AsyncMock(return_value=(mock_results[:2], 3, "jina", False))),
-        patch("config.settings.get_settings", return_value=mock_settings),
+        patch("rag_api.rag.retriever.search", new=AsyncMock(return_value=(mock_results[:2], 3, "jina", False))),
+        patch("rag_api.config.settings.get_settings", return_value=mock_settings),
     ):
         resp = client.post(
             "/api/search",
@@ -87,8 +87,8 @@ def test_search_similarity_mode_with_min_score(client):
     mock_settings.retrieval.similarity.min_score = 0.0
 
     with (
-        patch("rag.retriever.search", new=AsyncMock(return_value=(mock_results, 2, "none", False))),
-        patch("config.settings.get_settings", return_value=mock_settings),
+        patch("rag_api.rag.retriever.search", new=AsyncMock(return_value=(mock_results, 2, "none", False))),
+        patch("rag_api.config.settings.get_settings", return_value=mock_settings),
     ):
         resp = client.post(
             "/api/search",

@@ -8,14 +8,14 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from rag_api.api.app import create_app
 
 DOC_ID = "11111111-1111-1111-1111-111111111111"
 
 
 @pytest.fixture
 def client():
-    with patch("api.app._init_infrastructure"):
+    with patch("rag_api.api.app._init_infrastructure"):
         app = create_app()
     return TestClient(app)
 
@@ -42,13 +42,13 @@ class TestRecoverDocEndpoint:
 
         with (
             # get_doc_by_id called twice: once in recover_doc, once inside enqueue_upload_event
-            patch("infra.postgres.get_doc_by_id", side_effect=[
+            patch("rag_api.infra.postgres.get_doc_by_id", side_effect=[
                 {"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running", "run_id": "r1"},
                 {"doc_id": DOC_ID, "kb_id": "kb-test", "status": "failed"},
             ]),
-            patch("infra.postgres.update_doc_fields"),
-            patch("pipeline.ops.meta.set_failed", side_effect=fake_set_failed),
-            patch("infra.redis.get_redis_client", return_value=fake_redis),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.pipeline.ops.meta.set_failed", side_effect=fake_set_failed),
+            patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
         ):
             resp = client.post(f"/api/kb/kb-test/docs/{DOC_ID}/recover")
 
@@ -70,28 +70,28 @@ class TestRecoverDocEndpoint:
 
     def test_indexed_doc_returns_409(self, client):
         """status=indexed doc -> 409 ConflictError."""
-        with patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "indexed"}):
+        with patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "indexed"}):
             resp = client.post(f"/api/kb/kb-test/docs/{DOC_ID}/recover")
 
         assert resp.status_code == 409
 
     def test_missing_doc_returns_404(self, client):
         """Non-existent doc -> 404 NotFoundError."""
-        with patch("infra.postgres.get_doc_by_id", return_value=None):
+        with patch("rag_api.infra.postgres.get_doc_by_id", return_value=None):
             resp = client.post(f"/api/kb/kb-test/docs/{DOC_ID}/recover")
 
         assert resp.status_code == 404
 
     def test_kb_mismatch_returns_404(self, client):
         """Doc belongs to different KB -> 404."""
-        with patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "other-kb", "status": "running"}):
+        with patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "other-kb", "status": "running"}):
             resp = client.post(f"/api/kb/kb-test/docs/{DOC_ID}/recover")
 
         assert resp.status_code == 404
 
     def test_failed_doc_returns_409(self, client):
         """status=failed doc -> 409 (not recoverable via this endpoint)."""
-        with patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "failed", "error": "oops"}):
+        with patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "failed", "error": "oops"}):
             resp = client.post(f"/api/kb/kb-test/docs/{DOC_ID}/recover")
 
         assert resp.status_code == 409

@@ -7,12 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
-from pipeline.utils.purge import purge_doc_artifacts
+from rag_api.pipeline.utils.purge import purge_doc_artifacts
 
-_DEL_CHUNKS = "infra.qdrant.delete_chunks_by_doc_id"
-_DEL_SIMHASH = "infra.postgres.delete_simhash_bands"
-_DEL_MINHASH = "infra.postgres.delete_minhash_bands"
-_DEL_S3 = "infra.s3.delete_by_key"
+_DEL_CHUNKS = "rag_api.infra.qdrant.delete_chunks_by_doc_id"
+_DEL_SIMHASH = "rag_api.infra.postgres.delete_simhash_bands"
+_DEL_MINHASH = "rag_api.infra.postgres.delete_minhash_bands"
+_DEL_S3 = "rag_api.infra.s3.delete_by_key"
 
 DOC_ID = "doc-abc"
 KB_ID = "kb-01"

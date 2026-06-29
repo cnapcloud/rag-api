@@ -53,11 +53,12 @@ Key behaviours:
 ### `src/api/routers/connectors.py`
 
 Replace placeholder `_dispatch_sync`:
+
 ```python
 def _dispatch_sync(connector: dict) -> None:
     source_type = connector["source_type"]
     if source_type == "web":
-        from connectors.web import WebConnector
+        from rag_api.connectors import WebConnector
         WebConnector(connector.get("config") or {}).sync(
             connector["kb_id"], connector["connector_id"]
         )

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
-from pipeline.ops.dedup.simhash import (
+from rag_api.pipeline.ops.dedup.simhash import (
     compute_simhash,
     compute_title_hash,
     get_bands,
@@ -15,7 +13,6 @@ from pipeline.ops.dedup.simhash import (
     run_simhash_detection,
     u64_to_i64,
 )
-from pipeline.ops.dedup.types import DedupResult
 
 
 # ──────────────────────────────────────────────
@@ -121,10 +118,10 @@ def test_get_bands_indices():
 # run_simhash_detection — Postgres mock
 # ──────────────────────────────────────────────
 
-_PG_FIND = "infra.postgres.find_simhash_candidates"
-_PG_FP = "infra.postgres.get_docs_fingerprints"
-_PG_SAVE = "infra.postgres.save_simhash_bands"
-_PG_UPDATE = "infra.postgres.update_doc_fields"
+_PG_FIND = "rag_api.infra.postgres.find_simhash_candidates"
+_PG_FP = "rag_api.infra.postgres.get_docs_fingerprints"
+_PG_SAVE = "rag_api.infra.postgres.save_simhash_bands"
+_PG_UPDATE = "rag_api.infra.postgres.update_doc_fields"
 
 
 def _make_cfg(hamming_identical_threshold: int = 3, hamming_similar_threshold: int = 10):

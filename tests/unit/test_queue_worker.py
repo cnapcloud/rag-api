@@ -58,7 +58,7 @@ def _fake_set_deleting(doc_id, run_id=""):
 
 def test_poll_upload_not_processing_dispatches():
     """Upload event, doc not processing -> _run_ingest task created."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
@@ -72,11 +72,11 @@ def test_poll_upload_not_processing_dispatches():
         return MagicMock()
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value=None),
-        patch("pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
+        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
         patch("asyncio.create_task", side_effect=fake_create_task),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -87,7 +87,7 @@ def test_poll_upload_not_processing_dispatches():
 
 def test_poll_upload_while_processing_delays():
     """Upload event, doc is running -> zadd to upload delay sorted set."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
@@ -95,9 +95,9 @@ def test_poll_upload_while_processing_delays():
     fake_redis, _, zsets = _make_redis(upload_events=[{"doc_id": DOC_ID, "force": False}])
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running"}),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running"}),
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -108,7 +108,7 @@ def test_poll_upload_while_processing_delays():
 
 def test_poll_delete_not_processing_dispatches():
     """Delete event, doc not processing -> _run_delete task created."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
@@ -122,11 +122,11 @@ def test_poll_delete_not_processing_dispatches():
         return MagicMock()
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value=None),
-        patch("pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
+        patch("rag_api.pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
         patch("asyncio.create_task", side_effect=fake_create_task),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -137,7 +137,7 @@ def test_poll_delete_not_processing_dispatches():
 
 def test_poll_delete_while_processing_delays():
     """Delete event, doc is running -> zadd to delete delay sorted set."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
@@ -145,9 +145,9 @@ def test_poll_delete_while_processing_delays():
     fake_redis, _, zsets = _make_redis(delete_events=[{"doc_id": DOC_ID}])
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running"}),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running"}),
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -157,7 +157,7 @@ def test_poll_delete_while_processing_delays():
 
 def test_poll_upload_while_deleting_delays():
     """Upload event, doc is deleting -> delayed (added to delay queue, no dispatch)."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
@@ -171,10 +171,10 @@ def test_poll_upload_while_deleting_delays():
         return MagicMock()
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting"}),
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting"}),
         patch("asyncio.create_task", side_effect=fake_create_task),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -185,7 +185,7 @@ def test_poll_upload_while_deleting_delays():
 
 def test_poll_delete_while_deleting_dispatched():
     """Delete event, doc is already in deleting state -> still dispatched (no guard)."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
@@ -199,10 +199,10 @@ def test_poll_delete_while_deleting_dispatched():
         return MagicMock()
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting"}),
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "deleting"}),
         patch("asyncio.create_task", side_effect=fake_create_task),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -213,7 +213,7 @@ def test_poll_delete_while_deleting_dispatched():
 
 def test_duplicate_delay_overwrites_not_accumulates():
     """Same doc_id blocked twice -> only one entry in delay sorted set (overwrite)."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
@@ -225,9 +225,9 @@ def test_duplicate_delay_overwrites_not_accumulates():
     ])
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running"}),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running"}),
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -237,7 +237,7 @@ def test_duplicate_delay_overwrites_not_accumulates():
 
 def test_poll_upload_fills_limit_delete_still_runs():
     """Upload queue at max_per_poll capacity -> delete queue is still processed independently."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     max_per_poll = 5
     worker = QueueWorker(max_per_poll=max_per_poll)
@@ -260,12 +260,12 @@ def test_poll_upload_fills_limit_delete_still_runs():
         return MagicMock()
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value=None),
-        patch("pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
-        patch("pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
+        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
         patch("asyncio.create_task", side_effect=fake_create_task),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         asyncio.run(worker._poll())
@@ -276,7 +276,7 @@ def test_poll_upload_fills_limit_delete_still_runs():
 
 def test_poll_returns_true_when_upload_hits_limit():
     """_poll returns True when upload queue reaches max_per_poll."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     max_per_poll = 5
     worker = QueueWorker(max_per_poll=max_per_poll)
@@ -290,11 +290,11 @@ def test_poll_returns_true_when_upload_hits_limit():
         return MagicMock()
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value=None),
-        patch("pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
+        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
         patch("asyncio.create_task", side_effect=fake_create_task),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         result = asyncio.run(worker._poll())
@@ -304,7 +304,7 @@ def test_poll_returns_true_when_upload_hits_limit():
 
 def test_poll_returns_false_when_queues_drained():
     """_poll returns False when both queues exhaust before hitting max_per_poll."""
-    from pipeline.queue.queue_worker import QueueWorker
+    from rag_api.pipeline.queue.queue_worker import QueueWorker
 
     worker = QueueWorker(max_per_poll=5)
     worker._semaphore = asyncio.Semaphore(10)
@@ -318,12 +318,12 @@ def test_poll_returns_false_when_queues_drained():
         return MagicMock()
 
     with (
-        patch("infra.redis.get_redis_client", return_value=fake_redis),
-        patch("infra.postgres.get_doc_by_id", return_value=None),
-        patch("pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
-        patch("pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
+        patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
+        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
         patch("asyncio.create_task", side_effect=fake_create_task),
-        patch("config.settings.get_settings") as mock_cfg,
+        patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
         mock_cfg.return_value.queue_poll.retry_interval_sec = 30
         result = asyncio.run(worker._poll())
@@ -333,7 +333,7 @@ def test_poll_returns_false_when_queues_drained():
 
 def test_drain_delay_queue_moves_ready_items():
     """_drain_delay_queue moves items with score <= now to main queue."""
-    from pipeline.queue.queue_worker import _drain_delay_queue
+    from rag_api.pipeline.queue.queue_worker import _drain_delay_queue
 
     _, lists, zsets = _make_redis()
 
@@ -361,8 +361,8 @@ def test_drain_delay_queue_moves_ready_items():
     r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() - 1})  # already ready
 
     with (
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "status": "pending"}),
-        patch("infra.postgres.update_doc_fields"),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "status": "pending"}),
+        patch("rag_api.infra.postgres.update_doc_fields"),
     ):
         _drain_delay_queue(r, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY)
 
@@ -373,7 +373,7 @@ def test_drain_delay_queue_moves_ready_items():
 
 def test_drain_delay_queue_skips_future_items():
     """_drain_delay_queue does not move items with score > now."""
-    from pipeline.queue.queue_worker import _drain_delay_queue
+    from rag_api.pipeline.queue.queue_worker import _drain_delay_queue
 
     _, lists, zsets = _make_redis()
 

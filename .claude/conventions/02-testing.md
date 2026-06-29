@@ -50,7 +50,8 @@ assert len(nodes) > 1  # 통과
 ```python
 # validate.py가 redis_infra.get_doc_etag를 사용하는 경우
 with patch("pipeline.ops.validate.redis_infra.get_doc_etag", return_value=None):
-    from pipeline.ops.validate import validate
+    from rag_api.pipeline.ops import validate
+
     assert validate("kb-test", "doc.pdf", "etag-abc") is True
 ```
 

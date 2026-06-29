@@ -329,9 +329,9 @@ settings.example.yaml   # 민감값 제외 예시 (git 추적)
 ### 접근 패턴
 
 ```python
-from config.settings import get_settings
+from rag_api.config.settings import get_settings
 
-cfg = get_settings()   # 싱글턴, 최초 1회 로드 후 캐시
+cfg = get_settings()  # 싱글턴, 최초 1회 로드 후 캐시
 chunk_size = cfg.chunking.chunk_size
 ```
 

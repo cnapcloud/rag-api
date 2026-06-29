@@ -60,6 +60,7 @@ RAG	SL	10.0
 _kiwi = None
 _lock = Lock()
 
+
 def get_kiwi():
     global _kiwi
     if _kiwi is not None:
@@ -68,13 +69,14 @@ def get_kiwi():
         if _kiwi is not None:
             return _kiwi
         from kiwipiepy import Kiwi
-        from config.settings import get_settings
+        from rag_api.config.settings import get_settings
         kiwi = Kiwi()
         path_str = get_settings().dedup.user_words_path
         if path_str:
             _load_user_words(kiwi, Path(path_str))
         _kiwi = kiwi
         return _kiwi
+
 
 def _load_user_words(kiwi, path: Path) -> None:
     if not path.is_absolute():
@@ -111,7 +113,7 @@ def _load_user_words(kiwi, path: Path) -> None:
 ```python
 @pytest.fixture(autouse=True)
 def reset_kiwi_singleton():
-    import pipeline.ops.dedup.tokenizer as tok
+    from rag_api import pipeline as tok
     tok._kiwi = None
     yield
     tok._kiwi = None

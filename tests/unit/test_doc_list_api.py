@@ -7,12 +7,12 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from rag_api.api.app import create_app
 
 
 @pytest.fixture
 def client():
-    with patch("api.app._init_infrastructure"):
+    with patch("rag_api.api.app._init_infrastructure"):
         app = create_app()
     return TestClient(app)
 
@@ -38,7 +38,7 @@ def _make_doc(source: str, status: str = "indexed", chunk_count: int | None = No
 class TestListDocsDefaultResponse:
     def test_returns_paginated_shape(self, client):
         items = [_make_doc(f"doc{i}.pdf") for i in range(3)]
-        with patch("infra.postgres.list_docs_paginated", return_value=(items, 3)):
+        with patch("rag_api.infra.postgres.list_docs_paginated", return_value=(items, 3)):
             resp = client.get("/api/kb/kb1/docs")
 
         assert resp.status_code == 200
@@ -59,7 +59,7 @@ class TestListDocsDefaultResponse:
             captured.update(locals())
             return ([], 0)
 
-        with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
+        with patch("rag_api.infra.postgres.list_docs_paginated", side_effect=fake_paginated):
             client.get("/api/kb/kb1/docs")
 
         assert captured["page"] == 1
@@ -79,7 +79,7 @@ class TestListDocsPagination:
             captured["page_size"] = page_size
             return ([], 50)
 
-        with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
+        with patch("rag_api.infra.postgres.list_docs_paginated", side_effect=fake_paginated):
             resp = client.get("/api/kb/kb1/docs?page=2&page_size=10")
 
         assert resp.status_code == 200
@@ -90,7 +90,7 @@ class TestListDocsPagination:
         assert body["page_size"] == 10
 
     def test_out_of_range_page_returns_empty_items(self, client):
-        with patch("infra.postgres.list_docs_paginated", return_value=([], 5)):
+        with patch("rag_api.infra.postgres.list_docs_paginated", return_value=([], 5)):
             resp = client.get("/api/kb/kb1/docs?page=999")
 
         assert resp.status_code == 200
@@ -105,7 +105,7 @@ class TestListDocsPagination:
             captured["page_size"] = page_size
             return ([], 0)
 
-        with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
+        with patch("rag_api.infra.postgres.list_docs_paginated", side_effect=fake_paginated):
             resp = client.get("/api/kb/kb1/docs?page_size=999")
 
         assert resp.status_code == 200
@@ -113,7 +113,7 @@ class TestListDocsPagination:
         assert resp.json()["page_size"] == 100
 
     def test_page_less_than_1_returns_422(self, client):
-        with patch("infra.postgres.list_docs_paginated", return_value=([], 0)):
+        with patch("rag_api.infra.postgres.list_docs_paginated", return_value=([], 0)):
             resp = client.get("/api/kb/kb1/docs?page=0")
         assert resp.status_code == 422
 
@@ -126,7 +126,7 @@ class TestListDocsSearch:
             captured["search"] = search
             return ([], 0)
 
-        with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
+        with patch("rag_api.infra.postgres.list_docs_paginated", side_effect=fake_paginated):
             client.get("/api/kb/kb1/docs?search=report")
 
         assert captured["search"] == "report"
@@ -153,7 +153,7 @@ class TestListDocsStatusFilter:
             captured["status"] = status
             return ([], 0)
 
-        with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
+        with patch("rag_api.infra.postgres.list_docs_paginated", side_effect=fake_paginated):
             client.get("/api/kb/kb1/docs?status=indexed")
 
         assert captured["status"] == "indexed"
@@ -181,7 +181,7 @@ class TestListDocsSort:
             captured["sort_order"] = sort_order
             return ([], 0)
 
-        with patch("infra.postgres.list_docs_paginated", side_effect=fake_paginated):
+        with patch("rag_api.infra.postgres.list_docs_paginated", side_effect=fake_paginated):
             client.get("/api/kb/kb1/docs?sort_by=title&sort_order=asc")
 
         assert captured["sort_by"] == "title"
@@ -247,7 +247,7 @@ class TestListDocsSort:
 class TestListDocsItemShape:
     def test_item_fields_present(self, client):
         item = _make_doc("report.pdf")
-        with patch("infra.postgres.list_docs_paginated", return_value=([item], 1)):
+        with patch("rag_api.infra.postgres.list_docs_paginated", return_value=([item], 1)):
             resp = client.get("/api/kb/kb1/docs")
 
         doc = resp.json()["items"][0]

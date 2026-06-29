@@ -6,12 +6,12 @@
 
 ```python
 # 올바름
-from config.settings import get_settings
-from infra import redis as redis_infra
-from pipeline.ops.chunk import chunk
+from rag_api.config.settings import get_settings
+from rag_api.infra import redis as redis_infra
+from rag_api.pipeline.ops.chunk import chunk
 
 # 잘못됨
-from src.config.settings import get_settings
+from rag_api.config.settings import get_settings
 from src.infra import redis as redis_infra
 ```
 
@@ -35,11 +35,11 @@ grep -r "from src\." src/
 ```python
 from __future__ import annotations  # 항상 첫 줄
 
-import logging                       # 표준 라이브러리
+import logging  # 표준 라이브러리
 from typing import Literal
 
 from llama_index.core import Document  # 서드파티
 
-from config.settings import get_settings  # 내부 모듈
+from rag_api.config.settings import get_settings  # 내부 모듈
 from infra import redis as redis_infra
 ```
