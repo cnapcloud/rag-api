@@ -90,8 +90,11 @@ class QueueWorker:
         upload_count = 0
         while upload_count < self._max_per_poll:
             raw = r.rpop(UPLOAD_QUEUE_KEY)
-            if raw is None:
+            if not isinstance(raw, (bytes, str)):
+                if raw is not None:
+                    logger.warning("Unexpected type from upload queue: %s", type(raw).__name__)
                 break
+            
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:
@@ -127,8 +130,11 @@ class QueueWorker:
         delete_count = 0
         while delete_count < self._max_per_poll:
             raw = r.rpop(DELETE_QUEUE_KEY)
-            if raw is None:
+            if not isinstance(raw, (bytes, str)):
+                if raw is not None:
+                    logger.warning("Unexpected type from delete queue: %s", type(raw).__name__)
                 break
+            
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:

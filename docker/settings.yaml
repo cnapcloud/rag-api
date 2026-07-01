@@ -35,17 +35,16 @@ ingestion:
   min_content_chars: 200
   
 dedup:
-  enabled: true
-  ngram: 3
-  num_bands: 4
-  simhash_bits: 64
-  hamming_identical_threshold: 5
-  hamming_similar_threshold: 10
-  lock_ttl: 10
-  lock_acquire_timeout: 5
-  jaccard_threshold: 0.65
-  title_fuzzy_threshold: 0.85
-  user_words_path: "data/kiwi_user_words.tsv"
+  enabled: true                          # dedup 파이프라인 전체 on/off
+  ngram: 3                               # SimHash용 문자 n-gram 크기
+  num_bands: 4                           # SimHash 밴드 수 (simhash_bits를 4등분, 밴드당 16비트)
+  simhash_bits: 64                       # SimHash 시그니처 비트 수
+  hamming_identical_threshold: 2         # 이 거리 이하면 "완전 동일"(identical_level)로 판정
+  hamming_similar_threshold: 5           # 이 거리 이하면 SimHash 후보로 인정 (Stage1)
+  jaccard_threshold: 0.65                # MinHash Jaccard가 이 값 이상이면 단독으로 "similar" 판정
+  title_fuzzy_threshold: 0.85            # pg_trgm 제목 유사도 임계값 (title-only 경로 진입 조건)
+  title_only_min_jaccard_floor: 0.25     # 제목이 비슷할 때, 본문 jaccard 최소 하한선 (개정판/재게시 탐지용)
+  user_words_path: "data/kiwi_user_words.tsv"  # Kiwi 형태소 분석기 사용자 사전 경로
 
 queue_worker:
   enabled: false # true이면 dagster가 비활성화됨

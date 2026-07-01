@@ -90,7 +90,7 @@ class TestSearchSimilarity:
 
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
-            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
+            patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
         ):
             asyncio.run(search("query", ["kb-test"], mode="similarity"))
 
@@ -110,7 +110,7 @@ class TestSearchSimilarity:
 
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
-            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
+            patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.4))
 
@@ -127,7 +127,7 @@ class TestSearchSimilarity:
 
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
-            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
+            patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.0))
 
@@ -142,7 +142,7 @@ class TestSearchSimilarity:
 
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
-            patch("rag_api.rag.retriever.get_settings", return_value=self._make_settings()),
+            patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.5))
 

@@ -108,9 +108,11 @@ def event_queue_sensor(context: SensorEvaluationContext):
     # PUT queue -> ingest_job
     while count < _max_per_poll:
         raw = r.rpop(UPLOAD_QUEUE_KEY)
-        if raw is None:
+        if not isinstance(raw, (bytes, str)):
+            if raw is not None:
+                logger.warning("Unexpected type from upload queue: %s", type(raw).__name__)
             break
-
+         
         try:
             event = json.loads(raw)
         except json.JSONDecodeError:

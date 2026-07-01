@@ -93,13 +93,27 @@ def _extract_doc_created_at(file_path: Path, suffix: str, storage_key: str) -> s
         return ""
 
 
+import re
+from pathlib import Path
+
+from llama_index.core.readers.base import BaseReader
+from llama_index.core.schema import Document
+
+
 class HTMLCleanReader(BaseReader):
     """HTML reader that strips structural boilerplate before extracting text.
 
     Removes nav, footer, header, script, style, aside before returning body text.
+    Also collapses repeated whitespace/newlines so downstream char n-gram hashing
+    (SimHash) isn't dominated by formatting/indentation noise instead of content.
     """
 
     _STRIP_TAGS = frozenset({"nav", "footer", "header", "script", "style", "aside"})
+
+    # collapse 2+ whitespace-like chars (space, tab, nbsp) into a single space
+    _WS_RUN_RE = re.compile(r"[ \t\xa0]{2,}")
+    # collapse 2+ consecutive newlines (with optional whitespace between) into one
+    _NEWLINE_RUN_RE = re.compile(r"\s*\n\s*\n[\s\n]*")
 
     def load_data(self, file: Path, extra_info: dict | None = None) -> list[Document]:
         from bs4 import BeautifulSoup
@@ -112,11 +126,24 @@ class HTMLCleanReader(BaseReader):
 
         body = soup.find("body") or soup
         text = body.get_text(separator="\n", strip=True)
+        text = self._normalize_whitespace(text)
 
         metadata: dict = {"file_path": str(file)}
         metadata.update(extra_info or {})
 
         return [Document(text=text, metadata=metadata)]
+
+    @classmethod
+    def _normalize_whitespace(cls, text: str) -> str:
+        """Collapse repeated whitespace/newlines left over from get_text().
+
+        Without this, char n-gram hashing (e.g. SimHash) is dominated by
+        repeated indentation/blank-line trigrams rather than actual content,
+        which can make unrelated documents hash as near-identical.
+        """
+        text = cls._NEWLINE_RUN_RE.sub("\n", text)
+        text = cls._WS_RUN_RE.sub(" ", text)
+        return text.strip()
 
 
 def _get_file_extractor() -> dict:

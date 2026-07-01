@@ -85,7 +85,7 @@ def ping() -> bool:
 
 def run_migrations() -> None:
     """Apply pending SQL migration files (migrations/*.sql) in alphabetical order."""
-    migration_dir = Path(__file__).parents[2] / "migrations"
+    migration_dir = Path(__file__).parents[3] / "migrations"
     with get_pool().connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (

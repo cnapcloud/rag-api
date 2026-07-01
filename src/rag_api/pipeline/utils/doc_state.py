@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import rag_api.infra.postgres as _pg
-from rag_api.pipeline.utils.upsert import UpsertResult
+
+if TYPE_CHECKING:
+    from rag_api.pipeline.utils.upsert import UpsertResult
 
 logger = logging.getLogger(__name__)
 

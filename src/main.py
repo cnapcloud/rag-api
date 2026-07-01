@@ -26,7 +26,7 @@ def _configure_logging() -> None:
     level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
 
     if cfg.tracing.enabled:
-        from rag_api.tracing import OtelContextFilter
+        from rag_api.tracing.setup import OtelContextFilter
 
         fmt = "%(asctime)s %(levelname)s [%(trace_id)s:%(span_id)s] %(name)s: %(message)s"
         logging.basicConfig(level=level, format=fmt, datefmt="%Y-%m-%d %H:%M:%S")
@@ -187,7 +187,7 @@ def search(
     """Hybrid search (CLI test)."""
     import asyncio
 
-    from rag_api.rag import search as retriever_search
+    from rag_api.rag.retriever import search as retriever_search
 
     results, total, provider, fallback = asyncio.run(
         retriever_search(query=query, kb_ids=kb_ids, top_k=top_k, rerank_enabled=rerank)
