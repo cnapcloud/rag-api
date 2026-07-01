@@ -6,12 +6,14 @@
 
 ## 목차
 
-1. [DELETE /docs/{source} returns 200 for non-existent document](#1-delete-docssource-returns-200-for-non-existent-document)
-2. [Dagster SensorDefinition owners parameter BetaWarning](#2-dagster-sensordefinition-owners-parameter-betawarning)
-3. [커넥터 동기화 중단 불가](#3-커넥터-동기화-중단-불가)
-4. [Delete + Reindex race condition](#4-delete--reindex-race-condition)
-5. [SimHash/MinHash 동시 유사 문서 누락](#5-simhashminhash-동시-유사-문서-누락)
-6. [Connector abort 시 DagsterExecutionInterruptedError STEP_FAILURE 로그](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그)
+- [Known Issues](#known-issues)
+  - [목차](#목차)
+  - [1. DELETE /docs/{doc\_id} returns 200 for non-existent document](#1-delete-docsdoc_id-returns-200-for-non-existent-document)
+  - [2. Dagster SensorDefinition owners parameter BetaWarning](#2-dagster-sensordefinition-owners-parameter-betawarning)
+  - [3. 커넥터 동기화 중단 불가](#3-커넥터-동기화-중단-불가)
+  - [4. Delete + Reindex race condition](#4-delete--reindex-race-condition)
+  - [5. SimHash/MinHash 동시 유사 문서 누락](#5-simhashminhash-동시-유사-문서-누락)
+  - [6. Connector abort 시 DagsterExecutionInterruptedError STEP\_FAILURE 로그](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그)
 
 ---
 
@@ -220,3 +222,23 @@ dagster._core.errors.DagsterExecutionInterruptedError
 **해결 방안**
 
 수정 불필요. 알람/모니터링에서 `DagsterExecutionInterruptedError`를 abort로 구분하고 싶다면 run tag나 Dagster run status(`CANCELED` vs `FAILURE`)로 필터링한다.
+
+
+
+문제 요약
+증상: rag-ent-api에서 make install (uv sync) 실행 시 실패
+원인 체인:
+
+uv가 이 프로젝트의 가상환경으로 Python 3.14를 선택함
+rag-ent-api는 ../rag-api를 editable 의존성으로 물고 있음
+rag-api는 llama_index.core.node_parser.CodeSplitter를 사용 (코드 청킹용)
+이 CodeSplitter는 내부적으로 tree-sitter-languages 패키지에 의존
+tree-sitter-languages==1.10.2(최신 버전)는 cp311, cp312용 wheel만 존재하고, 소스 배포판도 없어서 Python 3.14에서는 설치 자체가 불가능
+
+즉, 여러분 코드 문제가 아니라 llama-index가 쓰는 오래된 패키지(tree-sitter-languages)가 최신 Python(3.14)을 지원하지 않아서 생긴 환경 호환성 문제입니다.
+해결책: 프로젝트 Python 버전을 3.12로 고정
+bashcd /Users/lemon/Devel/ai/rag-ent-api
+rm -rf .venv
+uv venv --python 3.12
+source .venv/bin/activate
+make install
