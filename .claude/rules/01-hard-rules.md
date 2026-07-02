@@ -20,7 +20,7 @@ chunk_size = cfg.chunk_size
 
 ```python
 # 금지
-from rag_api.config.settings import get_settings
+from config.settings import get_settings
 
 # 올바름
 from rag_api.config.settings import get_settings

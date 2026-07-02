@@ -1,14 +1,14 @@
 """CLI entrypoint placeholder (typer).
-Run as: python -m main ingest|serve|search
+Run as: python -m rag_api.main ingest|serve|search
 
 RAG API — CLI 진입점.
 
 사용법:
-    python -m main ingest --kb-id kb-01 --file ./data/ATD00002_2605.pdf
-    python -m main serve
-    python -m main search --kb-ids kb-01 --query "TDF 상품"
-    python -m main kb create --kb-id kb-new --description "New KB"
-    python -m main serve-mcp --transport streamable-http --port 8001
+    python -m rag_api.main ingest --kb-id kb-01 --file ./data/ATD00002_2605.pdf
+    python -m rag_api.main serve
+    python -m rag_api.main search --kb-ids kb-01 --query "TDF 상품"
+    python -m rag_api.main kb create --kb-id kb-new --description "New KB"
+    python -m rag_api.main serve-mcp --transport streamable-http --port 8001
 """
 
 from __future__ import annotations

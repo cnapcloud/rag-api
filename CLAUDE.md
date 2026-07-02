@@ -101,8 +101,8 @@ MinIO PUT 이벤트
 
 ## 코드 컨벤션
 
-- **import 경로**: `from config.settings import get_settings` (절대경로, `src/` 접두사 없음)
-  - `PYTHONPATH=src`로 실행하기 때문. `from src.config...` 형태는 잘못된 것.
+- **import 경로**: `from rag_api.config.settings import get_settings` (`rag_api` 최상위 패키지 기준)
+  - `PYTHONPATH=src`로 실행하며 `src/rag_api/`가 `rag_api` 패키지로 임포트됨. `from src...` 형태는 잘못된 것.
 - **타입 힌트**: 모든 함수에 필수. Pydantic 모델 우선 사용.
 - **라인 길이**: 100자 (ruff 설정)
 - **포맷터**: ruff (E, F, I, UP 규칙)

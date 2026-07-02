@@ -7,11 +7,11 @@ metadata:
   originSessionId: 8d64a12e-8ccb-46d4-9977-4b334c0ec4a7
 ---
 
-**import는 src/ 접두사 없이**: `from config.settings import get_settings` (O), `from src.config.settings` (X). PYTHONPATH=src 기준으로 실행하기 때문.
+**import는 `rag_api.` 최상위 패키지 기준**: `from rag_api.config.settings import get_settings` (O), `from config.settings import get_settings` / `from src.config.settings` (X). PYTHONPATH=src로 실행하며 `src/rag_api/`가 `rag_api` 패키지로 임포트되기 때문.
 
-**Why:** pyproject.toml의 hatchling 설정과 Makefile의 PYTHONPATH=src 조합으로 동작.
+**Why:** pyproject.toml의 hatchling 설정과 Makefile의 PYTHONPATH=src 조합으로 동작. `src/rag_api/` 하나의 패키지로 통합되어 있어 접두사 없는 import는 더 이상 존재하지 않는 모듈을 가리킴.
 
-**How to apply:** 새 파일 작성 시 기존 파일의 import 패턴 참고. `from src.` 형태가 보이면 버그.
+**How to apply:** 새 파일 작성 시 기존 파일의 import 패턴 참고. `from src.` 형태나 `rag_api.` 접두사가 빠진 형태가 보이면 버그.
 
 ---
 
