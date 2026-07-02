@@ -215,7 +215,7 @@ services:
       - "1025:1025" # SMTP
 
     volumes:
-      - ./data:/var/lib/mailpit
+      - ./data/mailpit:/var/lib/mailpit
       - ./smtp.htpasswd:/etc/mailpit/smtp.htpasswd:ro
 
     healthcheck:
