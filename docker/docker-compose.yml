@@ -192,6 +192,39 @@ services:
       "
     restart: "no"
 
+
+  mailpit:
+    image: axllent/mailpit:v1.29.6
+    container_name: mailpit
+    restart: unless-stopped
+
+    command:
+      - --db-file
+      - /var/lib/mailpit/mailpit.db
+      - --webroot
+      - /
+      - --smtp-auth-file
+      - /etc/mailpit/smtp.htpasswd
+      - --smtp-auth-allow-insecure
+
+    environment:
+      TZ: Asia/Seoul
+
+    ports:
+      - "8025:8025" # Web UI
+      - "1025:1025" # SMTP
+
+    volumes:
+      - ./data:/var/lib/mailpit
+      - ./smtp.htpasswd:/etc/mailpit/smtp.htpasswd:ro
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8025/livez"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   pg_data:
   dagster-storage:

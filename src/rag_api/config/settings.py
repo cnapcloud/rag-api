@@ -114,6 +114,10 @@ class RetrievalSettings(BaseModel):
 
 class LogSettings(BaseModel):
     level: str = "INFO"   # DEBUG | INFO | WARNING | ERROR
+    # Top-level logger namespaces to eagerly configure (setup_logging()).
+    # Must match real Python package names (underscore, not hyphen) since
+    # child loggers are named "<name>.<module>" via __name__.
+    names: list[str] = Field(default_factory=lambda: ["rag_api"])
 
 
 class McpSettings(BaseModel):

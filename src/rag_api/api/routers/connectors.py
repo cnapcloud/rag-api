@@ -186,6 +186,9 @@ async def delete_connector_endpoint(connector_id: str, background_tasks: Backgro
     if connector is None:
         raise NotFoundError(f"Connector not found: {connector_id}")
 
+    if connector.get("sync_status") == "running":
+        raise ConflictError(f"Cannot delete connector while sync is running: {connector_id}")
+
     had_schedule = connector.get("sync_schedule") is not None
     set_connector_status(connector_id, "deleting")
     background_tasks.add_task(_cascade_delete, connector_id)

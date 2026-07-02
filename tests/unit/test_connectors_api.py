@@ -273,6 +273,19 @@ class TestDeleteConnector:
 
         assert resp.status_code == 404
 
+    def test_returns_409_when_sync_running(self, client):
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.infra.postgres.set_connector_status") as mock_set_status,
+            patch("rag_api.infra.postgres.delete_connector") as mock_delete,
+        ):
+            resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
+
+        assert resp.status_code == 409
+        mock_set_status.assert_not_called()
+        mock_delete.assert_not_called()
+
     def test_cascade_soft_deletes_docs(self, client):
         doc = {
             "doc_id": "aaaa-0001",

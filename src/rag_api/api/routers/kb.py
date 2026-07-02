@@ -76,22 +76,42 @@ async def update_kb(kb_id: str, req: KBUpdateRequest):
 async def delete_kb(kb_id: str):
     """
     KB deletion order:
-    1. Mark status = deleting
-    2. Drop Qdrant collection
-    3. Delete S3 prefix
-    4. Delete Postgres metadata (cascades to documents)
+    1. Reject if any connector under this KB has a sync in progress
+    2. Mark status = deleting
+    3. Drop Qdrant collection
+    4. Delete S3 prefix
+    5. Delete Postgres metadata (cascades to connectors and documents)
+    6. Reload Dagster workspace if any deleted connector had a schedule
     """
-    from rag_api.infra.postgres import delete_kb_meta, get_kb_meta, update_kb_status
+    from rag_api.infra.postgres import (
+        delete_kb_meta,
+        get_kb_meta,
+        list_connectors,
+        update_kb_status,
+    )
     from rag_api.infra.qdrant import drop_collection
     from rag_api.infra.s3 import delete_kb_prefix
 
     if get_kb_meta(kb_id) is None:
         raise NotFoundError(f"KB not found: {kb_id}")
 
+    connectors = list_connectors(kb_id=kb_id)
+    running = [c["connector_id"] for c in connectors if c.get("sync_status") == "running"]
+    if running:
+        raise ConflictError(
+            f"Cannot delete KB while connector sync is running: kb_id={kb_id} connectors={running}"
+        )
+
     update_kb_status(kb_id, "deleting")
+
+    had_schedule = any(c.get("sync_schedule") is not None for c in connectors)
 
     drop_collection(kb_id)
     deleted_count = delete_kb_prefix(kb_id)
     delete_kb_meta(kb_id)
+
+    if had_schedule:
+        from rag_api.infra.dagster_utils import reload_code_location
+        reload_code_location()
 
     return {"kb_id": kb_id, "status": "deleted", "s3_objects_deleted": deleted_count}

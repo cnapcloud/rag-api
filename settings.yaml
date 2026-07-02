@@ -111,3 +111,4 @@ tracing:
 
 logging:
   level: INFO                   # DEBUG / INFO / WARNING / ERROR
+  names: [rag_api]

@@ -13,34 +13,14 @@ RAG API — CLI 진입점.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-def _configure_logging() -> None:
-    from rag_api.config.settings import get_settings
+from rag_api.logging import setup_logging
 
-    cfg = get_settings()
-    level = getattr(logging, cfg.logging.level.upper(), logging.INFO)
-
-    if cfg.tracing.enabled:
-        from rag_api.tracing.setup import OtelContextFilter
-
-        fmt = "%(asctime)s %(levelname)s [%(trace_id)s:%(span_id)s] %(name)s: %(message)s"
-        logging.basicConfig(level=level, format=fmt, datefmt="%Y-%m-%d %H:%M:%S")
-        otel_filter = OtelContextFilter()
-        for handler in logging.getLogger().handlers:
-            handler.addFilter(otel_filter)
-    else:
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
-_configure_logging()
+setup_logging()
 
 app = typer.Typer(help="CNAP RAG Pipeline CLI")
 kb_app = typer.Typer(help="KB 관리")
