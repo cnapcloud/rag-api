@@ -192,7 +192,6 @@ services:
       "
     restart: "no"
 
-
   mailpit:
     image: axllent/mailpit:v1.29.6
     container_name: mailpit
