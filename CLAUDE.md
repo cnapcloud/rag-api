@@ -118,7 +118,9 @@ MinIO PUT 이벤트
 
 ## 알려진 이슈 / 주의사항
 
-현재 미해결 이슈 없음.
+전체 목록은 [`docs/internal/known-issues.md`](docs/internal/known-issues.md) 참조.
+발견한 이슈는 CLAUDE.md가 아니라 이 문서에 정해진 양식(상태/발견일/심각도 표 + 증상/원인/현재
+대안/미해결)으로 기록한다.
 
 ## 하드 룰 (절대 하지 말 것)
 

@@ -14,6 +14,7 @@
   - [4. Delete + Reindex race condition](#4-delete--reindex-race-condition)
   - [5. SimHash/MinHash 동시 유사 문서 누락](#5-simhashminhash-동시-유사-문서-누락)
   - [6. Connector abort 시 DagsterExecutionInterruptedError STEP\_FAILURE 로그](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그)
+  - [7. rag-ent-api make install 실패 — Python 3.14와 tree-sitter-languages 비호환](#7-rag-ent-api-make-install-실패--python-314와-tree-sitter-languages-비호환)
 
 ---
 
@@ -105,20 +106,31 @@ Dagster가 `owners` 파라미터를 정식 릴리스하면 경고는 자동으�
 
 **원인**
 
-동기화는 FastAPI `BackgroundTask`(일반 Python 스레드)로 실행된다. 완전한 중단을 위해서는 세 가지를 동시에 처리해야 한다:
+동기화는 FastAPI `BackgroundTask`(일반 Python 스레드)로 실행된다. 완전한 중단을 위해서는 네 가지를 동시에 처리해야 한다:
 
 1. **커넥터 수집 루프 중단** — 파일 fetch 루프에 abort 플래그 체크 추가
 2. **Redis 인제스트 큐에서 해당 커넥터 항목 제거** — Redis list는 특정 항목만 골라내는 atomic 연산이 없어 drain 후 재투입 방식만 가능
-3. **Dagster 실행 대기(QUEUED) run 제거** — Dagster run queue에 쌓인 미시작 run을 GraphQL `deletePipelineRun()` 또는 `cancelPipelineRun()`으로 제거 필요
+3. **Dagster 실행 대기(QUEUED/STARTING) run 제거** — Dagster run queue에 쌓인 미시작 run을 GraphQL `terminateRun()`으로 제거 필요
 4. **실행 중인 Dagster job 취소** — GraphQL `terminateRun()` 호출 필요
 
 **현재 대안**
 
-`POST /api/connectors/{id}/sync/abort`로 수집 루프를 중단할 수 있다. 커넥터가 파일/URL을 처리할 때마다 abort 플래그를 확인하고 감지 시 즉시 루프를 종료한다. 단, 이미 Redis 큐에 투입된 문서는 Dagster가 계속 처리하며, Dagster에서 실행 중인 job은 별도로 취소되지 않는다.
+`POST /api/connectors/{id}/sync/abort`로 수집 루프를 중단할 수 있다. 커넥터가 파일/URL을 처리할 때마다 abort 플래그를 확인하고 감지 시 즉시 루프를 종료한다. `abort_sync()`는 아직 Redis 큐/딜레이 큐에 남아있는 문서(`status=pending`)는 `dequeue_upload_events()`로 제거하고, `run_id`가 기록된 실행 중(`status=running`) 문서는 `terminate_dagster_run(run_id)`로 종료한다(2026-06-28 `c770ddb` 추가 — 관련 부작용은 [이슈 6](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그) 참조).
+
+**진행 상황 (2026-07-03 업데이트, 코드 재검토)**
+
+- 항목 1, 2, 4는 위 방식으로 구현되어 있음을 코드로 확인.
+- 항목 3(QUEUED/STARTING run 제거)은 여전히 미해결이며, 근본 원인을 특정함: `event_queue_sensor.py:139`의 `set_processing(doc_id)`가 `RunRequest`를 yield하기 *전*에 호출되어 문서를 `status=running, run_id=""`로 표시한다. 실제 Dagster `run_id`는 run이 QUEUED -> STARTING을 지나 `validate_op`가 실행될 때(`ingest_ops.py:48`)에야 Postgres에 기록된다. `abort_sync()`의 `run_ids = {d["run_id"] for d in docs if d["status"] == "running" and d.get("run_id")}`는 `run_id`가 없는 문서를 종료 대상에서 제외하므로, 이 구간의 run은 종료되지 않고 계속 실행되어 이미 `Aborted`로 표시된 문서 상태를 나중에 덮어쓸 수 있다. 해결 방향은 Dagster GraphQL에서 `doc_id` 태그로 활성 run을 직접 조회(`runsOrError(filter: {tags: [...], statuses: [QUEUED, STARTING, STARTED, CANCELING]})`)하는 것 — 백로그 [US-34](../../.claude/backlogs/todo/US-34-connector-abort-missed-queued-run.md)로 등록.
+  - 이와 별개로 센서 한 틱 안에서 "Redis 이벤트 pop"과 "RunRequest yield" 사이의 아주 짧은 순간에 abort가 끼어들면 취소할 대상 자체가 없는 서브초 단위 레이스가 있다. 센서를 트랜잭션화하지 않는 한 근본적으로 막을 수 없어 US-34의 해결 범위 밖으로 두고 known limitation으로만 남긴다.
+- **queue_worker 모드(`queue_worker.enabled=true`, Dagster 미사용)에서는 abort/force-fail로 실행 중인 백그라운드 작업을 아예 종료할 수 없는 별도 gap을 발견**. 이 모드에서는 `QueueWorker`(`pipeline/queue/queue_worker.py`)가 Redis 큐를 직접 `r.rpop()`으로 꺼내 `asyncio.create_task()` -> `ThreadPoolExecutor`로 ingest/delete를 실행하는데, 이 태스크가 어디에도 등록되지 않아 취소할 방법이 없다. `dagster_utils.terminate_dagster_run()`은 `queue_worker.enabled=true`일 때 무조건 no-op(`infra/dagster_utils.py:75-77`)이라 애초에 대상이 되지 않는다.
+  - `POST /{connector_id}/sync/abort`(`connectors.py` `abort_sync()`)는 `dequeue_upload_events()`로 아직 Redis에 남은 항목만 제거하고, 이미 `r.rpop()`으로 꺼내져 실행 중인 문서는 `set_failed(doc_id, "Aborted")`로 상태만 바뀔 뿐 실제 스레드는 계속 실행되어 완료 시 상태를 덮어쓸 수 있다. **경고 없이 202로 성공 응답한다.**
+  - `POST /kb/{kb_id}/docs/{doc_id}/fail`(`docs.py` `force_fail_doc()`)은 동일한 한계를 이미 코드에서 인지하고 있으며(`worker_mode_active` 체크, L385-404), 응답에 `"queue_worker mode has no terminate support"` 경고 필드를 포함한다. `abort_sync()`에는 이 경고가 없다.
+  - **정정 (2026-07-03)**: 처음엔 "doc_id -> Task 레지스트리 + `task.cancel()`"을 근본 해결책으로 적었으나 부정확함. `run_in_executor(executor, func)`는 `concurrent.futures.Future`를 asyncio Future로 래핑하는데, 워커 스레드가 이미 `func`(=`run_ingest_pipeline`) 실행을 시작한 뒤에는 `concurrent.futures.Future.cancel()`이 무조건 `False`를 반환한다 — Python 스레드는 외부에서 안전하게 강제 종료할 수 없기 때문이다. 이 상태에서 바깥 asyncio Task에 `.cancel()`을 호출하면 asyncio 쪽 장부만 CANCELLED로 마킹되고 `await` 지점에서 `CancelledError`가 올라올 뿐, 실제 워커 스레드는 아무도 기다리지 않는 채로 끝까지 실행되어 여전히 자기 결과로 상태를 덮어쓴다. `task.cancel()`이 실제로 막을 수 있는 건 아직 세마포어(`self._semaphore`)를 획득하지 못해 실행이 시작조차 안 된 대기 중인 태스크뿐이다.
+    진짜 해결하려면 둘 중 하나가 필요하다: (a) `run_ingest_pipeline`/각 op(parse/chunk/embed/upsert) 내부에 협조적 취소 체크포인트를 op 경계마다 심기(파이프라인 전체를 건드려야 함), 또는 (b) 스레드 대신 별도 OS 프로세스(`ProcessPoolExecutor`/subprocess)로 실행해 SIGTERM으로 강제 종료 — Dagster 모드의 `terminateRun()`이 실제로 작동하는 이유가 바로 이것(job이 별도 프로세스로 실행됨)이다. 아직 백로그 미등록.
 
 **미해결**
 
-2(Redis 큐 항목 제거), 3(Dagster 대기 run 제거), 4(실행 중 Dagster job 취소)는 미구현 상태.
+3(Dagster QUEUED/STARTING run 제거, run_id 지연 기록으로 인한 gap — US-34), queue_worker 모드 태스크 취소(백로그 미등록)는 미구현 상태.
 
 ---
 
@@ -223,22 +235,42 @@ dagster._core.errors.DagsterExecutionInterruptedError
 
 수정 불필요. 알람/모니터링에서 `DagsterExecutionInterruptedError`를 abort로 구분하고 싶다면 run tag나 Dagster run status(`CANCELED` vs `FAILURE`)로 필터링한다.
 
+---
 
+## 7. rag-ent-api make install 실패 — Python 3.14와 tree-sitter-languages 비호환
 
-문제 요약
-증상: rag-ent-api에서 make install (uv sync) 실행 시 실패
-원인 체인:
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-03 |
+| 심각도 | LOW |
 
-uv가 이 프로젝트의 가상환경으로 Python 3.14를 선택함
-rag-ent-api는 ../rag-api를 editable 의존성으로 물고 있음
-rag-api는 llama_index.core.node_parser.CodeSplitter를 사용 (코드 청킹용)
-이 CodeSplitter는 내부적으로 tree-sitter-languages 패키지에 의존
-tree-sitter-languages==1.10.2(최신 버전)는 cp311, cp312용 wheel만 존재하고, 소스 배포판도 없어서 Python 3.14에서는 설치 자체가 불가능
+**증상**
 
-즉, 여러분 코드 문제가 아니라 llama-index가 쓰는 오래된 패키지(tree-sitter-languages)가 최신 Python(3.14)을 지원하지 않아서 생긴 환경 호환성 문제입니다.
-해결책: 프로젝트 Python 버전을 3.12로 고정
-bashcd /Users/lemon/Devel/ai/rag-ent-api
+`rag-ent-api`에서 `make install`(`uv sync`) 실행 시 실패한다.
+
+**원인**
+
+1. `uv`가 `rag-ent-api`의 가상환경으로 Python 3.14를 선택한다.
+2. `rag-ent-api`는 `../rag-api`를 editable 의존성으로 물고 있다.
+3. `rag-api`는 코드 청킹에 `llama_index.core.node_parser.CodeSplitter`를 사용한다.
+4. `CodeSplitter`는 내부적으로 `tree-sitter-languages` 패키지에 의존한다.
+5. `tree-sitter-languages==1.10.2`(최신 버전)는 `cp311`/`cp312`용 wheel만 존재하고 소스 배포판도 없어, Python 3.14에서는 설치 자체가 불가능하다.
+
+`rag-api`/`rag-ent-api` 코드 문제가 아니라, `llama-index`가 사용하는 `tree-sitter-languages`가 아직 최신 Python(3.14)을 지원하지 않아 발생하는 환경 호환성 문제다.
+
+**해결 방안**
+
+`rag-ent-api` 프로젝트의 Python 버전을 3.12로 고정한다.
+
+```bash
+cd /Users/lemon/Devel/ai/rag-ent-api
 rm -rf .venv
 uv venv --python 3.12
 source .venv/bin/activate
 make install
+```
+
+**비고**
+
+`tree-sitter-languages`가 Python 3.14 wheel을 배포하거나, `rag-api`가 `tree-sitter-language-pack` 등 유지보수 중인 대체 패키지로 마이그레이션하면 근본 해결된다.
