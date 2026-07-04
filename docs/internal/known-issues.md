@@ -14,9 +14,10 @@
   - [4. Delete + Reindex race condition](#4-delete--reindex-race-condition)
   - [5. SimHash/MinHash 동시 유사 문서 누락](#5-simhashminhash-동시-유사-문서-누락)
   - [6. Connector abort 시 DagsterExecutionInterruptedError STEP\_FAILURE 로그](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그)
-  - [7. rag-ent-api make install 실패 — Python 3.14와 tree-sitter-languages 비호환](#7-rag-ent-api-make-install-실패--python-314와-tree-sitter-languages-비호환)
+  - [7. tree-sitter-languages가 Python 3.13+ 미지원 — rag-ent-api install 실패, rag-api pyproject.toml도 상한 없음](#7-tree-sitter-languages가-python-313-미지원--rag-ent-api-install-실패-rag-api-pyprojecttoml도-상한-없음)
   - [8. 동일 문서 중복 처리 요청 시 모드별 회복 불가 케이스](#8-동일-문서-중복-처리-요청-시-모드별-회복-불가-케이스)
   - [9. 커넥터 abort 시 센서 pop~RunRequest 구간의 서브초 레이스로 취소 대상 누락](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락)
+  - [10. Confluence 커넥터 첨부파일 목록 조회 네트워크 오류가 API/DB 어디에도 남지 않음](#10-confluence-커넥터-첨부파일-목록-조회-네트워크-오류가-apidb-어디에도-남지-않음)
 
 ---
 
@@ -240,7 +241,7 @@ dagster._core.errors.DagsterExecutionInterruptedError
 
 ---
 
-## 7. rag-ent-api make install 실패 — Python 3.14와 tree-sitter-languages 비호환
+## 7. tree-sitter-languages가 Python 3.13+ 미지원 — rag-ent-api install 실패, rag-api pyproject.toml도 상한 없음
 
 | 항목 | 내용 |
 |------|------|
@@ -250,33 +251,54 @@ dagster._core.errors.DagsterExecutionInterruptedError
 
 **증상**
 
-`rag-ent-api`에서 `make install`(`uv sync`) 실행 시 실패한다.
+두 가지 증상이 같은 원인에서 나온다.
+
+1. `rag-ent-api`에서 `make install`(`uv sync`) 실행 시 실패한다 (uv가 Python 3.14를 선택하는 경우).
+2. `rag-api` 자신의 [`pyproject.toml:4`](../../pyproject.toml#L4)도 `requires-python = ">=3.11"`에
+   상한이 없어, 3.13+로 직접 `uv venv`/`uv sync`를 실행하면 `rag-api`만 단독으로 설치해도 동일하게
+   깨진다. 지금 문제가 안 보이는 건 저장소 루트의 [`.python-version`](../../.python-version)(`3.12`)과
+   [`Dockerfile:1`](../../Dockerfile#L1)의 `FROM python:3.12-slim`이라는 관례적 핀 두 개 덕분일
+   뿐이다 — `pyproject.toml` 메타데이터 자체는 3.13/3.14 설치를 막지 않는다.
 
 **원인**
 
-1. `uv`가 `rag-ent-api`의 가상환경으로 Python 3.14를 선택한다.
-2. `rag-ent-api`는 `../rag-api`를 editable 의존성으로 물고 있다.
-3. `rag-api`는 코드 청킹에 `llama_index.core.node_parser.CodeSplitter`를 사용한다.
-4. `CodeSplitter`는 내부적으로 `tree-sitter-languages` 패키지에 의존한다.
-5. `tree-sitter-languages==1.10.2`(최신 버전)는 `cp311`/`cp312`용 wheel만 존재하고 소스 배포판도 없어, Python 3.14에서는 설치 자체가 불가능하다.
+1. `rag-api`는 코드 청킹에 [`chunk.py`](../../src/rag_api/pipeline/ops/chunk.py)의
+   `_build_code_parser()`를 통해 `llama_index.core.node_parser.CodeSplitter`를 사용한다.
+2. `CodeSplitter`는 내부적으로 `tree-sitter-languages` 패키지에 의존한다
+   ([pyproject.toml:37-38](../../pyproject.toml#L37-L38)).
+3. `tree-sitter-languages==1.10.2`(최신 버전, 2024-02 이후 업데이트 없음)는 `cp311`/`cp312`용
+   wheel만 존재하고 소스 배포판도 없어, Python 3.13+ 에서는 설치 자체가 불가능하다.
+4. `rag-ent-api`는 `../rag-api`를 editable 의존성으로 물고 있는데, `uv`가 `rag-ent-api`의
+   가상환경 Python 버전을 독자적으로 resolve하면서(3.14 선택) 위 제약을 그대로 상속한다.
+   `.python-version` 핀은 해당 디렉터리에서 직접 `uv venv`/`uv sync`를 실행할 때만 적용되고,
+   다른 프로젝트가 editable/path 의존성으로 물어 자체 Python 버전을 resolve하는 경우에는 적용되지
+   않는다. CI 워크플로도 없어(`.github/` 부재) 이를 강제하는 두 번째 안전장치도 없다.
 
-`rag-api`/`rag-ent-api` 코드 문제가 아니라, `llama-index`가 사용하는 `tree-sitter-languages`가 아직 최신 Python(3.14)을 지원하지 않아 발생하는 환경 호환성 문제다.
+`rag-api`/`rag-ent-api` 코드 문제가 아니라, `llama-index`가 사용하는 `tree-sitter-languages`가
+아직 최신 Python(3.13+)을 지원하지 않아 발생하는 환경 호환성 문제다.
 
-**해결 방안**
+**현재 대안**
 
-`rag-ent-api` 프로젝트의 Python 버전을 3.12로 고정한다.
+- `rag-ent-api`: 프로젝트의 Python 버전을 3.12로 고정한다.
 
-```bash
-cd /Users/lemon/Devel/ai/rag-ent-api
-rm -rf .venv
-uv venv --python 3.12
-source .venv/bin/activate
-make install
-```
+  ```bash
+  cd /Users/lemon/Devel/ai/rag-ent-api
+  rm -rf .venv
+  uv venv --python 3.12
+  source .venv/bin/activate
+  make install
+  ```
 
-**비고**
+- `rag-api`: 저장소 루트의 `.python-version`(3.12)과 `Dockerfile`의 `python:3.12-slim` 핀에
+  의존해 현재는 문제없이 돌아간다. 다만 이는 관례적 핀일 뿐 `pyproject.toml` 메타데이터가 강제하는
+  게 아니라서, 3.13+로 직접 venv를 만들면 여전히 깨진다.
 
-`tree-sitter-languages`가 Python 3.14 wheel을 배포하거나, `rag-api`가 `tree-sitter-language-pack` 등 유지보수 중인 대체 패키지로 마이그레이션하면 근본 해결된다.
+**미해결**
+
+`rag-api`의 `pyproject.toml`에 `requires-python = ">=3.11,<3.13"`처럼 명시적 상한을 선언하면
+`uv`/`pip`가 호환되지 않는 Python 버전에서는 처음부터 설치를 거부하게 만들 수 있지만, 아직
+반영되지 않았다. 근본 해결은 `tree-sitter-languages`가 최신 Python wheel을 배포하거나, `rag-api`가
+유지보수 중인 대체 패키지(`tree-sitter-language-pack` 등)로 마이그레이션하는 것.
 
 ---
 
@@ -346,3 +368,50 @@ make install
 
 센서를 트랜잭션화하지 않는 한 해결 불가. US-34에서 해결 범위 밖으로 명시했다
 (`.claude/backlogs/US-34-connector-abort-missed-queued-run.md` "Known Limitation" 절 참조).
+
+---
+
+## 10. Confluence 커넥터 첨부파일 목록 조회 네트워크 오류가 API/DB 어디에도 남지 않음
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-04 |
+| 심각도 | LOW |
+
+**증상**
+
+실 운영 로그에서 다음과 같은 패턴이 관측됨:
+
+```
+ERROR rag_api.connectors.confluence: Failed to list attachments for page: page_id=30760077 err=[Errno -3] Temporary failure in name resolution
+INFO  rag_api.connectors.confluence: Confluence sync aborted: connector_id=3366226e307e45a4
+INFO  rag_api.connectors.confluence: Confluence sync done: connector_id=3366226e307e45a4 space=KAFKA pages=44 max_pages=100
+```
+
+특정 페이지의 첨부파일 목록을 가져오다 DNS 조회 실패 등 네트워크 오류가 발생해도 sync 전체는
+계속 진행되며, 실패 사실이 로그에만 남고 `documents` row나 커넥터 `last_error`
+(`design/connector-state-flow.md` 참조 — 최근 도입된 필드지만 이 실패 경로는 반영 대상이 아님)
+등 API로 조회 가능한 어디에도 기록되지 않는다.
+
+**원인**
+
+`ConfluenceConnector._process_page_attachments()`([confluence.py:262-276](../../src/rag_api/connectors/confluence.py#L262-L276))가
+첨부파일 목록 조회(`_iter_attachments`) 전체를 `try/except Exception`으로 감싸고 `logger.error()`만
+호출한 뒤 다음 페이지로 넘어간다. 이 시점에는 아직 개별 첨부파일에 대한 `documents` row가
+생성되기 전이므로(row 생성은 `_process_attachment()` 내부, 목록 조회 성공 이후 단계) 실패를
+기록할 대상 자체가 없다.
+
+**현재 대안**
+
+일회성 네트워크 장애(DNS 일시 실패 등)라면 자연히 복구됨 — "페이지 unchanged" 분기
+(`confluence.py:189-192`)가 페이지 버전이 그대로여도 첨부파일은 매 sync마다 무조건 다시
+나열하므로, 다음 sync 실행 시 같은 페이지의 첨부파일이 자동으로 재시도된다. 데이터가
+영구 유실되지는 않는다.
+
+**미해결**
+
+특정 페이지에서 이 오류가 매 sync마다 반복되는 경우(예: 페이지별 권한 문제, 잘못된 URL 등
+일회성이 아닌 원인)를 감지할 방법이 없다 — 로그를 grep하지 않는 한 아무도 알아채지 못한다.
+개선하려면 연속 실패 횟수를 페이지 단위로 추적하거나, 실패를 커넥터 `last_error`에 경고로
+남기는 방식이 필요하나 아직 미구현.
