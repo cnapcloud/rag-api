@@ -16,6 +16,7 @@
   - [6. Connector abort 시 DagsterExecutionInterruptedError STEP\_FAILURE 로그](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그)
   - [7. rag-ent-api make install 실패 — Python 3.14와 tree-sitter-languages 비호환](#7-rag-ent-api-make-install-실패--python-314와-tree-sitter-languages-비호환)
   - [8. 동일 문서 중복 처리 요청 시 모드별 회복 불가 케이스](#8-동일-문서-중복-처리-요청-시-모드별-회복-불가-케이스)
+  - [9. 커넥터 abort 시 센서 pop~RunRequest 구간의 서브초 레이스로 취소 대상 누락](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락)
 
 ---
 
@@ -122,7 +123,7 @@ Dagster가 `owners` 파라미터를 정식 릴리스하면 경고는 자동으�
 
 - 항목 1, 2, 4는 기존 방식으로 구현되어 있음을 코드로 확인.
 - 항목 3(QUEUED/STARTING run 제거)은 `infra/dagster_utils.py`의 `find_active_run_ids_by_doc_ids()`(GraphQL `runsOrError(filter: {statuses: [QUEUED, STARTING, STARTED, CANCELING]})` 조회 후 `doc_id` 태그로 client-side 필터링)와 `abort_sync()`의 호출로 해결됨. `run_id`가 없는 `status=running` 문서의 `doc_id`를 모아 조회하고, 반환된 run_id를 기존 종료 대상 집합에 합쳐 `terminate_dagster_run()`으로 종료한다.
-  - 이와 별개로 센서 한 틱 안에서 "Redis 이벤트 pop"과 "RunRequest yield" 사이의 아주 짧은 순간에 abort가 끼어들면 취소할 대상 자체가 없는 서브초 단위 레이스가 있다. 센서를 트랜잭션화하지 않는 한 근본적으로 막을 수 없어 known limitation으로 남긴다.
+  - 이와 별개로 센서 한 틱 안에서 "Redis 이벤트 pop"과 "RunRequest yield" 사이의 아주 짧은 순간에 abort가 끼어드는 서브초 단위 레이스가 있다. 상세 내용은 [이슈 9](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락) 참조.
   - 근본 원인과 관련 메커니즘(메인 큐 dedup 부재, `_is_blocked_by_active_run()`의 `run_id` 의존성)은 [duplicate-request-handling.md](design/duplicate-request-handling.md) 참조.
 - **queue_worker 모드(`queue_worker.enabled=true`, Dagster 미사용)에서는 abort/force-fail로 실행 중인 백그라운드 작업을 아예 종료할 수 없는 별도 gap이 남아있다.** 이 모드에서는 `QueueWorker`(`pipeline/queue/queue_worker.py`)가 Redis 큐를 직접 `r.rpop()`으로 꺼내 `asyncio.create_task()` -> `ThreadPoolExecutor`로 ingest/delete를 실행하는데, 이 태스크가 어디에도 등록되지 않아 취소할 방법이 없다. `dagster_utils.terminate_dagster_run()`은 `queue_worker.enabled=true`일 때 무조건 no-op(`infra/dagster_utils.py:75-77`)이라 애초에 대상이 되지 않는다.
   - `POST /{connector_id}/sync/abort`(`connectors.py` `abort_sync()`)는 `dequeue_upload_events()`로 아직 Redis에 남은 항목만 제거하고, 이미 `r.rpop()`으로 꺼내져 실행 중인 문서는 `set_failed(doc_id, "Aborted")`로 상태만 바뀔 뿐 실제 스레드는 계속 실행되어 완료 시 상태를 덮어쓸 수 있다. **경고 없이 202로 성공 응답한다.**
@@ -285,7 +286,7 @@ make install
 |------|------|
 | 상태 | open |
 | 발견일 | 2026-07-04 |
-| 심각도 | MED |
+| 심각도 | LOW |
 
 **증상**
 
@@ -307,3 +308,41 @@ make install
 **해결 방안**
 
 코드로 개선 가능한 영역은 **ETag 드리프트뿐**이다 — 구체적 방법은 아직 미정, 별도 논의 필요. 그 외(queue_worker의 영구 대기, Dagster의 run_id 영구 미기록, 스레드 생존 확인 불가)는 코드로 해결할 수 있는 영역이 아니며 수작업 개입 또는 운영 정책(타임아웃 값 도입 여부 등)으로만 대응 가능하다.
+
+---
+
+## 9. 커넥터 abort 시 센서 pop~RunRequest 구간의 서브초 레이스로 취소 대상 누락
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-04 |
+| 심각도 | LOW |
+
+**증상**
+
+`POST /api/connectors/{id}/sync/abort` 요청이 센서 한 틱 안의 아주 짧은 순간과 겹치면, 해당
+이벤트가 취소되지 않고 그대로 처리될 수 있다.
+
+**원인**
+
+`event_queue_sensor.py`가 Redis에서 이벤트를 pop하는 시점과 `RunRequest`를 yield하는 시점
+사이에는 아주 짧은 간격이 있다. 이 구간에 abort가 끼어들면:
+
+- Redis 큐에서는 이미 이벤트가 빠져나온 상태라 `dequeue_upload_events()`로 제거할 수 없고
+- Dagster run은 아직 생성되지 않은 상태라 `terminate_dagster_run()` /
+  `find_active_run_ids_by_doc_ids()`로도 종료 대상을 찾을 수 없다
+
+즉 "취소할 대상 자체가 없는" 상태가 발생한다. 센서를 트랜잭션화(pop과 yield를 원자적으로 묶음)
+하지 않는 한 근본적으로 막을 수 없는 서브초 단위 레이스다.
+
+**현재 대안**
+
+없음. 발생 빈도가 극히 낮고(서브초 윈도우), 발생해도 해당 문서 하나가 abort 요청에도 불구하고
+정상 처리되는 정도로 영향이 그치며(데이터 정합성 문제는 아님) 별도 대응 없이 known limitation으로
+남긴다.
+
+**미해결**
+
+센서를 트랜잭션화하지 않는 한 해결 불가. US-34에서 해결 범위 밖으로 명시했다
+(`.claude/backlogs/US-34-connector-abort-missed-queued-run.md` "Known Limitation" 절 참조).

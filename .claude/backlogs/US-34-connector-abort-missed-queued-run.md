@@ -75,7 +75,7 @@ Postgres의 지연 기록된 `run_id` 컬럼에 의존하지 않고, Dagster Gra
 센서 한 틱 안에서 "Redis에서 이벤트 pop" 과 "RunRequest yield" 사이의 아주 짧은 순간에 abort가
 끼어들면, 큐에서도 이미 빠졌고 Dagster run도 아직 생성되지 않아 취소할 대상 자체가 없다.
 센서를 트랜잭션화하지 않는 한 근본적으로 막을 수 없는 서브초 단위 레이스이므로, 이번 항목의
-해결 범위에서 제외하고 루트 `CLAUDE.md`에 known issue로 명시한다.
+해결 범위에서 제외하고 known issue 문서에 명시한다.
 
 ## Acceptance Criteria
 
