@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _PING_CHECKS = ("qdrant", "redis", "postgres")
+_NON_CRITICAL_CHECKS = ("s3",)  # ingest-only deps; failure is reported but doesn't flip overall status
 
 
 @router.get("/health")
@@ -22,8 +24,11 @@ async def liveness():
 async def _s3_ok() -> bool:
     from rag_api.infra.s3 import get_s3_client
 
-    try:
+    def _check() -> None:
         get_s3_client().list_buckets()
+
+    try:
+        await asyncio.wait_for(asyncio.to_thread(_check), timeout=5)
         return True
     except Exception as e:
         logger.error("Readiness check failed: s3: %s", e)
@@ -85,8 +90,8 @@ async def readiness():
         if not checks[name]:
             logger.error("Readiness check failed: %s", name)
 
-    all_ok = all(checks.values())
+    critical_ok = all(v for name, v in checks.items() if name not in _NON_CRITICAL_CHECKS)
     return JSONResponse(
-        status_code=200 if all_ok else 503,
-        content={"status": "ready" if all_ok else "not_ready", "checks": checks},
+        status_code=200 if critical_ok else 503,
+        content={"status": "ready" if critical_ok else "not_ready", "checks": checks},
     )
