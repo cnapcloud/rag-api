@@ -9,6 +9,7 @@ from mcp.server.fastmcp import Context
 from opentelemetry import trace
 
 from rag_api.config.settings import get_settings
+from rag_api.infra.postgres import list_kb_ids
 from rag_api.rag.retriever import search as retriever_search
 from rag_api.tracing.span import traced_tool
 
@@ -36,7 +37,7 @@ async def search(
     span.set_attribute("rag.query", query)
 
     cfg = get_settings()
-    resolved_kb_ids = kb_ids or [kb.id for kb in cfg.knowledge_bases]
+    resolved_kb_ids = kb_ids or list_kb_ids()
     if not resolved_kb_ids:
         return {"results": [], "latency_ms": 0}
 

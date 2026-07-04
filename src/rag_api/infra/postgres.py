@@ -570,7 +570,7 @@ def get_connector(connector_id: str) -> dict | None:
 
 
 def list_connectors(
-    kb_id: str | None = None,
+    kb_id: str | list[str] | None = None,
     source_type: str | None = None,
     status: str | None = None,
     has_schedule: bool | None = None,
@@ -578,9 +578,16 @@ def list_connectors(
     sort_by: str = "created_at",
     sort_order: str = "desc",
 ) -> list[dict]:
+    if isinstance(kb_id, list) and not kb_id:
+        return []
+
     conditions: list[str] = []
     params: list[Any] = []
-    if kb_id is not None:
+    if isinstance(kb_id, list):
+        placeholders = ", ".join(["%s"] * len(kb_id))
+        conditions.append(f"kb_id IN ({placeholders})")
+        params.extend(kb_id)
+    elif kb_id is not None:
         conditions.append("kb_id = %s")
         params.append(kb_id)
     if source_type is not None:

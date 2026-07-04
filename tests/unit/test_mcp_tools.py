@@ -18,13 +18,12 @@ DOC_ID = "11111111-1111-1111-1111-111111111111"
 # ──────────────────────────────────────────────
 
 def test_list_knowledge_bases_returns_all():
-    fake_settings = MagicMock()
-    fake_settings.knowledge_bases = [
-        MagicMock(id="kb-a", description="Alpha KB"),
-        MagicMock(id="kb-b", description="Beta KB"),
+    fake_kbs = [
+        {"kb_id": "kb-a", "description": "Alpha KB"},
+        {"kb_id": "kb-b", "description": "Beta KB"},
     ]
 
-    with patch("rag_api.mcp_server.tools.kb.get_settings", return_value=fake_settings):
+    with patch("rag_api.mcp_server.tools.kb.list_kbs", return_value=fake_kbs):
         result = list_knowledge_bases()
 
     assert result == {
@@ -36,10 +35,7 @@ def test_list_knowledge_bases_returns_all():
 
 
 def test_list_knowledge_bases_empty():
-    fake_settings = MagicMock()
-    fake_settings.knowledge_bases = []
-
-    with patch("rag_api.mcp_server.tools.kb.get_settings", return_value=fake_settings):
+    with patch("rag_api.mcp_server.tools.kb.list_kbs", return_value=[]):
         result = list_knowledge_bases()
 
     assert result == {"knowledge_bases": []}
@@ -137,14 +133,8 @@ async def test_search_with_explicit_kb_ids():
 
 @pytest.mark.asyncio
 async def test_search_expands_to_all_kbs_when_none_specified():
-    fake_settings = MagicMock()
-    fake_settings.knowledge_bases = [
-        MagicMock(id="kb-a"),
-        MagicMock(id="kb-b"),
-    ]
-
     with (
-        patch("rag_api.mcp_server.tools.search.get_settings", return_value=fake_settings),
+        patch("rag_api.mcp_server.tools.search.list_kb_ids", return_value=["kb-a", "kb-b"]),
         patch("rag_api.mcp_server.tools.search.retriever_search", new=AsyncMock(return_value=([], 0, "none", False))) as mock_search,
     ):
         await search(query="hello")
@@ -155,10 +145,7 @@ async def test_search_expands_to_all_kbs_when_none_specified():
 
 @pytest.mark.asyncio
 async def test_search_returns_empty_when_no_kbs():
-    fake_settings = MagicMock()
-    fake_settings.knowledge_bases = []
-
-    with patch("rag_api.mcp_server.tools.search.get_settings", return_value=fake_settings):
+    with patch("rag_api.mcp_server.tools.search.list_kb_ids", return_value=[]):
         result = await search(query="hello")
 
     assert result == {"results": [], "latency_ms": 0}
