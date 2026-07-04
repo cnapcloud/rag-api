@@ -77,6 +77,7 @@ connectors
 ├── sync_started_at   TIMESTAMPTZ
 ├── last_synced_at    TIMESTAMPTZ
 ├── status            TEXT         NOT NULL DEFAULT 'active' -- active | paused | error
+├── last_error        TEXT                                  -- last sync failure message (cleared on manual status change)
 ├── created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 └── updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 ```
@@ -104,7 +105,7 @@ documents
 ├── status              TEXT         NOT NULL DEFAULT 'pending'
 ├── deleted_at          TIMESTAMPTZ             -- set when status -> deleted (NULL otherwise)
 ├── run_id              TEXT         NOT NULL DEFAULT ''
-├── error               TEXT
+├── last_error          TEXT
 ├── created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 ├── updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 ├── process_started_at  TIMESTAMPTZ             -- set when status -> running
@@ -176,7 +177,7 @@ Extension:
 | `outdated` | Superseded by a newer version of the same document (dedup verdict); Qdrant chunks may still exist |
 | `deleting` | Delete in progress |
 | `deleted` | Soft-deleted — row retained, Qdrant chunks removed |
-| `failed` | Ingest or delete failed — see `error` column |
+| `failed` | Ingest or delete failed — see `last_error` column |
 
 ---
 

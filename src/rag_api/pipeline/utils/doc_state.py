@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def set_pending(doc_id: str, *, content_version: str | None = None) -> None:
-    """Transition to pending. Clears error field."""
-    fields: dict = {"status": "pending", "error": None}
+    """Transition to pending. Clears last_error field."""
+    fields: dict = {"status": "pending", "last_error": None}
     if content_version is not None:
         fields["content_version"] = content_version
     _pg.update_doc_fields(doc_id, fields)
@@ -48,14 +48,14 @@ def set_staged(
     content_version: str | None,
     file_size: int,
 ) -> None:
-    """Transition to pending after connector stages content to S3. Clears error field."""
+    """Transition to pending after connector stages content to S3. Clears last_error field."""
     _pg.update_doc_fields(doc_id, {
         "title": title,
         "status": "pending",
         "storage_key": storage_key,
         "content_version": content_version,
         "file_size": file_size,
-        "error": None,
+        "last_error": None,
     })
     logger.info("Status set to pending (staged): doc_id=%s", doc_id)
 
@@ -83,12 +83,12 @@ def set_indexed(
     doc_type: str = "",
     embedding_model: str = "",
 ) -> None:
-    """Transition to indexed after successful ingest. Clears error field."""
+    """Transition to indexed after successful ingest. Clears last_error field."""
     fields: dict = {
         "status": "indexed",
         "chunk_count": upsert_result.chunk_count,
         "run_id": run_id,
-        "error": None,
+        "last_error": None,
         "process_finished_at": datetime.now(timezone.utc).isoformat(),
     }
     if doc_type:
@@ -100,8 +100,8 @@ def set_indexed(
 
 
 def restore_indexed(doc_id: str) -> None:
-    """Restore to indexed after a pipeline skip (e.g. dedup no-op). Clears error field."""
-    _pg.update_doc_fields(doc_id, {"status": "indexed", "error": None})
+    """Restore to indexed after a pipeline skip (e.g. dedup no-op). Clears last_error field."""
+    _pg.update_doc_fields(doc_id, {"status": "indexed", "last_error": None})
     logger.info("Status restored to indexed (skip): doc_id=%s", doc_id)
 
 
@@ -116,7 +116,7 @@ def set_failed(doc_id: str, error: str, *, run_id: str = "") -> None:
 
     _pg.update_doc_fields(doc_id, {
         "status": "failed",
-        "error": error[:500],
+        "last_error": error[:500],
         "run_id": run_id,
         "process_finished_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -125,7 +125,7 @@ def set_failed(doc_id: str, error: str, *, run_id: str = "") -> None:
 
 def set_fetch_failed(doc_id: str, error: str, *, connector_id: str | None = None) -> None:
     """Transition to failed — connector fetch failure. No artifact purge."""
-    fields: dict = {"status": "failed", "error": error[:500]}
+    fields: dict = {"status": "failed", "last_error": error[:500]}
     if connector_id is not None:
         fields["connector_id"] = connector_id
     _pg.update_doc_fields(doc_id, fields)

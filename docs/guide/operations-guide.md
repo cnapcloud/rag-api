@@ -102,7 +102,7 @@ curl -s http://localhost:8000/ready | jq
 curl -s "http://localhost:8000/api/kb/kb-01/docs?page_size=20" | jq '.items[] | {doc_id, status, source}'
 
 # 실패한 문서 확인
-curl -s "http://localhost:8000/api/kb/kb-01/docs?status=failed" | jq '.items[] | {doc_id, source, error}'
+curl -s "http://localhost:8000/api/kb/kb-01/docs?status=failed" | jq '.items[] | {doc_id, source, last_error}'
 
 # 처리 중인 문서 확인
 curl -s "http://localhost:8000/api/kb/kb-01/docs?status=running" | jq '.total'
@@ -238,7 +238,7 @@ zombie run이 있으면 해당 문서를 `failed`로 수동 초기화한다.
 
 ```bash
 docker exec postgresql psql -U rag-api -d rag-api -c \
-  "UPDATE documents SET status = 'failed', error = 'manually reset' \
+  "UPDATE documents SET status = 'failed', last_error = 'manually reset' \
    WHERE status = 'running' AND process_started_at < NOW() - INTERVAL '30 minutes';"
 ```
 

@@ -276,7 +276,7 @@ class WebConnector:
                     connector_id=connector_id,
                     doc_type="html",
                 )
-                update_doc_fields(doc["doc_id"], {"error": err_msg})
+                update_doc_fields(doc["doc_id"], {"last_error": err_msg})
             else:
                 set_fetch_failed(doc["doc_id"], err_msg, connector_id=connector_id)
             logger.warning("Failed to fetch page: source_uri=%s err=%s", source_uri, e)
@@ -312,7 +312,7 @@ class WebConnector:
         # [3-1] Compare content_version for existing non-deleted docs.
         if doc is not None and doc.get("status") != "deleted":
             stored = doc.get("content_version") or ""
-            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("last_error") or "")
             if etag and etag == stored and not aborted:
                 fields: dict = {}
                 if doc.get("connector_id") != connector_id:

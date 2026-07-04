@@ -35,7 +35,7 @@ def _to_local_iso(dt: datetime | None) -> str:
 # Fields allowed in update_doc_fields() to prevent SQL injection via dict keys.
 _ALLOWED_UPDATE_FIELDS = frozenset({
     "title", "source", "storage_key", "content_version", "connector_id", "status",
-    "deleted_at", "run_id", "error", "process_started_at", "process_finished_at",
+    "deleted_at", "run_id", "last_error", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
     "title_hash", "content_simhash", "duplicate_of",
 })
@@ -46,7 +46,7 @@ _NULL_LAST_FIELDS = frozenset({"chunk_count", "file_size"})
 # Column order for all documents SELECT queries — must match CREATE TABLE order.
 _DOC_COLS = (
     "doc_id", "kb_id", "title", "source_type", "source", "storage_key",
-    "content_version", "connector_id", "status", "deleted_at", "run_id", "error",
+    "content_version", "connector_id", "status", "deleted_at", "run_id", "last_error",
     "created_at", "updated_at", "process_started_at", "process_finished_at",
     "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
     "title_hash", "content_simhash", "duplicate_of",
@@ -517,7 +517,7 @@ def list_docs_by_connector_paginated(
 _CONNECTOR_COLS = (
     "connector_id", "kb_id", "name", "source_type", "config",
     "sync_schedule", "schedule_enabled", "sync_status", "sync_started_at",
-    "last_synced_at", "status", "created_at", "updated_at",
+    "last_synced_at", "status", "last_error", "created_at", "updated_at",
 )
 _CONNECTOR_SELECT = "SELECT " + ", ".join(_CONNECTOR_COLS) + " FROM connectors"
 _CONNECTOR_DATETIME_COLS = frozenset({"sync_started_at", "last_synced_at", "created_at", "updated_at"})
@@ -622,6 +622,8 @@ def update_connector(connector_id: str, fields: dict) -> dict | None:
     for k, v in safe.items():
         set_parts.append(f"{k} = %s")
         params.append(Jsonb(v) if k == "config" and v is not None else v)
+    if "status" in safe:
+        set_parts.append("last_error = NULL")
     set_parts.append("updated_at = NOW()")
     params.append(connector_id)
 
@@ -673,12 +675,23 @@ def set_connector_sync_status(
         conn.commit()
 
 
-def set_connector_status(connector_id: str, status: str) -> None:
+def set_connector_status(connector_id: str, status: str, error: str | None = None) -> None:
+    """Set connector status. When status='error', stores the error message in last_error;
+    for any other status, last_error is cleared.
+    """
     with get_pool().connection() as conn:
-        conn.execute(
-            "UPDATE connectors SET status = %s, updated_at = NOW() WHERE connector_id = %s",
-            [status, connector_id],
-        )
+        if status == "error":
+            conn.execute(
+                "UPDATE connectors SET status = %s, last_error = %s, updated_at = NOW() "
+                "WHERE connector_id = %s",
+                [status, (error or "")[:500], connector_id],
+            )
+        else:
+            conn.execute(
+                "UPDATE connectors SET status = %s, last_error = NULL, updated_at = NOW() "
+                "WHERE connector_id = %s",
+                [status, connector_id],
+            )
         conn.commit()
 
 

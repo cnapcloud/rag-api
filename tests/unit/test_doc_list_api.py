@@ -29,7 +29,7 @@ def _make_doc(source: str, status: str = "indexed", chunk_count: int | None = No
         "chunk_count": chunk_count,
         "file_size": 1024,
         "embedding_model": "ollama/nomic-embed-text",
-        "error": None,
+        "last_error": None,
         "created_at": "2026-06-01T00:00:00+00:00",
         "updated_at": "2026-06-01T00:01:00+00:00",
     }
@@ -258,6 +258,6 @@ class TestListDocsItemShape:
         assert "chunk_count" in doc
         assert "file_size" in doc
         assert "embedding_model" in doc
-        assert "error" in doc
+        assert "last_error" in doc
         assert "created_at" in doc
         assert "updated_at" in doc

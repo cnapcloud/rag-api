@@ -169,7 +169,7 @@ documents
 |- status           TEXT         uploading | fetching | pending | running | indexed | deleting | deleted | failed
 |- deleted_at       TIMESTAMPTZ  -- set when status -> deleted (NULL otherwise)
 |- run_id               TEXT
-|- error                TEXT
+|- last_error           TEXT
 |- created_at           TIMESTAMPTZ
 |- updated_at           TIMESTAMPTZ
 |- process_started_at   TIMESTAMPTZ  -- set when status -> running (pipeline pickup)

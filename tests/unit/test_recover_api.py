@@ -91,7 +91,7 @@ class TestRecoverDocEndpoint:
 
     def test_failed_doc_returns_409(self, client):
         """status=failed doc -> 409 (not recoverable via this endpoint)."""
-        with patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "failed", "error": "oops"}):
+        with patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "failed", "last_error": "oops"}):
             resp = client.post(f"/api/kb/kb-test/docs/{DOC_ID}/recover")
 
         assert resp.status_code == 409

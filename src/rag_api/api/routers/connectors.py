@@ -276,13 +276,14 @@ def _run_sync(connector: dict) -> None:
             logger.info("Connector sync aborted: connector_id=%s", connector_id)
         else:
             _wait_for_indexing(connector_id)
+            set_connector_status(connector_id, "active")
             logger.info("Connector sync complete: connector_id=%s", connector_id)
         set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(timezone.utc))
     except Exception as e:
         if is_abort_requested(connector_id):
             logger.info("Connector sync interrupted by abort: connector_id=%s err=%s", connector_id, e)
         else:
-            set_connector_status(connector_id, "error")
+            set_connector_status(connector_id, "error", error=str(e))
             logger.error("Connector sync failed: connector_id=%s err=%s", connector_id, e)
         set_connector_sync_status(connector_id, "idle")
     finally:
@@ -376,6 +377,7 @@ async def get_sync_status(connector_id: str):
         "sync_status": connector["sync_status"],
         "sync_started_at": connector.get("sync_started_at"),
         "last_synced_at": connector.get("last_synced_at"),
+        "last_error": connector.get("last_error"),
         "doc_counts": get_connector_doc_counts(connector_id),
     }
 

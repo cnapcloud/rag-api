@@ -225,7 +225,7 @@ class TestProcessFile:
         mock_update.assert_called_once()
         update_fields = mock_update.call_args.args[1]
         assert update_fields["status"] == "failed"
-        assert "network error" in update_fields["error"]
+        assert "network error" in update_fields["last_error"]
 
     def test_changed_file_reingest(self):
         """File with same source_uri but different SHA is re-ingested."""

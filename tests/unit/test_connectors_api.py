@@ -25,6 +25,7 @@ _BASE_CONNECTOR = {
     "sync_started_at": None,
     "last_synced_at": None,
     "status": "active",
+    "last_error": None,
     "created_at": "2026-06-01T00:00:00+00:00",
     "updated_at": "2026-06-01T00:00:00+00:00",
 }
@@ -385,18 +386,62 @@ class TestTriggerSync:
         assert "in progress" in resp.json()["detail"]
 
 
+    def test_success_sets_status_active_and_clears_error(self, client):
+        """A successful sync auto-recovers status=error -> active (last_error cleared as a side effect)."""
+        from rag_api.api.routers.connectors import _run_sync
+
+        status_calls = []
+        with (
+            patch("rag_api.api.routers.connectors._dispatch_sync"),
+            patch("rag_api.api.routers.connectors._wait_for_indexing"),
+            patch("rag_api.connectors.abort.is_abort_requested", return_value=False),
+            patch("rag_api.connectors.abort.clear_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch(
+                "rag_api.infra.postgres.set_connector_status",
+                side_effect=lambda cid, s, error=None: status_calls.append(s),
+            ),
+        ):
+            _run_sync({**_BASE_CONNECTOR, "status": "error", "last_error": "old failure"})
+
+        assert status_calls == ["active"]
+
+    def test_aborted_sync_does_not_change_status(self, client):
+        """An aborted (not truly completed) sync leaves status untouched."""
+        from rag_api.api.routers.connectors import _run_sync
+
+        status_calls = []
+        with (
+            patch("rag_api.api.routers.connectors._dispatch_sync"),
+            patch("rag_api.connectors.abort.is_abort_requested", return_value=True),
+            patch("rag_api.connectors.abort.clear_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch(
+                "rag_api.infra.postgres.set_connector_status",
+                side_effect=lambda cid, s, error=None: status_calls.append(s),
+            ),
+        ):
+            _run_sync({**_BASE_CONNECTOR, "status": "error", "last_error": "old failure"})
+
+        assert status_calls == []
+
     def test_background_task_marks_error_on_dispatch_failure(self, client):
         status_calls = []
+        error_calls = []
 
         with (
             patch("rag_api.infra.postgres.get_connector", return_value={**_BASE_CONNECTOR}),
             patch("rag_api.infra.postgres.set_connector_sync_status"),
-            patch("rag_api.infra.postgres.set_connector_status", side_effect=lambda cid, s: status_calls.append(s)),
+            patch(
+                "rag_api.infra.postgres.set_connector_status",
+                side_effect=lambda cid, s, error=None: (status_calls.append(s), error_calls.append(error)),
+            ),
         ):
             client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
 
         # _dispatch_sync raises ConfigError; _run_sync catches it and sets status=error
         assert "error" in status_calls
+        assert error_calls[0]
 
 
 # ──────────────────────────────────────────────
@@ -417,8 +462,20 @@ class TestGetSyncStatus:
         body = resp.json()
         assert body["connector_id"] == CONNECTOR_ID
         assert body["sync_status"] == "idle"
+        assert body["last_error"] is None
         assert body["doc_counts"]["total"] == 11
         assert body["doc_counts"]["indexed"] == 10
+
+    def test_surfaces_last_error_when_status_is_error(self, client):
+        errored_connector = {**_BASE_CONNECTOR, "status": "error", "last_error": "ConfigError: bad config"}
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=errored_connector),
+            patch("rag_api.infra.postgres.get_connector_doc_counts", return_value={"total": 0}),
+        ):
+            resp = client.get(f"/api/connectors/{CONNECTOR_ID}/sync/status")
+
+        assert resp.status_code == 200
+        assert resp.json()["last_error"] == "ConfigError: bad config"
 
     def test_not_found_returns_404(self, client):
         with patch("rag_api.infra.postgres.get_connector", return_value=None):

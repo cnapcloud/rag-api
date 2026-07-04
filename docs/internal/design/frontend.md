@@ -131,7 +131,7 @@ Response shape:
 ```json
 { "items": [...], "total": 87, "page": 1, "page_size": 20 }
 ```
-Each item: `doc_source`, `status`, `doc_type`, `chunk_count`, `file_size`, `embedding_model`, `error`, `created_at`, `updated_at`, `etag`.
+Each item: `doc_source`, `status`, `doc_type`, `chunk_count`, `file_size`, `embedding_model`, `last_error`, `created_at`, `updated_at`, `etag`.
 `etag` is an internal S3 dedup hash — do not display in the UI.
 
 Status badge colors: `indexed` = green, `running` = blue, `pending` = gray, `failed` = red.
@@ -147,7 +147,7 @@ Clicking a row opens a detail panel:
   file_size    1.2 MB
   embedding_model  ollama/nomic-embed-text
   updated_at   2026-06-19 14:32
-  error        —
+  last_error   —
   [Reindex]  [Recover]  [Delete]
 ```
 

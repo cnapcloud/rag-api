@@ -99,7 +99,7 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
     purge_doc_artifacts(duplicate_doc_id, include_chunks=False)
     update_doc_fields(doc_id, {
         "status": "indexed",
-        "error": None,
+        "last_error": None,
         "run_id": run_id,
         "process_finished_at": datetime.now(timezone.utc).isoformat(),
     })

@@ -47,10 +47,11 @@ def connector_sync_op(context) -> None:
     set_connector_sync_status(connector_id, "running")
     try:
         _dispatch_sync(connector)
+        set_connector_status(connector_id, "active")
         set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(timezone.utc))
         context.log.info("Scheduled connector sync complete: connector_id=%s", connector_id)
     except Exception as e:
-        set_connector_status(connector_id, "error")
+        set_connector_status(connector_id, "error", error=str(e))
         set_connector_sync_status(connector_id, "idle")
         context.log.error("Scheduled connector sync failed: connector_id=%s err=%s", connector_id, e)
         raise

@@ -199,7 +199,7 @@ class GitHubConnector:
         doc = get_doc_by_source(kb_id, source_uri)
 
         if doc is not None and doc.get("status") != "deleted":
-            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("error") or "")
+            aborted = doc.get("status") == "failed" and "Aborted" in (doc.get("last_error") or "")
             if doc.get("content_version") == sha and not aborted:
                 logger.info("File unchanged: source_uri=%s sha=%s", source_uri, sha)
                 return

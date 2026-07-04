@@ -232,7 +232,7 @@ class TestProcessPage:
         mock_create.assert_called_once()
         assert mock_create.call_args.kwargs["status"] == "failed"
         error_update = next(
-            c for c in mock_update.call_args_list if "error" in c.args[1]
+            c for c in mock_update.call_args_list if "last_error" in c.args[1]
         )
         assert error_update is not None
         mock_upload.assert_not_called()

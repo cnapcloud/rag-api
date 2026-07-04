@@ -102,7 +102,7 @@ def test_title_changed_a_newer_updates_c():
     assert "process_finished_at" in c_call[0][1]
     mock_del.assert_called_once_with("doc-c")
     mock_udf.assert_any_call("doc-a", {
-        "status": "indexed", "error": None, "run_id": "r1",
+        "status": "indexed", "last_error": None, "run_id": "r1",
         "process_finished_at": mock_udf.call_args_list[-1][0][1]["process_finished_at"],
     })
 

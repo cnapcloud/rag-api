@@ -93,7 +93,7 @@ class FakePostgresStore:
             "status": status,
             "deleted_at": None,
             "run_id": "",
-            "error": None,
+            "last_error": None,
             "created_at": now,
             "updated_at": now,
             "process_started_at": None,
@@ -210,6 +210,7 @@ class FakePostgresStore:
             "sync_started_at": None,
             "last_synced_at": None,
             "status": "active",
+            "last_error": None,
             "created_at": now,
             "updated_at": now,
         }
@@ -245,6 +246,8 @@ class FakePostgresStore:
         for k, v in fields.items():
             if k in allowed:
                 self._connectors[connector_id][k] = v
+        if "status" in fields:
+            self._connectors[connector_id]["last_error"] = None
         self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
         return dict(self._connectors[connector_id])
 
@@ -268,9 +271,10 @@ class FakePostgresStore:
             self._connectors[connector_id]["last_synced_at"] = last_synced_at.isoformat()
         self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    def set_connector_status(self, connector_id: str, status: str) -> None:
+    def set_connector_status(self, connector_id: str, status: str, error: str | None = None) -> None:
         if connector_id in self._connectors:
             self._connectors[connector_id]["status"] = status
+            self._connectors[connector_id]["last_error"] = (error or "")[:500] if status == "error" else None
             self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     def get_connector_doc_counts(self, connector_id: str) -> dict[str, int]:

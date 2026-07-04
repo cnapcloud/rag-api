@@ -479,7 +479,7 @@ A가 최신인 경우:
 4. Postgres A: `status` → `indexed`, `process_finished_at` 갱신
 
 A가 구버전인 경우:
-1. Postgres A: `status` → `outdated`, `error` → `dedup:title_changed duplicate_of={C.doc_id}`
+1. Postgres A: `status` → `outdated`, `last_error` → `dedup:title_changed duplicate_of={C.doc_id}`
 
 오픈 이슈:
 - MinIO 파일 삭제 (C의 구버전 파일, grace period 방식) — 별도 US
