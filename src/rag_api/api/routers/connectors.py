@@ -318,7 +318,7 @@ def _dispatch_sync(connector: dict) -> None:
 @router.post("/{connector_id}/sync/abort", status_code=202)
 async def abort_sync(connector_id: str):
     from rag_api.connectors.abort import request_abort
-    from rag_api.infra.dagster_utils import terminate_dagster_run
+    from rag_api.infra.dagster_utils import find_active_run_ids_by_doc_ids, terminate_dagster_run
     from rag_api.infra.postgres import get_active_ingest_docs_for_connector, get_connector, set_connector_sync_status
     from rag_api.pipeline.queue.enqueue import dequeue_upload_events
     from rag_api.pipeline.utils.doc_state import set_failed
@@ -339,8 +339,14 @@ async def abort_sync(connector_id: str):
         dequeue_upload_events(doc_id)
         set_failed(doc_id, "Aborted")
 
-    run_ids = {d["run_id"] for d in docs if d["status"] == "running" and d.get("run_id")}
-    for doc_id in [d["doc_id"] for d in docs if d["status"] == "running"]:
+    running_docs = [d for d in docs if d["status"] == "running"]
+    run_ids = {d["run_id"] for d in running_docs if d.get("run_id")}
+    # run_id not yet recorded (QUEUED/STARTING window) -- look up by doc_id tag instead.
+    missing_run_doc_ids = [d["doc_id"] for d in running_docs if not d.get("run_id")]
+    if missing_run_doc_ids:
+        run_ids.update(find_active_run_ids_by_doc_ids(missing_run_doc_ids))
+
+    for doc_id in [d["doc_id"] for d in running_docs]:
         set_failed(doc_id, "Aborted")
     for run_id in run_ids:
         try:

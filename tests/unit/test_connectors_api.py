@@ -473,3 +473,90 @@ class TestListConnectorDocs:
             client.get(f"/api/connectors/{CONNECTOR_ID}/docs?page_size=999")
 
         assert captured["page_size"] == 100
+
+
+# ──────────────────────────────────────────────
+# POST /api/connectors/{connector_id}/sync/abort
+# ──────────────────────────────────────────────
+
+class TestAbortSync:
+
+    def test_not_found_returns_404(self, client):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 404
+
+    def test_no_sync_in_progress_returns_409(self, client):
+        with patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 409
+
+    def test_pending_docs_dequeued_and_failed(self, client):
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        doc = {"doc_id": "doc-pending", "status": "pending", "run_id": ""}
+        set_failed_calls = []
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.connectors.abort.request_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
+            patch(
+                "rag_api.pipeline.utils.doc_state.set_failed",
+                side_effect=lambda did, *_a, **_kw: set_failed_calls.append(did),
+            ),
+            patch("rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids") as mock_lookup,
+            patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
+        ):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 202
+        mock_dequeue.assert_called_once_with("doc-pending")
+        assert set_failed_calls == ["doc-pending"]
+        mock_lookup.assert_not_called()
+        mock_terminate.assert_not_called()
+
+    def test_running_doc_with_run_id_terminates_directly(self, client):
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        doc = {"doc_id": "doc-running", "status": "running", "run_id": "run-abc"}
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.connectors.abort.request_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.utils.doc_state.set_failed"),
+            patch("rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids") as mock_lookup,
+            patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
+        ):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 202
+        mock_lookup.assert_not_called()
+        mock_terminate.assert_called_once_with("run-abc")
+
+    def test_running_doc_without_run_id_looked_up_by_doc_id_tag(self, client):
+        """QUEUED/STARTING window: run_id not yet recorded -- looked up via GraphQL tag and terminated."""
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        doc = {"doc_id": "doc-queued", "status": "running", "run_id": ""}
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.connectors.abort.request_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.utils.doc_state.set_failed"),
+            patch(
+                "rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids",
+                return_value=["run-queued"],
+            ) as mock_lookup,
+            patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
+        ):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 202
+        mock_lookup.assert_called_once_with(["doc-queued"])
+        mock_terminate.assert_called_once_with("run-queued")

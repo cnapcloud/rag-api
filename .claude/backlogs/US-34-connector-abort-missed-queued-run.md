@@ -1,7 +1,25 @@
 # US-34 — Connector Abort/Delete Guard가 QUEUED/STARTING Dagster Run을 놓치는 버그
 
 ## Status
-todo
+done
+
+## Resolution (2026-07-04)
+
+`infra/dagster_utils.py`에 `find_active_run_ids_by_doc_ids(doc_ids: list[str]) -> list[str]` 추가.
+`runsOrError(filter: {statuses: [QUEUED, STARTING, STARTED, CANCELING]})`로 활성 run 전체를 조회한
+뒤 응답의 `tags`에서 `doc_id`가 요청 목록에 포함되는 run만 client-side로 필터링(GraphQL
+`RunsFilter.tags`가 다중 값 OR을 지원하지 않아 이 방식을 선택). `queue_worker.enabled=true`이거나
+`doc_ids`가 비어있으면 HTTP 호출 없이 `[]` 반환.
+
+`connectors.py` `abort_sync()`는 `status == "running"` 문서 중 `run_id`가 있는 것은 기존대로
+바로 종료 대상에 넣고, `run_id`가 없는(QUEUED/STARTING 구간) 문서의 `doc_id`만 모아
+`find_active_run_ids_by_doc_ids()`로 조회해 결과를 종료 대상 집합에 합친다.
+
+테스트: `tests/unit/test_dagster_utils.py::TestFindActiveRunIdsByDocIds`,
+`tests/unit/test_connectors_api.py::TestAbortSync` 추가. 전체 유닛/dagster 테스트 통과(367 passed).
+
+Acceptance Criteria 4(서브초 레이스 케이스)는 `docs/internal/known-issues.md` 3번 항목에 이미
+known limitation으로 명시되어 있음(별도 변경 불필요).
 
 ## Symptom
 

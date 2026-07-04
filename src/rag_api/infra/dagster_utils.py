@@ -27,6 +27,23 @@ mutation TerminateRun($runId: String!) {
 }
 """
 
+_ACTIVE_RUNS_QUERY = """
+query ActiveRuns($statuses: [RunStatus!]) {
+  runsOrError(filter: {statuses: $statuses}) {
+    __typename
+    ... on Runs {
+      results {
+        runId
+        tags { key value }
+      }
+    }
+    ... on PythonError { message }
+  }
+}
+"""
+
+_ACTIVE_RUN_STATUSES = ["QUEUED", "STARTING", "STARTED", "CANCELING"]
+
 
 def reload_code_location() -> None:
     """Reload all Dagster workspace locations to pick up connector schedule changes.
@@ -100,3 +117,52 @@ def terminate_dagster_run(run_id: str) -> None:
     raise RuntimeError(
         f"Dagster force-terminate failed: run_id={run_id} reason={message}"
     )
+
+
+def find_active_run_ids_by_doc_ids(doc_ids: list[str]) -> list[str]:
+    """Find run_ids of active (QUEUED/STARTING/STARTED/CANCELING) runs tagged with any of doc_ids.
+
+    Used to locate runs whose run_id has not yet been recorded in Postgres (the
+    QUEUED/STARTING window before validate_op runs) so they can still be terminated.
+    Returns [] on queue_worker mode, empty input, or GraphQL failure.
+    """
+    if not doc_ids:
+        return []
+
+    from rag_api.config.settings import get_settings
+    cfg = get_settings()
+
+    if cfg.queue_worker.enabled:
+        logger.info("Queue worker mode: active run lookup skipped doc_ids=%s", doc_ids)
+        return []
+
+    import httpx
+
+    url = f"{cfg.dagster.endpoint}/graphql"
+    try:
+        resp = httpx.post(
+            url,
+            json={"query": _ACTIVE_RUNS_QUERY, "variables": {"statuses": _ACTIVE_RUN_STATUSES}},
+            timeout=5.0,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", {}).get("runsOrError", {})
+    except Exception as e:
+        logger.warning("Dagster active run lookup failed (ignored): doc_ids=%s err=%s", doc_ids, e)
+        return []
+
+    typename = data.get("__typename", "")
+    if typename != "Runs":
+        logger.warning(
+            "Dagster active run lookup unexpected response: type=%s msg=%s",
+            typename, data.get("message", ""),
+        )
+        return []
+
+    doc_id_set = set(doc_ids)
+    run_ids = []
+    for run in data.get("results", []):
+        tags = {t["key"]: t["value"] for t in run.get("tags", [])}
+        if tags.get("doc_id") in doc_id_set:
+            run_ids.append(run["runId"])
+    return run_ids

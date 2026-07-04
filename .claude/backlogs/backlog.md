@@ -33,4 +33,4 @@
 | [US-31](US-31-admin-ui-status-guard.md) | Admin UI Status Guard — proactive 체크 + 409 에러 토스트 (rag-admin) | done |
 | [US-32](US-32-connector-schedule-hot-reload.md) | Connector Schedule Hot Reload via Dagster Code Location Reload | done |
 | [US-33](US-33-connector-config-validation.md) | Connector Config Numeric Field Validation — type/range 검증 + min_content_chars settings 이전 | done |
-| [US-34](todo/US-34-connector-abort-missed-queued-run.md) | Connector Abort/Delete Guard가 QUEUED/STARTING Dagster Run을 놓치는 버그 | todo |
+| [US-34](US-34-connector-abort-missed-queued-run.md) | Connector Abort/Delete Guard가 QUEUED/STARTING Dagster Run을 놓치는 버그 | done |

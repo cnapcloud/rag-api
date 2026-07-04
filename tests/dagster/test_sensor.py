@@ -66,6 +66,7 @@ def _run_sensor(
     pg_doc_by_id: value returned by rag_api.infra.postgres.get_doc_by_id (None or dict).
     """
     from dagster import RunRequest, build_sensor_context
+
     from rag_api.defs.sensors.event_queue_sensor import event_queue_sensor
 
     mock_settings = MagicMock()
@@ -220,16 +221,16 @@ def test_sensor_upload_run_not_found_dispatches():
     assert calls[0][1] == "run-ghost"
 
 
-def test_sensor_upload_dispatch_lock_remnant_dispatches():
-    """Upload event: status=running with no run_id (dispatch lock remnant) -> dispatch immediately."""
+def test_sensor_upload_dispatch_lock_remnant_dropped():
+    """Upload event: status=running with no run_id (QUEUED/STARTING window) -> dropped, not re-queued."""
     fake_redis = _make_redis(put_events=[{"doc_id": DOC_ID, "force": False}])
     result = _run_sensor(
         fake_redis,
         pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running", "run_id": ""},
     )
 
-    assert len(result) == 1
-    assert result[0].job_name == "ingest_job"
+    assert result == []
+    assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 0
 
 
 def test_sensor_upload_deleting_delayed():
@@ -292,16 +293,16 @@ def test_sensor_delete_zombie_run_dispatches():
     assert calls[0][1] == "run-dead"
 
 
-def test_sensor_delete_no_run_id_dispatches():
-    """Delete event: doc is running but run_id is empty -> dispatch immediately."""
+def test_sensor_delete_no_run_id_dropped():
+    """Delete event: status=running with no run_id (QUEUED/STARTING window) -> dropped, not re-queued."""
     fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
     result = _run_sensor(
         fake_redis,
         pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running", "run_id": ""},
     )
 
-    assert len(result) == 1
-    assert result[0].job_name == "delete_job"
+    assert result == []
+    assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 0
 
 
 def test_sensor_drain_delay_queue():

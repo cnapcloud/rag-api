@@ -9,15 +9,17 @@ from uuid import uuid4
 
 from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, SkipReason, sensor
 
+from rag_api.config.settings import get_settings as _get_settings
 from rag_api.defs.jobs.delete_job import delete_job
 from rag_api.defs.jobs.ingest_job import ingest_job
-
-from rag_api.pipeline.queue.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
+from rag_api.pipeline.queue.enqueue import (
+    DELETE_DELAY_KEY,
+    DELETE_QUEUE_KEY,
+    UPLOAD_DELAY_KEY,
+    UPLOAD_QUEUE_KEY,
+)
 
 logger = logging.getLogger(__name__)
-
-
-from rag_api.config.settings import get_settings as _get_settings
 
 _poll_interval_sec = _get_settings().queue_poll.poll_interval_sec
 _max_per_poll = _get_settings().queue_poll.max_per_poll
@@ -64,18 +66,26 @@ def _is_blocked_by_active_run(
         return False
 
     prev_run_id = doc.get("run_id", "")
-    if prev_run_id:
-        run = context.instance.get_run_by_id(prev_run_id)
-        if run is not None and not run.is_finished:
-            r.zadd(delay_key, {raw: time.time() + delay_sec})
-            logger.info("Event delayed (%s): doc_id=%s delay=%ss", s, doc_id, delay_sec)
-            return True
-        set_failed(
-            doc_id,
-            f"Recovered: previous run no longer active (run_id={prev_run_id})",
-            run_id=prev_run_id,
-        )
-        logger.warning("Zombie run recovered: doc_id=%s prev_run_id=%s", doc_id, prev_run_id)
+    if not prev_run_id:
+        # status=running but run_id not yet recorded: the previous run is still in the
+        # Dagster QUEUED/STARTING window, before validate_op writes context.run_id. Block
+        # to avoid dispatching a second run, but drop without re-queuing — re-adding to the
+        # delay queue would loop forever if that run never leaves QUEUED. Manual
+        # POST /docs/{id}/recover is the safety valve for a permanently stuck run_id.
+        logger.info("Event dropped (running, run_id not yet recorded): doc_id=%s", doc_id)
+        return True
+
+    run = context.instance.get_run_by_id(prev_run_id)
+    if run is not None and not run.is_finished:
+        r.zadd(delay_key, {raw: time.time() + delay_sec})
+        logger.info("Event delayed (%s): doc_id=%s delay=%ss", s, doc_id, delay_sec)
+        return True
+    set_failed(
+        doc_id,
+        f"Recovered: previous run no longer active (run_id={prev_run_id})",
+        run_id=prev_run_id,
+    )
+    logger.warning("Zombie run recovered: doc_id=%s prev_run_id=%s", doc_id, prev_run_id)
 
     return False
 
