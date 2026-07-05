@@ -1,0 +1,32 @@
+# Kiwi user word dictionary
+# Format: word<TAB>POS_tag[<TAB>score]
+# POS tags: NNG (일반명사), NNP (고유명사), SL (외래어/영어)
+# Default score: 10.0 (higher = higher priority)
+
+# --- AI / ML 용어 ---
+임베딩	NNG	15.0
+벡터	NNG	15.0
+토크나이저	NNG	12.0
+파인튜닝	NNG	12.0
+프롬프트	NNG	12.0
+청킹	NNG	12.0
+리랭킹	NNG	12.0
+인제스트	NNG	12.0
+허깅페이스	NNP	12.0
+
+# --- 시스템 / 인프라 ---
+컨테이너	NNG	12.0
+오케스트레이션	NNG	12.0
+파이프라인	NNG	12.0
+엔드포인트	NNG	12.0
+페이로드	NNG	12.0
+백엔드	NNG	12.0
+스케줄러	NNG	12.0
+
+# --- 이 프로젝트 고유명사 ---
+Qdrant	NNP	15.0
+MinIO	NNP	15.0
+Dagster	NNP	15.0
+LlamaIndex	NNP	15.0
+FastEmbed	NNP	12.0
+Ollama	NNP	15.0
