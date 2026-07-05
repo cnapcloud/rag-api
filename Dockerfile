@@ -15,7 +15,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 # Copy source and install the local package (deps already installed above)
-COPY . .
+COPY src ./src
+COPY migrations ./migrations
+COPY settings.yaml ./
 RUN uv sync --frozen --no-dev
 
 EXPOSE 8000
