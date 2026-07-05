@@ -15,17 +15,9 @@ from rag_api.infra.s3 import download_by_key
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {
-    # documents
+DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({
     ".pdf", ".md", ".docx", ".txt", ".hwp", ".html", ".htm", ".rst",
-    # source code
-    ".py", ".ts", ".tsx", ".js", ".jsx",
-    ".go", ".java", ".rs",
-    ".cpp", ".cc", ".c", ".cs",
-    ".rb", ".php", ".swift", ".kt", ".scala", ".sh",
-    # config / data
-    ".yaml", ".yml", ".properties",
-}
+})
 
 CODE_EXTENSIONS: frozenset[str] = frozenset({
     ".py", ".ts", ".tsx", ".js", ".jsx",
@@ -33,6 +25,12 @@ CODE_EXTENSIONS: frozenset[str] = frozenset({
     ".cpp", ".cc", ".c", ".cs",
     ".rb", ".php", ".swift", ".kt", ".scala", ".sh",
 })
+
+CONFIG_DATA_EXTENSIONS: frozenset[str] = frozenset({
+    ".yaml", ".yml", ".properties",
+})
+
+SUPPORTED_EXTENSIONS = DOCUMENT_EXTENSIONS | CODE_EXTENSIONS | CONFIG_DATA_EXTENSIONS
 
 CODE_LANGUAGE_MAP: dict[str, str] = {
     ".py": "python",

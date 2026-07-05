@@ -29,7 +29,7 @@ def parse_op(context: OpExecutionContext, config: IngestConfig):
 def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
     """Stage 1 detection: compute SHA-256 title + SimHash body from pre-parsed documents."""
     from rag_api.config.settings import get_settings
-    from rag_api.pipeline.ops.dedup import run_simhash_detection
+    from rag_api.pipeline.ops.dedup import is_document, run_simhash_detection
     from rag_api.pipeline.ops.dedup.types import DedupResult
 
     doc_id = valid_config["doc_id"]
@@ -37,7 +37,12 @@ def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
     cfg = get_settings()
     if not cfg.dedup.enabled:
         context.log.info("Dedup disabled: doc_id=%s", doc_id)
-        return DedupResult(verdict="proceed", needs_indexing=True)
+        return DedupResult(needs_indexing=True)
+
+    if not is_document(documents):
+        doc_type = documents[0].metadata.get("doc_type", "") if documents else ""
+        context.log.info("Dedup skipped (non-document type=%s): doc_id=%s", doc_type, doc_id)
+        return DedupResult(needs_indexing=True)
 
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
     body = " ".join(d.text for d in documents)
@@ -64,6 +69,7 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
     Runs only when stage 1 returned 'proceed'. Otherwise passes stage 1 result through.
     """
     from rag_api.config.settings import get_settings
+    from rag_api.pipeline.ops.dedup import is_document
     from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
     from rag_api.pipeline.ops.dedup.types import DedupResult
 
@@ -79,7 +85,12 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
     cfg = get_settings()
     if not cfg.dedup.enabled:
         context.log.info("Dedup disabled: doc_id=%s", doc_id)
-        return DedupResult(verdict="proceed", needs_indexing=True)
+        return DedupResult(needs_indexing=True)
+
+    if not is_document(documents):
+        doc_type = documents[0].metadata.get("doc_type", "") if documents else ""
+        context.log.info("Stage2 skipped (non-document type=%s): doc_id=%s", doc_type, doc_id)
+        return DedupResult(needs_indexing=True)
 
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
     body = " ".join(d.text for d in documents)

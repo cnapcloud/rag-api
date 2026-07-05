@@ -50,8 +50,7 @@ def get_kiwi():
 
 def _load_user_words(kiwi, path: Path) -> None:
     if not path.is_absolute():
-        root = Path(__file__).parents[4]
-        path = root / path
+        path = Path.cwd() / path
 
     if not path.exists():
         logger.warning("Kiwi user words file not found: %s", path)

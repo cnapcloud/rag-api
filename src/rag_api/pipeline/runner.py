@@ -60,7 +60,10 @@ def run_ingest_pipeline(
 
         dedup_result = run_dedup_pipeline(doc_id=doc_id, kb_id=kb_id, run_id=run_id, documents=documents)
         if not dedup_result.needs_indexing:
-            logger.info("Dedup skipped indexing: doc_id=%s verdict=%s", doc_id, dedup_result.verdict)
+            logger.info(
+                "Dedup skipped indexing: doc_id=%s body_match=%s duplicate=%s",
+                doc_id, dedup_result.body_match, dedup_result.duplicate_doc_id,
+            )
             return 0
 
         nodes = chunk(documents)

@@ -7,11 +7,24 @@ import logging
 from rag_api.pipeline.ops.dedup.simhash import run_simhash_detection
 from rag_api.pipeline.ops.dedup.types import BodyMatch, DedupResult, TitleMatch
 from rag_api.pipeline.ops.dedup.verdict import run_verdict
+from rag_api.pipeline.ops.parse import DOCUMENT_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["run_dedup_pipeline", "run_simhash_detection", "run_verdict", "DedupResult",
-           "BodyMatch", "TitleMatch"]
+           "BodyMatch", "TitleMatch", "is_document"]
+
+
+def is_document(documents) -> bool:
+    """True if the parsed doc's file type belongs to the 'documents' category.
+
+    Dedup (SimHash/MinHash near-duplicate detection) is meaningful for prose
+    content only; source code and config/data files are excluded.
+    """
+    if not documents:
+        return True
+    doc_type = documents[0].metadata.get("doc_type", "")
+    return f".{doc_type}" in DOCUMENT_EXTENSIONS
 
 
 def run_dedup_pipeline(
@@ -45,6 +58,11 @@ def run_dedup_pipeline(
         if doc is None:
             raise IngestValidationError(f"Document not found: doc_id={doc_id}")
         documents = parse(doc_id=doc_id, storage_key=doc.get("storage_key", ""))
+
+    if not is_document(documents):
+        doc_type = documents[0].metadata.get("doc_type", "") if documents else ""
+        logger.info("Dedup skipped (non-document type=%s): doc_id=%s", doc_type, doc_id)
+        return DedupResult(needs_indexing=True)
 
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
     body = " ".join(d.text for d in documents)
