@@ -27,6 +27,8 @@ def get_redis_client() -> redis_lib.Redis:
             password=cfg.password or None,
             db=cfg.db,
             decode_responses=True,
+            socket_connect_timeout=cfg.timeout_seconds,
+            socket_timeout=cfg.timeout_seconds,
         )
     return _client
 

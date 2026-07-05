@@ -29,6 +29,7 @@ redis:
   port: 6379
   password: "<password>"
   db: 0
+  timeout_seconds: 2.0   # socket_connect_timeout / socket_timeout — keeps a hung Redis from blocking the event loop
 
 ingestion:
   max_file_size_mb: 200

@@ -32,6 +32,7 @@ class RedisSettings(BaseModel):
     port: int = 6379
     password: str = ""
     db: int = 0
+    timeout_seconds: float = 2.0
 
 
 class PostgresSettings(BaseModel):
