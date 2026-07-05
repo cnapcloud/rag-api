@@ -18,6 +18,7 @@
   - [8. 동일 문서 중복 처리 요청 시 모드별 회복 불가 케이스](#8-동일-문서-중복-처리-요청-시-모드별-회복-불가-케이스)
   - [9. 커넥터 abort 시 센서 pop~RunRequest 구간의 서브초 레이스로 취소 대상 누락](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락)
   - [10. Confluence 커넥터 첨부파일 목록 조회 네트워크 오류가 API/DB 어디에도 남지 않음](#10-confluence-커넥터-첨부파일-목록-조회-네트워크-오류가-apidb-어디에도-남지-않음)
+  - [11. dagster-rag-api 코드서버가 잘못된 command로 기동 즉시 종료](#11-dagster-rag-api-코드서버가-잘못된-command로-기동-즉시-종료)
 
 ---
 
@@ -415,3 +416,56 @@ INFO  rag_api.connectors.confluence: Confluence sync done: connector_id=3366226e
 일회성이 아닌 원인)를 감지할 방법이 없다 — 로그를 grep하지 않는 한 아무도 알아채지 못한다.
 개선하려면 연속 실패 횟수를 페이지 단위로 추적하거나, 실패를 커넥터 `last_error`에 경고로
 남기는 방식이 필요하나 아직 미구현.
+
+---
+
+## 11. dagster-rag-api 코드서버가 잘못된 command로 기동 즉시 종료
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved |
+| 발견일 | 2026-07-05 |
+| 해결일 | 2026-07-05 |
+| 심각도 | HIGH |
+
+**증상**
+
+`dagster-daemon` 로그에 다음 경고가 반복 출력되고, 센서/스케줄이 전혀 실행되지 않음:
+
+```
+UserWarning: Error loading repository location grpc:dagster-rag-api:4000:
+dagster._core.errors.DagsterUserCodeUnreachableError: Could not reach user code server.
+gRPC Error code: UNAVAILABLE
+```
+
+`docker logs dagster-rag-api`에는 다음이 남고 컨테이너가 즉시 종료(exit code 2)됨:
+
+```
+Usage: dagster code-server start [OPTIONS]
+Try 'dagster code-server start --help' for help.
+Error: Got unexpected extra argument (rag_api.defs.definitions)
+```
+
+**원인**
+
+`docker/docker-compose.yml`의 `dagster-rag-api.command`를 파일 모드(`-f
+src/rag_api/defs/definitions.py`)에서 모듈 모드(`-m rag_api.defs.definitions`)로 바꾸는
+과정에서 값이 빠진 `-f` 플래그가 남아 있었다:
+
+```
+dagster code-server start -h 0.0.0.0 -p 4000 -f  -m rag_api.defs.definitions
+```
+
+`-f`가 빈 값을 삼키면서 `-m rag_api.defs.definitions`가 예상치 못한 위치 인자로 파싱되어
+프로세스가 기동 직후 종료됐다.
+
+**해결**
+
+`docker/docker-compose.yml:44`에서 불필요한 `-f`를 제거:
+
+```
+command: dagster code-server start -h 0.0.0.0 -p 4000 -m rag_api.defs.definitions
+```
+
+`docker compose up -d dagster-rag-api`로 재기동 후 코드서버 정상 기동 및 `dagster-daemon`의
+센서 폴링 재개를 확인함.
