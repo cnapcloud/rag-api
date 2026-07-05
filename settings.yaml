@@ -2,7 +2,7 @@ dagster:
   endpoint: "http://localhost:3000"
 
 s3:
-  endpoint: "http://192.168.0.185:9000"
+  endpoint: "http://localhost:9000"
   access_key: "admin"
   secret_key: "password"
   rag_bucket: "rag-api"
@@ -11,7 +11,7 @@ s3:
   insecure: true
 
 postgres:
-  host: "postgresql"
+  host: "localhost"
   port: 5432
   dbname: "rag-api"
   user: "rag-api"
@@ -20,12 +20,12 @@ postgres:
   connect_timeout: 30
 
 qdrant:
-  host: "192.168.0.184"
+  host: "localhost"
   port: 6333
   insecure: true
 
 redis:
-  host: "192.168.0.183"
+  host: "localhost"
   port: 6379
   password: "redis"
   db: 0

@@ -9,7 +9,7 @@ services:
       - .env
     volumes:
       - ./settings.yaml:/app/settings.yaml:ro
-      - ./data/kiwi_user_words.tsv:/app/data/kiwi_user_words.tsv:ro
+      - ./data/kiwi_user_words.tsv:/data/kiwi_user_words.tsv:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -41,7 +41,7 @@ services:
       dockerfile: Dockerfile
     container_name: dagster-rag-api
     stop_grace_period: 120s
-    command: dagster code-server start -h 0.0.0.0 -p 4000 -f src/rag_api/defs/definitions.py
+    command: dagster code-server start -h 0.0.0.0 -p 4000 -m rag_api.defs.definitions
     environment:
       PYTHONPATH: /app/src
       DAGSTER_HOME: /opt/dagster/dagster_home
@@ -49,7 +49,7 @@ services:
     volumes:
       - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
       - ./settings.yaml:/app/settings.yaml:ro
-      - ./data/kiwi_user_words.tsv:/app/data/kiwi_user_words.tsv:ro
+      - ./data/kiwi_user_words.tsv:/data/kiwi_user_words.tsv:ro
       # compute_logs, io_logs will be stored here
       # io manager s3를 사용하는 경우, compute_logs만 저장
       - dagster-storage:/opt/dagster/dagster_home/storage
