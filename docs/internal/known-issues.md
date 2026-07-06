@@ -19,6 +19,7 @@
   - [9. 커넥터 abort 시 센서 pop~RunRequest 구간의 서브초 레이스로 취소 대상 누락](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락)
   - [10. Confluence 커넥터 첨부파일 목록 조회 네트워크 오류가 API/DB 어디에도 남지 않음](#10-confluence-커넥터-첨부파일-목록-조회-네트워크-오류가-apidb-어디에도-남지-않음)
   - [11. dagster-rag-api 코드서버가 잘못된 command로 기동 즉시 종료](#11-dagster-rag-api-코드서버가-잘못된-command로-기동-즉시-종료)
+  - [12. /ready의 동기 블로킹 ping이 단일 이벤트 루프를 점유해 /health 등 무관한 요청까지 지연](#12-ready의-동기-블로킹-ping이-단일-이벤트-루프를-점유해-health-등-무관한-요청까지-지연)
 
 ---
 
@@ -469,3 +470,78 @@ command: dagster code-server start -h 0.0.0.0 -p 4000 -m rag_api.defs.definition
 
 `docker compose up -d dagster-rag-api`로 재기동 후 코드서버 정상 기동 및 `dagster-daemon`의
 센서 폴링 재개를 확인함.
+
+---
+
+## 12. /ready의 동기 블로킹 ping이 단일 이벤트 루프를 점유해 /health 등 무관한 요청까지 지연
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved |
+| 발견일 | 2026-07-06 |
+| 해결일 | 2026-07-06 |
+| 심각도 | MEDIUM |
+
+**증상**
+
+rag-ent-api 쪽에서 10명 동시 사용자 조회 부하 테스트를 진행하던 중, `/ready`를 50개
+동시 호출하는 시나리오에서 latency가 순차 호출(p50 63~93ms) 대비 크게 상승(p50 530ms,
+max 587ms)했다. 별도로 `/ready` 폭주 중 무관한 `/health`를 인터리빙해서 찔러본 결과, 평소
+1ms 미만이던 `/health`가 폭주 중에는 최대 490.7ms까지 튀었다 — `/health`는 `/ready`와
+아무 관련이 없어야 하는 요청인데도 지연이 전이됨. 자세한 재현 과정은 rag-ent-api 저장소의
+`docs/internal/testing/concurrent-read-load-test-results.md` §3 참고.
+
+**원인**
+
+`api/routers/health.py`의 `readiness()`에서 S3 체크(`_s3_ok()`)는 `asyncio.to_thread`로
+이벤트 루프 밖 스레드에서 실행되도록 되어 있었지만, `qdrant_ping()`/`redis_ping()`/
+`postgres_ping()`은 `async def readiness()` 안에서 **동기 블로킹 호출로 직접** 실행되고
+있었다. 이 서비스는 uvicorn을 단일 워커(이벤트 루프 1개)로 띄우므로, 이 블로킹 호출들이
+실행되는 짧은 시간 동안은 `/ready`뿐 아니라 그 순간 도착한 다른 모든 요청까지 이벤트 루프에서
+함께 대기해야 한다. `/ready`는 `exempt_paths`(rate limit 미적용)라 호출 빈도 제한이 없어,
+반복 호출(실수 또는 악의적)이 서비스 전체 응답성에 영향을 줄 수 있는 벡터였다. E-17
+(rag-ent-api, Redis 소켓 타임아웃 미설정으로 인한 이벤트 루프 정지)과 같은 계열의 문제다.
+
+**해결**
+
+`_s3_ok()`와 동일한 패턴을 공통 헬퍼로 추출해 세 ping에도 동일하게 적용했다 (`ping()`
+함수를 인자로 전달받아 반복을 없앰):
+
+```python
+async def _ping_ok(name: str, fn: Callable[[], bool]) -> bool:
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(fn), timeout=5)
+    except TimeoutError:
+        logger.error("Readiness check timed out: %s", name)
+        return False
+```
+
+```python
+checks: dict[str, bool] = {
+    "qdrant": await _ping_ok("qdrant", qdrant_ping),
+    "redis": await _ping_ok("redis", redis_ping),
+    "postgres": await _ping_ok("postgres", postgres_ping),
+    "s3": await _s3_ok(),
+}
+```
+
+**재검증**
+
+동일한 50-동시 `/ready` 시나리오 + `/health` 인터리빙 테스트를 서버 재시작 후 재실행:
+
+| 지표 | 수정 전 | 수정 후 |
+|---|---|---|
+| `/ready` 50 동시 p50 | 530.3ms | 442.0ms |
+| `/health` 폭주 중 최대 스파이크 | 490.7ms | 266.8ms |
+| `/health` 폭주 중 p50 | 7.2ms | 4.9ms |
+
+다른 엔드포인트로의 지연 전이는 뚜렷이 감소(최대 스파이크 46%↓)했다. `/ready` 자체의 절대
+latency가 크게 줄지 않은 것은, 이제 이벤트 루프 대신 스레드풀(`asyncio.to_thread` 기본
+executor)에서 50×3개 ping이 경합하기 때문으로 추정되며, 이는 실제 다운스트림 동시 접속
+비용이지 이벤트 루프 블로킹 버그가 아니므로 훨씬 덜 심각하다.
+
+**비고**
+
+`ping()` 함수들(`infra/qdrant.py`, `infra/redis.py`, `infra/postgres.py`)은 이미 내부에서
+예외를 잡아 로그를 남기고 `bool`을 반환하므로, `_ping_ok()`는 스레드 실행과 타임아웃만
+책임진다 — `ping()` 자체의 예외 처리 정책은 변경하지 않았다.

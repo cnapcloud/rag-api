@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 
 import httpx
 from fastapi import APIRouter
@@ -19,6 +20,18 @@ _NON_CRITICAL_CHECKS = ("s3",)  # ingest-only deps; failure is reported but does
 @router.get("/health")
 async def liveness():
     return {"status": "ok"}
+
+
+async def _ping_ok(name: str, fn: Callable[[], bool]) -> bool:
+    # ping() implementations are synchronous (qdrant-client/redis-py/psycopg are
+    # all blocking) - run off the event loop so concurrent /ready calls don't
+    # serialize on it (uvicorn runs a single worker, no other request can
+    # progress while a blocking call holds the loop).
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(fn), timeout=5)
+    except TimeoutError:
+        logger.error("Readiness check timed out: %s", name)
+        return False
 
 
 async def _s3_ok() -> bool:
@@ -75,9 +88,9 @@ async def readiness():
     emb = cfg.embedding
 
     checks: dict[str, bool] = {
-        "qdrant": qdrant_ping(),
-        "redis": redis_ping(),
-        "postgres": postgres_ping(),
+        "qdrant": await _ping_ok("qdrant", qdrant_ping),
+        "redis": await _ping_ok("redis", redis_ping),
+        "postgres": await _ping_ok("postgres", postgres_ping),
         "s3": await _s3_ok(),
     }
 
