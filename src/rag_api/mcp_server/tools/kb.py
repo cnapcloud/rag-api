@@ -13,10 +13,18 @@ from rag_api.tracing.span import traced_tool
 
 @traced_tool
 def list_knowledge_bases(ctx: Context | None = None) -> dict[str, Any]:
-    """List all available knowledge bases with their IDs and descriptions."""
+    """List all available knowledge bases with their IDs, names, descriptions, and tags."""
     span = trace.get_current_span()
     kbs = list_kbs()
     span.set_attribute("rag.kb_count", len(kbs))
     return {
-        "knowledge_bases": [{"id": kb["kb_id"], "description": kb["description"]} for kb in kbs]
+        "knowledge_bases": [
+            {
+                "id": kb["kb_id"],
+                "name": kb["kb_name"],
+                "description": kb["description"],
+                "tags": kb["tags"],
+            }
+            for kb in kbs
+        ]
     }

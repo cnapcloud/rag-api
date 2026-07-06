@@ -19,8 +19,8 @@ DOC_ID = "11111111-1111-1111-1111-111111111111"
 
 def test_list_knowledge_bases_returns_all():
     fake_kbs = [
-        {"kb_id": "kb-a", "description": "Alpha KB"},
-        {"kb_id": "kb-b", "description": "Beta KB"},
+        {"kb_id": "kb-a", "kb_name": "Alpha", "description": "Alpha KB", "tags": ["eng"]},
+        {"kb_id": "kb-b", "kb_name": "Beta", "description": "Beta KB", "tags": []},
     ]
 
     with patch("rag_api.mcp_server.tools.kb.list_kbs", return_value=fake_kbs):
@@ -28,8 +28,8 @@ def test_list_knowledge_bases_returns_all():
 
     assert result == {
         "knowledge_bases": [
-            {"id": "kb-a", "description": "Alpha KB"},
-            {"id": "kb-b", "description": "Beta KB"},
+            {"id": "kb-a", "name": "Alpha", "description": "Alpha KB", "tags": ["eng"]},
+            {"id": "kb-b", "name": "Beta", "description": "Beta KB", "tags": []},
         ]
     }
 
