@@ -1,3 +1,7 @@
+server:
+  production: true
+  workers: 1 
+
 dagster:
   endpoint: "http://dagster-webserver:3000"
 

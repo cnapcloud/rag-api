@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field
 # 하위 모델
 # ──────────────────────────────────────────────
 
+class ServerSettings(BaseModel):
+    production: bool = False
+    # Only used when production=true; a single reload-enabled process ignores this.
+    workers: int = 1
+
+
 class DagsterSettings(BaseModel):
     endpoint: str = "http://dagster-webserver:3000"
 
@@ -166,6 +172,7 @@ _SETTINGS_PATH = Path(__file__).parents[3] / "settings.yaml"
 
 
 class Settings(BaseModel):
+    server: ServerSettings = Field(default_factory=ServerSettings)
     dagster: DagsterSettings = Field(default_factory=DagsterSettings)
     s3: S3Settings = Field(default_factory=S3Settings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
@@ -193,6 +200,10 @@ class Settings(BaseModel):
 
         if api_key := os.environ.get("OPENAI_API_KEY"):
             data.setdefault("embedding", {})["openai_api_key"] = api_key
+        if production := os.environ.get("SERVER__PRODUCTION"):
+            data.setdefault("server", {})["production"] = production.lower() in ("1", "true", "yes")
+        if workers := os.environ.get("SERVER__WORKERS"):
+            data.setdefault("server", {})["workers"] = int(workers)
 
         return cls.model_validate(data)
 

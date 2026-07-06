@@ -143,14 +143,24 @@ def serve(
     """FastAPI 서버 실행."""
     import uvicorn
 
-    uvicorn.run(
-        "rag_api.api.app:create_app",
+    from rag_api.config.settings import get_settings
+
+    cfg = get_settings().server
+    if cfg.production and reload:
+        typer.echo("--reload ignored: server.production=true disables auto-reload")
+    effective_reload = reload and not cfg.production
+
+    run_kwargs: dict = dict(
         host=host,
         port=port,
-        reload=reload,
+        reload=effective_reload,
         factory=True,
         log_config=None,
     )
+    if cfg.production and cfg.workers > 1:
+        run_kwargs["workers"] = cfg.workers
+
+    uvicorn.run("rag_api.api.app:create_app", **run_kwargs)
 
 
 # ──────────────────────────────────────────────
