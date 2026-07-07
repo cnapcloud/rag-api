@@ -1,12 +1,15 @@
+x-env-file: &env-file
+  env_file:
+    - .env
+
 services:
 
   rag-api:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile
     container_name: rag-api
-    env_file:
-      - .env
     volumes:
       - ./settings.yaml:/app/settings.yaml:ro
       - ./data/kiwi_user_words.tsv:/data/kiwi_user_words.tsv:ro
@@ -23,6 +26,7 @@ services:
         condition: service_healthy
 
   rag-admin:
+    <<: *env-file
     build:
       context: ../../rag-admin
       dockerfile: Dockerfile
@@ -36,6 +40,7 @@ services:
         condition: service_started
 
   dagster-rag-api:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile
@@ -64,6 +69,7 @@ services:
       start_period: 10s
 
   dagster-webserver:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile.dagster
@@ -91,6 +97,7 @@ services:
         condition: service_healthy
 
   dagster-daemon:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile.dagster
@@ -113,6 +120,7 @@ services:
         condition: service_healthy
 
   postgresql:
+    <<: *env-file
     image: postgres:15-alpine
     container_name: postgresql
     environment:
@@ -131,20 +139,22 @@ services:
       retries: 5
 
   redis:
+    <<: *env-file
     image: redis:7-alpine
     container_name: redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-redis}
+    command: redis-server --requirepass ${REDIS__PASSWORD:-redis}
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS__PASSWORD:-redis}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   qdrant:
+    <<: *env-file
     image: qdrant/qdrant:v1.18.2
     container_name: qdrant
     ports:
@@ -159,6 +169,7 @@ services:
       retries: 5
 
   minio:
+    <<: *env-file
     image: minio/minio:latest
     container_name: minio
     command: server /data --console-address ":9001"
@@ -177,6 +188,7 @@ services:
       retries: 5
 
   minio-init:
+    <<: *env-file
     image: minio/mc:latest
     container_name: minio-init
     depends_on:
@@ -184,8 +196,6 @@ services:
         condition: service_healthy
       rag-api:
         condition: service_started
-    env_file:
-      - .env
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin};
@@ -196,6 +206,7 @@ services:
     restart: "no"
 
   mailpit:
+    <<: *env-file
     image: axllent/mailpit:v1.29.6
     container_name: mailpit
     restart: unless-stopped

@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, File, Query, UploadFile
@@ -481,10 +482,12 @@ async def download_doc(kb_id: str, doc_id: str):
             yield chunk
 
     logger.info("Download doc: kb=%s doc_id=%s key=%s", kb_id, doc_id, storage_key)
+    ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "download"
+    disposition = f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
     return StreamingResponse(
         _iter(),
         media_type=content_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
 
 

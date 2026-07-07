@@ -200,6 +200,22 @@ class Settings(BaseModel):
 
         if api_key := os.environ.get("OPENAI_API_KEY"):
             data.setdefault("embedding", {})["openai_api_key"] = api_key
+        if access_key := os.environ.get("S3__ACCESS_KEY"):
+            data.setdefault("s3", {})["access_key"] = access_key
+        if secret_key := os.environ.get("S3__SECRET_KEY"):
+            data.setdefault("s3", {})["secret_key"] = secret_key
+        if redis_password := os.environ.get("REDIS__PASSWORD"):
+            data.setdefault("redis", {})["password"] = redis_password
+        if postgres_user := os.environ.get("POSTGRES__USER"):
+            data.setdefault("postgres", {})["user"] = postgres_user
+        if postgres_password := os.environ.get("POSTGRES__PASSWORD"):
+            data.setdefault("postgres", {})["password"] = postgres_password
+        if reranker_api_key := os.environ.get("RERANKER__API_KEY"):
+            data.setdefault("retrieval", {}).setdefault("rerank", {})["api_key"] = reranker_api_key
+        if langfuse_public_key := os.environ.get("TRACING__LANGFUSE_PUBLIC_KEY"):
+            data.setdefault("tracing", {})["langfuse_public_key"] = langfuse_public_key
+        if langfuse_secret_key := os.environ.get("TRACING__LANGFUSE_SECRET_KEY"):
+            data.setdefault("tracing", {})["langfuse_secret_key"] = langfuse_secret_key
         if production := os.environ.get("SERVER__PRODUCTION"):
             data.setdefault("server", {})["production"] = production.lower() in ("1", "true", "yes")
         if workers := os.environ.get("SERVER__WORKERS"):

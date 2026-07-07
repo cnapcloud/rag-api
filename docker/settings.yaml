@@ -7,8 +7,6 @@ dagster:
 
 s3:
   endpoint: "http://minio:9000"
-  access_key: "minioadmin"   # matches MINIO_ROOT_USER in .env
-  secret_key: "minioadmin"   # matches MINIO_ROOT_PASSWORD in .env
   rag_bucket: "rag-api"
   dagster_bucket: "dagster-storage"
   region: "us-east-1"
@@ -18,8 +16,6 @@ postgres:
   host: "postgresql"
   port: 5432
   dbname: "rag-api"
-  user: "rag-api"
-  password: "password"
   pool_size: 5
   connect_timeout: 30
 
@@ -31,7 +27,6 @@ qdrant:
 redis:
   host: "redis"
   port: 6379
-  password: "redis"
   db: 0
 
 ingestion:
@@ -71,7 +66,6 @@ embedding:
   model: "bge-m3"
   vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
   ollama_url: "http://192.168.0.75:11434"
-  openai_api_key: ""
   openai_model: "text-embedding-3-small"
 
 retrieval:
@@ -85,7 +79,6 @@ retrieval:
   rerank:
     enabled: true
     provider: "jina"
-    api_key: jina_026dc0b5a8ff4e6480914e208c1e0682eZK1BWvhq7gdXbQQxRPjP2rZXFo-"
     model: "jina-reranker-v2-base-multilingual"
     top_n: 3
     timeout_sec: 5
@@ -109,8 +102,6 @@ mcp:
 tracing:
   enabled: false
   langfuse_baseurl: ""
-  langfuse_public_key: ""
-  langfuse_secret_key: ""
   service_name: "rag-api"
 
 logging:
