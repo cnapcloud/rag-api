@@ -20,6 +20,7 @@
   - [10. Confluence 커넥터 첨부파일 목록 조회 네트워크 오류가 API/DB 어디에도 남지 않음](#10-confluence-커넥터-첨부파일-목록-조회-네트워크-오류가-apidb-어디에도-남지-않음)
   - [11. dagster-rag-api 코드서버가 잘못된 command로 기동 즉시 종료](#11-dagster-rag-api-코드서버가-잘못된-command로-기동-즉시-종료)
   - [12. /ready의 동기 블로킹 ping이 단일 이벤트 루프를 점유해 /health 등 무관한 요청까지 지연](#12-ready의-동기-블로킹-ping이-단일-이벤트-루프를-점유해-health-등-무관한-요청까지-지연)
+  - [13. SimHash stage1 'similar' 판정이 stage2(MinHash) 확인 없이 바로 커밋됨](#13-simhash-stage1-similar-판정이-stage2minhash-확인-없이-바로-커밋됨)
 
 ---
 
@@ -545,3 +546,70 @@ executor)에서 50×3개 ping이 경합하기 때문으로 추정되며, 이는 
 `ping()` 함수들(`infra/qdrant.py`, `infra/redis.py`, `infra/postgres.py`)은 이미 내부에서
 예외를 잡아 로그를 남기고 `bool`을 반환하므로, `_ping_ok()`는 스레드 실행과 타임아웃만
 책임진다 — `ping()` 자체의 예외 처리 정책은 변경하지 않았다.
+
+---
+
+## 13. SimHash stage1 'similar' 판정이 stage2(MinHash) 확인 없이 바로 커밋됨
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-07 |
+| 심각도 | MED |
+
+**증상**
+
+서로 무관한 두 Kubernetes 공식 문서(둘 다 Security 카테고리: "API Server Bypass Risks",
+"Security Checklist")를 인제스트하면, stage 1(SimHash) Hamming distance가 8~10 사이로 나와
+`body_match="similar"`로 분류된다(`hamming_identical_threshold=3` 초과,
+`hamming_similar_threshold=10` 이하). 이 판정은 stage 2(MinHash) 확인을 전혀 거치지 않고
+바로 `handle_similar()`로 전달되어, 두 문서 중 하나가 강제로 outdated 처리(색인 안 됨)되거나
+상대 문서의 기존 Qdrant 청크가 삭제될 수 있다.
+
+**원인**
+
+`run_dedup_pipeline`([dedup/**init**.py:79-82](../../src/rag_api/pipeline/ops/dedup/__init__.py#L79-L82))은
+stage 1 결과 `body_match == "none"`일 때만 stage 2(MinHash)를 실행한다. `"similar"`
+(Hamming distance가 identical_threshold~similar_threshold 사이)와 `"identical_level"`
+둘 다 stage 2 확인 없이 즉시 `run_verdict`로 넘어가며, `"similar"`는
+`handle_similar()`([verdict.py:109-143](../../src/rag_api/pipeline/ops/dedup/verdict.py#L109-L143))를
+통해 파괴적 액션(청크 삭제/색인 스킵)을 수행한다.
+
+SimHash([simhash.py:26-48](../../src/rag_api/pipeline/ops/dedup/simhash.py#L26-L48), 문자
+3-gram, 64bit)는 텍스트 길이·어휘 중복에 민감한 성긴(coarse) 신호라, 같은
+카테고리/주제의 문서끼리는 실제 중복이 아니어도 "similar" 밴드에 쉽게 들어갈 수 있다.
+
+**모의 테스트로 확인한 사실**
+
+처음에는 `HTMLCleanReader`(`pipeline/ops/parse.py`)가 사이트 공통 boilerplate(`#pre-footer`
+Feedback 블록 등, nav/header/footer/aside 태그로 감싸지지 않아 stripping 대상에서 빠짐)를
+제거하지 못해 생기는 파싱 문제로 의심했으나, 실제 프로젝트 코드(`compute_simhash`,
+`hamming_distance`, `compute_minhash`, `compute_jaccard`)로 두 문서의 `<main>` 본문에 대해
+`#pre-footer` 제거 전/후를 비교한 결과:
+
+| | Hamming distance | Jaccard(MinHash) |
+|---|---|---|
+| 현재 상태(`#pre-footer` 등 boilerplate 포함) | 8 | 0.258 |
+| `#pre-footer` div 제거 후 | 10 | 0.234 |
+| 임계값 | identical≤3 / similar≤10 | jaccard_threshold=0.65 |
+
+boilerplate를 제거해도 Hamming distance는 오히려 늘었고(8→10) 여전히 "similar" 밴드 안에
+머물렀다. 반면 Jaccard는 boilerplate 유무와 무관하게 0.234~0.258로 threshold(0.65)에 한참
+못 미쳐, stage 2가 실행됐다면 두 문서를 정확히 "다른 문서"로 판별했을 것이다. 즉 오탐의
+원인은 파싱 잔여물이 아니라 stage 1의 coarse한 특성 + 동일 카테고리 어휘 중복이며, 실제
+리스크는 stage 2 미실행 쪽에 있다.
+
+**현재 동작**
+
+`"similar"` 판정 시 `handle_similar()`가 `_resolve_newer()`로 두 문서 중 어느 쪽이 최신인지
+비교해, incoming이 더 최신이면 기존 문서의 Qdrant 청크를 삭제하고 기존 문서를 outdated
+처리, incoming이 더 오래됐으면 incoming 자체를 색인하지 않고 outdated 처리한다. 두 경우
+모두 stage 2 확인 없이 실행된다.
+
+**미해결**
+
+`body_match == "similar"`(identical_threshold 초과 ~ similar_threshold 이하 구간)를 즉시
+verdict 확정하지 않고 stage 2(MinHash/Jaccard)로 넘겨 재확인한 뒤, 두 단계가 모두 동의할
+때만 `handle_similar()`를 실행하도록 게이팅을 수정해야 한다. `"identical_level"`
+(Hamming ≤ identical_threshold)만 고신뢰로 보고 바로 verdict 처리하는 것은 타당해 보이나
+아직 미구현.
