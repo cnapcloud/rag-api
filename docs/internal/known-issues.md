@@ -22,6 +22,7 @@
   - [12. /ready의 동기 블로킹 ping이 단일 이벤트 루프를 점유해 /health 등 무관한 요청까지 지연](#12-ready의-동기-블로킹-ping이-단일-이벤트-루프를-점유해-health-등-무관한-요청까지-지연)
   - [13. SimHash stage1 'similar' 판정이 stage2(MinHash) 확인 없이 바로 커밋됨](#13-simhash-stage1-similar-판정이-stage2minhash-확인-없이-바로-커밋됨)
   - [14. chunk_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
+  - [15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가](#15-reindex-시-simhashminhash-후보-조회가-statusindexed만-대상으로-하여-outdated-문서-방향-탐지-불가)
 
 ---
 
@@ -657,3 +658,58 @@ op으로 분리돼 있어, chunk_compare가 계산한 청크/임베딩 결과를
 인제스트 볼륨이 커지고 similar 판정 비율이 높아지면 재검토 필요. 그 경우 dedup_op과 chunk_op을
 하나의 op으로 합쳐 청크/임베딩 결과를 직접 전달하는 방식을 고려할 수 있음(파이프라인 구조 변경
 필요, 별도 논의 대상).
+
+---
+
+## 15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-09 |
+| 심각도 | LOW |
+
+**증상**
+
+문서 A(예: README-2.md, 이미 `outdated`, `duplicate_of=B`)가 문서 B(예: README.md, `indexed`)의
+근접 중복으로 판정되어 outdated 처리된 상태에서, A를 reindex하면 B를 후보로 정상 발견해
+chunk_compare까지 도달하지만(재확인 후 outdated 유지), 반대로 B를 reindex하면 A를 후보로 전혀
+발견하지 못하고 simhash/minhash 모두 "무관"(`none`)으로 판정되어 chunk_compare 자체가 호출되지
+않는다(`run_dedup_pipeline`의 `if result.body_match == "similar":` 라우팅 조건이 성립하지 않음).
+
+**원인**
+
+`infra/postgres.py`의 후보 조회 함수(`find_simhash_candidates:755`, `find_minhash_candidates:837`,
+`find_title_candidates:874`) 전부 `WHERE ... d.status = 'indexed'` 조건으로 필터링한다.
+`outdated` 상태인 문서는 simhash_bands/minhash_bands에 값이 남아 있어도(또는 애초에 저장 자체가
+안 됐어도, simhash 단계는 `body_match == "none"`일 때만 저장하므로) 어떤 문서로부터도 후보로
+조회되지 않는다.
+
+결과적으로 두 문서 간 중복 관계가 한 번 `indexed`/`outdated`로 확정되면, `outdated` 쪽만 계속
+`indexed` 쪽을 찾아낼 수 있고 반대 방향은 구조적으로 불가능하다. 어느 쪽이 `indexed`로 남는지는
+최초 인제스트 순서와 `_resolve_newer()`(`verdict.py`)의 신구 판단 결과에 좌우되므로, 동일한 두
+문서라도 인제스트 순서가 바뀌면 관찰되는 비대칭 방향도 반대로 나타난다.
+
+**현재 동작**
+
+`indexed` 상태 문서를 수동 reindex하면 이미 확정된 outdated 관계를 재확인하지 않고 항상
+"무관"으로 진행되어 chunk_compare를 거치지 않는다. 색인 자체는 정상 완료되며 데이터 정합성
+문제는 없다 — 이미 `outdated`로 확정된 문서는 검색에서 제외되므로 중복 노출도 없다.
+
+**현재 대안/판단**
+
+이 필터(`status='indexed'`만 후보 대상)는 의도된 설계로 보인다 — 이미 superseded된 문서를 새
+인입 문서의 후보로 다시 끌어들이지 않기 위함. 부작용으로 "이미 승자로 확정된 문서"의 reindex는
+항상 무관 판정으로 빠지는데, 그 문서 입장에서는 이미 관계가 확정되어 있어 재확인이 불필요하므로
+실질적 문제로 이어지지는 않는다(2026-07-09 확인 — 논리적으로 기대되는 동작).
+
+코드 변경 없이 관계를 재검증하고 싶다면, 해당 `indexed` 문서를 reindex하는 대신 삭제 후
+재업로드한다(운영 워크어라운드). 삭제 시점에 문서가 코퍼스에서 완전히 빠지고, 재업로드는 신규
+인제스트로 처리되어 dedup 파이프라인이 처음부터 다시 수행된다.
+
+**미해결**
+
+`indexed` 문서를 reindex할 때 이미 자신을 `duplicate_of`로 참조하는 `outdated` 문서들과의 관계를
+재검증해야 하는 시나리오(예: 운영자가 dedup 임계값 변경 후 기존 관계를 재검증하고 싶은 경우)가
+생기면, 후보 조회에 status 필터를 완화하거나 `duplicate_of` 역참조 조회를 별도로 추가하는 방안을
+검토해야 한다. 현재는 별도 조치 없음(워크어라운드로 대체 가능).
