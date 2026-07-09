@@ -1,3 +1,8 @@
+---
+paths:
+  - "src/**/*.py"
+---
+
 # Exception Handling Convention
 
 ## Exception Hierarchy

@@ -10,11 +10,11 @@
 세션 시작 시 `backlogs/backlog.md`와 `plans/plan.md` 인덱스를 먼저 읽어 현재 상태 파악.
 작업 시작/완료 시 해당 행의 status 즉시 업데이트.
 
-### 1. 설정 싱글턴 우선 (`01-hard-rules.md`)
+### 1. 설정 싱글턴 우선 (`00-hard-rules.md`)
 `get_settings()` 우회 금지. 설정값 하드코딩 금지.
 
 ### 2. Import 경로 (`conventions/01-import-paths.md`)
-`from src.` 형태 금지. `PYTHONPATH=src` 기준 절대경로 사용.
+`from src.` 형태 금지. `rag_api`는 editable install되어 있어 `PYTHONPATH` 불필요.
 
 ### 3. 인프라 Mock (`conventions/02-testing.md`)
 테스트에서 실제 Redis/Qdrant/MinIO 연결 생성 금지.
@@ -27,6 +27,10 @@
 
 ### 6. 예외 처리 (`conventions/05-exception-handling.md`)
 레이어별 exception 타입 구분. 메시지 영어. silent swallow 금지. `from e` chaining 필수.
+
+### 7. 로깅 (`conventions/06-logging.md`)
+모듈별 `logging.getLogger(__name__)` 사용. `setup_logging()`이 `main.py`에서 먼저 호출됨.
+레벨은 settings에서. 영어, `%s` 포맷, 컨텍스트 포함 필수.
 
 ---
 
@@ -50,3 +54,5 @@
 - `backlogs/backlog.md` — 백로그 항목 및 완료 현황
 - `plans/plan.md` — 구현 계획 및 완료 현황
 - `CLAUDE.md` (루트) — 빠른 참조
+- `docs/internal/known-issues.md` — 알려진 이슈 전체 목록. 발견한 이슈는 CLAUDE.md가 아니라
+  이 문서에 정해진 양식(상태/발견일/심각도 표 + 증상/원인/현재 대안/미해결)으로 기록한다.

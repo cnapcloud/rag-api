@@ -47,7 +47,7 @@ def test_something(mock_redis):  # conftest.py 픽스처 사용
 파일 수정 전 반드시 Read 또는 grep으로 내용 확인.
 
 ```bash
-grep -n "class\|def\|import" src/infra/qdrant.py | head -20
+grep -n "class\|def\|import" src/rag_api/infra/qdrant.py | head -20
 ```
 
 ---
@@ -68,13 +68,16 @@ Op은 순수 함수. Dagster 의존성은 `dagster_pipeline/ops/` 래퍼에서�
 
 ---
 
-## 6. `infra/minio.py`와 `infra/redis.py` 역할 혼동 금지
+## 6. `infra/` 파일 역할 혼동 금지
 
 | 파일 | 담당 |
 |------|------|
-| `minio.py` | 파일 저장/조회, 이벤트 폴링 |
-| `redis.py` | ETag 캐시, KB/문서 메타데이터 |
+| `s3.py` | 파일 저장/조회 (S3 호환, MinIO) |
+| `redis.py` | ingest/delete 이벤트 큐 |
+| `postgres.py` | KB/문서 메타데이터 CRUD, 마이그레이션 |
 | `qdrant.py` | 벡터 저장/검색 |
+| `crypto.py` | 커넥터 설정 시크릿 암복호화 |
+| `dagster_utils.py` | Dagster GraphQL 원격 제어 |
 
 ---
 
