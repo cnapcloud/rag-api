@@ -179,6 +179,9 @@ ingestion:
 chunk_compare) 하위 섹션으로 중첩되어 있다 — 어떤 값이 어느 단계 것인지 이름만으로 구분하기 위함
 (2026-07-09, `docs/internal/design/dedup.md` 3.3 참고).
 
+중복 비교 대상은 **정상 색인된(`indexed`) 문서로 한정된다.** 이미 중복으로 처리되어 검색에서
+제외된 문서(`outdated`)나 처리 중/실패/삭제된 문서는 비교 대상에 포함되지 않는다.
+
 ```yaml
 dedup:
   enabled: true

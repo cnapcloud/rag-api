@@ -57,7 +57,7 @@ dedup:
     jaccard_threshold: 0.65
     title_fuzzy_threshold: 0.85
     title_only_min_jaccard_floor: 0.25
-    user_words_path: "/data/kiwi_user_words.tsv"
+    user_words_path: "/app/data/kiwi_user_words.tsv"
 
   chunk_compare:
     chunk_match_threshold: 0.50

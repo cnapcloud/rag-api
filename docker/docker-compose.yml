@@ -12,7 +12,7 @@ services:
     container_name: rag-api
     volumes:
       - ./settings.yaml:/app/settings.yaml:ro
-      - ./data/kiwi_user_words.tsv:/data/kiwi_user_words.tsv:ro
+      - ./data/kiwi_user_words.tsv:/app/data/kiwi_user_words.tsv:ro
     ports:
       - "8000:8000"
     depends_on:
