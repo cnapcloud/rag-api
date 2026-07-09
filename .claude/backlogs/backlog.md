@@ -35,3 +35,4 @@
 | [US-33](US-33-connector-config-validation.md) | Connector Config Numeric Field Validation — type/range 검증 + min_content_chars settings 이전 | done |
 | [US-34](US-34-connector-abort-missed-queued-run.md) | Connector Abort/Delete Guard가 QUEUED/STARTING Dagster Run을 놓치는 버그 | done |
 | [US-35](US-35-dedup-stage3-chunk-compare.md) | Dedup Stage 3 — 청크 단위 임베딩 비교(chunk_compare) + 임계값 기반 body 확정 | done |
+| [US-36](US-36-html-trafilatura-extraction.md) | HTMLCleanReader를 trafilatura 밀도 기반 추출로 교체 | done |

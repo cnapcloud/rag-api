@@ -1,9 +1,10 @@
-"""HTMLCleanReader unit tests."""
+"""HTMLCleanReader unit tests (trafilatura density-based extraction)."""
 
 from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -16,20 +17,40 @@ HTML_WITH_BOILERPLATE = """\
   <script>alert('xss');</script>
 </head>
 <body>
-  <nav>Home | About | Contact</nav>
+  <nav><ul><li><a href="/">Home</a></li><li><a href="/about">About</a></li>
+  <li><a href="/contact">Contact</a></li></ul></nav>
   <header>Site Header</header>
-  <aside>Related links here</aside>
+  <aside><ul><li><a href="/x">Related link one</a></li>
+  <li><a href="/y">Related link two</a></li></ul></aside>
   <main>
     <h1>Main Title</h1>
-    <p>This is the main content paragraph.</p>
+    <p>This is the first paragraph of the main content, describing the topic in
+    reasonable detail so that trafilatura recognizes this block as the primary
+    content area of the page.</p>
+    <h2>Subheading</h2>
+    <ul>
+      <li>First bullet point item</li>
+      <li>Second bullet point item</li>
+    </ul>
+    <p>This is a second paragraph adding more substantive content to increase
+    the text density of the main content block relative to the surrounding
+    navigation and boilerplate elements.</p>
   </main>
-  <footer>Copyright 2025</footer>
+  <footer>Copyright 2025 Example Corp</footer>
   <script>console.log('footer script');</script>
 </body>
 </html>
 """
 
-HTML_NO_BODY = "<div><p>No body tag content.</p></div>"
+# nav + footer only, no main content block -> trafilatura.extract() returns None
+HTML_ONLY_BOILERPLATE = """\
+<html><body>
+<nav><ul><li><a href="/">Home</a></li><li><a href="/about">About</a></li>
+<li><a href="/contact">Contact</a></li></ul></nav>
+<footer><p>Copyright 2025 Example Corp. All rights reserved. Contact us for
+more information.</p></footer>
+</body></html>
+"""
 
 
 def _write_html(content: str) -> Path:
@@ -47,13 +68,13 @@ def html_file():
 
 
 @pytest.fixture
-def html_no_body_file():
-    path = _write_html(HTML_NO_BODY)
+def html_only_boilerplate_file():
+    path = _write_html(HTML_ONLY_BOILERPLATE)
     yield path
     path.unlink(missing_ok=True)
 
 
-def test_html_clean_reader_strips_nav_footer_script(html_file):
+def test_html_clean_reader_extracts_main_content_excludes_boilerplate(html_file):
     from rag_api.pipeline.ops.parse import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file)
@@ -62,15 +83,28 @@ def test_html_clean_reader_strips_nav_footer_script(html_file):
     text = docs[0].text
 
     assert "Main Title" in text
-    assert "main content paragraph" in text
+    assert "first paragraph of the main content" in text
+    assert "second paragraph adding more substantive content" in text
 
-    assert "Home | About | Contact" not in text
+    assert "Home" not in text
+    assert "About" not in text
     assert "Site Header" not in text
-    assert "Related links here" not in text
+    assert "Related link" not in text
     assert "Copyright 2025" not in text
     assert "alert('xss')" not in text
     assert "console.log" not in text
-    assert "body { color: red; }" not in text
+    assert "color: red" not in text
+
+
+def test_html_clean_reader_preserves_markdown_structure(html_file):
+    from rag_api.pipeline.ops.parse import HTMLCleanReader
+
+    text = HTMLCleanReader().load_data(html_file)[0].text
+
+    assert "# Main Title" in text
+    assert "## Subheading" in text
+    assert "- First bullet point item" in text
+    assert "- Second bullet point item" in text
 
 
 def test_html_clean_reader_returns_single_document(html_file):
@@ -99,10 +133,28 @@ def test_html_clean_reader_extra_info_merged(html_file):
     assert docs[0].metadata["file_path"] == str(html_file)
 
 
-def test_html_clean_reader_no_body_tag(html_no_body_file):
+def test_html_clean_reader_reads_favor_precision_from_settings(html_file):
     from rag_api.pipeline.ops.parse import HTMLCleanReader
 
-    docs = HTMLCleanReader().load_data(html_no_body_file)
+    with (
+        patch("rag_api.config.settings.get_settings") as mock_get_settings,
+        patch("trafilatura.extract") as mock_extract,
+    ):
+        mock_get_settings.return_value.ingestion.html_favor_precision = False
+        mock_extract.return_value = "stub"
+
+        HTMLCleanReader().load_data(html_file)
+
+        assert mock_extract.call_args.kwargs["favor_precision"] is False
+
+
+def test_html_clean_reader_no_extractable_content_returns_empty_text(
+    html_only_boilerplate_file,
+):
+    from rag_api.pipeline.ops.parse import HTMLCleanReader
+
+    docs = HTMLCleanReader().load_data(html_only_boilerplate_file)
 
     assert len(docs) == 1
-    assert "No body tag content." in docs[0].text
+    assert docs[0].text == ""
+    assert docs[0].metadata["file_path"] == str(html_only_boilerplate_file)
