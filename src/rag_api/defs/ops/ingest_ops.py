@@ -98,7 +98,8 @@ def parse_op(context: OpExecutionContext, valid_config: dict):
 
 @op(out={"to_chunk": Out(dagster_type=list, is_required=False)})
 def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
-    """Run dedup pipeline (stage 1 SimHash + stage 2 MinHash/pg_trgm) on pre-parsed documents.
+    """Run dedup pipeline (stage 1 SimHash + stage 2 MinHash/pg_trgm + stage 3 chunk_compare) on
+    pre-parsed documents.
 
     Emits to_chunk only when needs_indexing=True; otherwise terminates the pipeline branch.
     """

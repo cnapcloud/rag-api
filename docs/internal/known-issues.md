@@ -21,6 +21,7 @@
   - [11. dagster-rag-api 코드서버가 잘못된 command로 기동 즉시 종료](#11-dagster-rag-api-코드서버가-잘못된-command로-기동-즉시-종료)
   - [12. /ready의 동기 블로킹 ping이 단일 이벤트 루프를 점유해 /health 등 무관한 요청까지 지연](#12-ready의-동기-블로킹-ping이-단일-이벤트-루프를-점유해-health-등-무관한-요청까지-지연)
   - [13. SimHash stage1 'similar' 판정이 stage2(MinHash) 확인 없이 바로 커밋됨](#13-simhash-stage1-similar-판정이-stage2minhash-확인-없이-바로-커밋됨)
+  - [14. chunk_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
 
 ---
 
@@ -553,8 +554,9 @@ executor)에서 50×3개 ping이 경합하기 때문으로 추정되며, 이는 
 
 | 항목 | 내용 |
 |------|------|
-| 상태 | open |
+| 상태 | resolved |
 | 발견일 | 2026-07-07 |
+| 해결일 | 2026-07-09 |
 | 심각도 | MED |
 
 **증상**
@@ -606,10 +608,52 @@ boilerplate를 제거해도 Hamming distance는 오히려 늘었고(8→10) 여�
 처리, incoming이 더 오래됐으면 incoming 자체를 색인하지 않고 outdated 처리한다. 두 경우
 모두 stage 2 확인 없이 실행된다.
 
+**해결**
+
+당초 제안(stage 2 MinHash로 재확인)은 US-35(chunk_compare, dedup 3단계) 구현으로 대체되어
+해소되었다. `body_match == "similar"`(simhash 또는 minhash 단계 산출)는 이제 즉시 verdict로
+커밋되지 않고, `run_chunk_compare()`([chunk_compare.py](../../src/rag_api/pipeline/ops/dedup/chunk_compare.py))가
+청크 단위 임베딩 코사인 유사도로 문서 레벨 집계 점수를 산출해 `body_identical_threshold`(0.95)/
+`body_similar_threshold`(0.75) 임계값으로 body(identical_level/similar/none)를 재확정한 뒤에야
+`run_verdict()`로 넘어간다(`pipeline/ops/dedup/__init__.py`의 `run_dedup_pipeline()` 라우팅 참고).
+MinHash(stage 2)가 아닌 더 정밀한 임베딩 비교로 재확인이 이뤄지므로 원래 제안보다 강한 형태로
+해결되었다고 판단.
+
+---
+
+## 14. chunk_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-09 |
+| 심각도 | LOW |
+
+**증상**
+
+dedup 3단계(chunk_compare, `.claude/backlogs/todo/US-35-dedup-stage3-chunk-compare.md`, 아직
+미구현)가 도입되면, simhash/minhash 단계에서 `body_match="similar"`로 라우팅된 문서 A는 dedup
+판정을 위해 `chunk()`+`embed()`로 청크·임베딩을 즉석 계산한다(Qdrant에는 저장하지 않고 검색
+쿼리 벡터로만 사용). 이후 verdict가 `proceed`(무관)로 확정되어 `needs_indexing=True`가 되면,
+표준 파이프라인(`chunk_op` → `embed_op` → `upsert_op`)이 동일한 A 문서를 처음부터 다시
+청크·임베딩한다. 이 경로를 타는 문서는 임베딩 계산이 정확히 두 번 발생한다.
+
+**원인**
+
+`ingest_job`은 `parse_op → dedup_op → chunk_op` 순서로 고정되어 있어, dedup_op(chunk_compare
+포함)이 A를 Qdrant에 색인하기 전 단계에서 실행된다. dedup_op과 표준 색인 파이프라인은 서로 다른
+op으로 분리돼 있어, chunk_compare가 계산한 청크/임베딩 결과를 이후 `chunk_op`/`embed_op`가
+재사용하려면 별도의 op 간 결과 전달·캐싱 메커니즘이 필요하다.
+
+**현재 대안/결정**
+
+캐싱은 도입하지 않기로 결정(2026-07-09) — 이중 계산 비용(임베딩 API 호출 2회)을 감수한다.
+근거: chunk_compare는 `body_match="similar"`로 좁혀진 후보에만 실행되므로(identical/none
+경로는 애초에 해당 없음) 전체 인제스트 대비 발생 빈도가 낮고, 캐싱 메커니즘(op 간 결과 전달,
+무효화, 메모리 사용량) 도입 복잡도가 절감되는 비용 대비 크다고 판단.
+
 **미해결**
 
-`body_match == "similar"`(identical_threshold 초과 ~ similar_threshold 이하 구간)를 즉시
-verdict 확정하지 않고 stage 2(MinHash/Jaccard)로 넘겨 재확인한 뒤, 두 단계가 모두 동의할
-때만 `handle_similar()`를 실행하도록 게이팅을 수정해야 한다. `"identical_level"`
-(Hamming ≤ identical_threshold)만 고신뢰로 보고 바로 verdict 처리하는 것은 타당해 보이나
-아직 미구현.
+인제스트 볼륨이 커지고 similar 판정 비율이 높아지면 재검토 필요. 그 경우 dedup_op과 chunk_op을
+하나의 op으로 합쳐 청크/임베딩 결과를 직접 전달하는 방식을 고려할 수 있음(파이프라인 구조 변경
+필요, 별도 논의 대상).

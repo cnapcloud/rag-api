@@ -154,7 +154,7 @@ def run_simhash_detection(
             candidate_doc_ids=[cid for cid, _ in close_candidates],
         )
     else:
-        logger.info("Body: no near-duplicate found doc_id=%s — proceeding to stage 2", doc_id)
+        logger.info("Body: no near-duplicate found doc_id=%s — proceeding to minhash step", doc_id)
         result = DedupResult(
             body_match="none",
             title_match="unknown",

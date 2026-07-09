@@ -1,4 +1,4 @@
-"""Stage 2 dedup: MinHash Jaccard + pg_trgm title fuzzy matching.
+"""Minhash dedup step: MinHash Jaccard + pg_trgm title fuzzy matching.
 
 Algorithm:
   1. Tokenize text with Kiwi morphological analyzer (falls back to whitespace split
@@ -125,7 +125,7 @@ def compute_jaccard(sig_a: list[int], sig_b: list[int]) -> float:
 
 
 # ──────────────────────────────────────────────
-# Stage 2 pipeline
+# minhash pipeline
 # ──────────────────────────────────────────────
 
 def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings, kb_id: str = "") -> DedupResult:

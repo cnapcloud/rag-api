@@ -1,9 +1,10 @@
-"""Dedup pipeline — SimHash (stage 1) + MinHash/pg_trgm (stage 2) detection."""
+"""Dedup pipeline — simhash + minhash/pg_trgm + chunk_compare detection steps."""
 
 from __future__ import annotations
 
 import logging
 
+from rag_api.pipeline.ops.dedup.chunk_compare import run_chunk_compare
 from rag_api.pipeline.ops.dedup.simhash import run_simhash_detection
 from rag_api.pipeline.ops.dedup.types import BodyMatch, DedupResult, TitleMatch
 from rag_api.pipeline.ops.dedup.verdict import run_verdict
@@ -11,8 +12,8 @@ from rag_api.pipeline.ops.parse import DOCUMENT_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["run_dedup_pipeline", "run_simhash_detection", "run_verdict", "DedupResult",
-           "BodyMatch", "TitleMatch", "is_document"]
+__all__ = ["run_dedup_pipeline", "run_simhash_detection", "run_chunk_compare", "run_verdict",
+           "DedupResult", "BodyMatch", "TitleMatch", "is_document"]
 
 
 def is_document(documents) -> bool:
@@ -35,9 +36,11 @@ def run_dedup_pipeline(
 ) -> DedupResult:
     """Run the full dedup pipeline for a single document (runner.py / non-Dagster path).
 
-    Stage 1 (SimHash): detects body similarity level and title match via Hamming distance.
-    Stage 2 (MinHash + pg_trgm): runs only when stage 1 body_match is 'none'; detects
+    simhash step: detects body similarity level and title match via Hamming distance.
+    minhash step: runs only when the simhash step's body_match is 'none'; detects
     similar documents by Jaccard score and title fuzzy similarity.
+    chunk_compare step: runs only when the simhash/minhash step's body_match is 'similar';
+    confirms body_match (identical_level/similar/none) via chunk-level embedding comparison.
 
     Returns DedupResult; caller uses needs_indexing to decide whether to proceed to
     chunk/embed/upsert.
@@ -67,7 +70,7 @@ def run_dedup_pipeline(
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
     body = " ".join(d.text for d in documents)
 
-    # Stage 1: SimHash detection
+    # simhash step
     result = run_simhash_detection(
         doc_id=doc_id,
         title=title,
@@ -76,10 +79,14 @@ def run_dedup_pipeline(
         kb_id=kb_id,
     )
 
-    # Stage 2: MinHash + pg_trgm (only when stage 1 found no candidates)
+    # minhash step (only when the simhash step found no candidates)
     if result.body_match == "none":
         from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
         result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup, kb_id=kb_id)
+
+    # chunk_compare step (only when simhash/minhash routed a near-duplicate candidate)
+    if result.body_match == "similar":
+        result = run_chunk_compare(doc_id=doc_id, kb_id=kb_id, documents=documents, result=result, cfg=cfg.dedup)
 
     run_verdict(doc_id=doc_id, result=result, run_id=run_id)
     return result

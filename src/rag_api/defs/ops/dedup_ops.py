@@ -27,7 +27,7 @@ def parse_op(context: OpExecutionContext, config: IngestConfig):
 
 @op
 def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
-    """Stage 1 detection: compute SHA-256 title + SimHash body from pre-parsed documents."""
+    """Simhash step detection: compute SHA-256 title + SimHash body from pre-parsed documents."""
     from rag_api.config.settings import get_settings
     from rag_api.pipeline.ops.dedup import is_document, run_simhash_detection
     from rag_api.pipeline.ops.dedup.types import DedupResult
@@ -64,9 +64,10 @@ def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
 
 @op
 def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simhash_result):
-    """Stage 2 detection: MinHash Jaccard + pg_trgm title similarity.
+    """Minhash step detection: MinHash Jaccard + pg_trgm title similarity.
 
-    Runs only when stage 1 returned 'proceed'. Otherwise passes stage 1 result through.
+    Runs only when the simhash step returned 'proceed'. Otherwise passes the simhash
+    step result through.
     """
     from rag_api.config.settings import get_settings
     from rag_api.pipeline.ops.dedup import is_document
@@ -78,7 +79,7 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
 
     if simhash_result.body_match != "none":
         context.log.info(
-            "Stage2 skipped (body_match=%s): doc_id=%s", simhash_result.body_match, doc_id
+            "Minhash step skipped (body_match=%s): doc_id=%s", simhash_result.body_match, doc_id
         )
         return simhash_result
 
@@ -89,7 +90,7 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
 
     if not is_document(documents):
         doc_type = documents[0].metadata.get("doc_type", "") if documents else ""
-        context.log.info("Stage2 skipped (non-document type=%s): doc_id=%s", doc_type, doc_id)
+        context.log.info("Minhash step skipped (non-document type=%s): doc_id=%s", doc_type, doc_id)
         return DedupResult(needs_indexing=True)
 
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
@@ -97,25 +98,55 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
 
     result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup, kb_id=kb_id)
     context.log.info(
-        "Stage2 detection done: body=%s doc_id=%s", result.body_match, doc_id
+        "Minhash step done: body=%s doc_id=%s", result.body_match, doc_id
     )
     return result
 
 
 @op
-def verdict_op(context: OpExecutionContext, valid_config: dict, stage2_result):
-    """Apply verdict-specific post-processing for the final result from stage 1 or 2."""
+def chunk_compare_op(context: OpExecutionContext, valid_config: dict, documents, minhash_result):
+    """Chunk_compare step (stage 3): confirms body_match for 'similar' results from the
+    simhash/minhash steps via chunk-level embedding cosine similarity.
+
+    Runs only when minhash_result.body_match == 'similar'. Otherwise passes the result through.
+    """
+    from rag_api.config.settings import get_settings
+    from rag_api.pipeline.ops.dedup.chunk_compare import run_chunk_compare
+
+    doc_id = valid_config["doc_id"]
+    kb_id = valid_config["kb_id"]
+
+    if minhash_result.body_match != "similar":
+        context.log.info(
+            "chunk_compare step skipped (body_match=%s): doc_id=%s", minhash_result.body_match, doc_id
+        )
+        return minhash_result
+
+    cfg = get_settings()
+    result = run_chunk_compare(
+        doc_id=doc_id, kb_id=kb_id, documents=documents, result=minhash_result, cfg=cfg.dedup
+    )
+    context.log.info(
+        "chunk_compare step done: body=%s doc_id=%s duplicate=%s",
+        result.body_match, doc_id, result.duplicate_doc_id,
+    )
+    return result
+
+
+@op
+def verdict_op(context: OpExecutionContext, valid_config: dict, chunk_compare_result):
+    """Apply verdict-specific post-processing for the final result from the detection stages."""
     from rag_api.pipeline.ops.dedup.verdict import run_verdict
 
     doc_id = valid_config["doc_id"]
     run_verdict(
         doc_id=doc_id,
-        result=stage2_result,
+        result=chunk_compare_result,
         run_id=context.run_id,
     )
     context.log.info(
         "Verdict applied: body=%s title=%s doc_id=%s duplicate=%s",
-        stage2_result.body_match, stage2_result.title_match,
-        doc_id, stage2_result.duplicate_doc_id,
+        chunk_compare_result.body_match, chunk_compare_result.title_match,
+        doc_id, chunk_compare_result.duplicate_doc_id,
     )
-    return stage2_result
+    return chunk_compare_result

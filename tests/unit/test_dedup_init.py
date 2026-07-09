@@ -62,3 +62,47 @@ def test_run_dedup_pipeline_runs_for_document(mock_get_settings, mock_simhash, m
 
     mock_simhash.assert_called_once()
     assert result.body_match == "identical_level"
+
+
+# ──────────────────────────────────────────────
+# run_dedup_pipeline — routes 'similar' through chunk_compare (stage 3)
+# ──────────────────────────────────────────────
+
+@patch("rag_api.pipeline.ops.dedup.run_verdict")
+@patch("rag_api.pipeline.ops.dedup.run_chunk_compare")
+@patch("rag_api.pipeline.ops.dedup.run_simhash_detection")
+@patch("rag_api.config.settings.get_settings")
+def test_run_dedup_pipeline_routes_similar_to_chunk_compare(
+    mock_get_settings, mock_simhash, mock_chunk_compare, mock_verdict
+):
+    from rag_api.pipeline.ops.dedup.types import DedupResult
+
+    mock_get_settings.return_value = MagicMock(dedup=MagicMock(enabled=True))
+    mock_simhash.return_value = DedupResult(
+        body_match="similar", duplicate_doc_id="doc-c", needs_indexing=False
+    )
+    mock_chunk_compare.return_value = DedupResult(
+        body_match="identical_level", duplicate_doc_id="doc-c", needs_indexing=False
+    )
+
+    result = run_dedup_pipeline(doc_id="doc-1", kb_id="kb-1", documents=[_doc("pdf")])
+
+    mock_chunk_compare.assert_called_once()
+    assert result.body_match == "identical_level"
+
+
+@patch("rag_api.pipeline.ops.dedup.run_verdict")
+@patch("rag_api.pipeline.ops.dedup.run_chunk_compare")
+@patch("rag_api.pipeline.ops.dedup.run_simhash_detection")
+@patch("rag_api.config.settings.get_settings")
+def test_run_dedup_pipeline_skips_chunk_compare_when_not_similar(
+    mock_get_settings, mock_simhash, mock_chunk_compare, mock_verdict
+):
+    from rag_api.pipeline.ops.dedup.types import DedupResult
+
+    mock_get_settings.return_value = MagicMock(dedup=MagicMock(enabled=True))
+    mock_simhash.return_value = DedupResult(body_match="identical_level", needs_indexing=False)
+
+    run_dedup_pipeline(doc_id="doc-1", kb_id="kb-1", documents=[_doc("pdf")])
+
+    mock_chunk_compare.assert_not_called()

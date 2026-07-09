@@ -135,6 +135,36 @@ def upsert_chunks(
     logger.info("Qdrant upsert done: kb=%s count=%d", kb_id, len(points))
 
 
+def search_chunks_by_doc_id(
+    kb_id: str,
+    doc_id: str,
+    query_vector: list[float],
+    top_k: int = 5,
+    client: QdrantClient | None = None,
+) -> list[tuple[str, float]]:
+    """Dense-only vector search scoped to a single doc_id's chunks.
+
+    Used by dedup chunk_compare (stage 3) to search a candidate document's chunks
+    with an in-memory query vector. Returns (point_id, score) pairs, highest score first.
+    """
+    c = client or get_qdrant_client()
+    result = c.query_points(
+        collection_name=kb_id,
+        query=query_vector,
+        using=DENSE_VECTOR_NAME,
+        query_filter=qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key="doc_id",
+                    match=qmodels.MatchValue(value=doc_id),
+                )
+            ]
+        ),
+        limit=top_k,
+    )
+    return [(str(point.id), point.score) for point in result.points]
+
+
 def update_payload_by_doc_id(
     kb_id: str,
     doc_id: str,

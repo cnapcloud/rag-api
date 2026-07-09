@@ -149,12 +149,17 @@ class DedupSettings(BaseModel):
     simhash_bits: int = 64
     hamming_identical_threshold: int = 3
     hamming_similar_threshold: int = 10
-    # Stage 2 thresholds
+    # minhash thresholds
     jaccard_threshold: float = 0.65
     title_fuzzy_threshold: float = 0.85
     title_only_min_jaccard_floor: float = 0.25
     # Kiwi user word dictionary (relative to project root; empty = no user dict)
     user_words_path: str = ""
+    # chunk_compare (stage 3) thresholds
+    chunk_match_threshold: float = 0.50
+    body_identical_threshold: float = 0.95
+    body_similar_threshold: float = 0.75
+    compare_all_candidates: bool = False
 
 
 class KBDefinition(BaseModel):
