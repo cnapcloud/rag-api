@@ -17,6 +17,14 @@ _MODULE = "rag_api.pipeline.ops.dedup.chunk_compare"
 _CHUNK = "rag_api.pipeline.ops.chunk.chunk"
 _EMBED = "rag_api.pipeline.ops.embed.embed"
 _SEARCH = "rag_api.infra.qdrant.search_chunks_by_doc_id"
+_FINGERPRINTS = "rag_api.infra.postgres.get_docs_fingerprints"
+_GET_DOC = "rag_api.infra.postgres.get_doc_by_id"
+
+
+def _doc(file_name: str) -> MagicMock:
+    doc = MagicMock()
+    doc.metadata = {"file_name": file_name}
+    return doc
 
 
 def _make_cfg(
@@ -72,12 +80,14 @@ def test_compare_chunks_coverage_weighted_average():
 
     with patch(_CHUNK, return_value=nodes), \
          patch(_EMBED, return_value=embedded), \
+         patch(_GET_DOC, return_value={"chunk_count": 2}), \
          patch(_SEARCH, side_effect=[[("p1", 0.9), ("p2", 0.3)], [("p3", 0.4)]]) as mock_search:
         score = compare_chunks(
             kb_id="kb-1", doc_id="doc-a", documents=[], candidate_doc_id="doc-c", cfg=_make_cfg()
         )
 
     # chunk 0 -> p1 (0.9 >= 0.5 threshold), chunk 1 -> no hit passes 0.5 threshold
+    # chunk_ratio = min(2,2)/max(2,2) = 1.0, no scaling
     assert score.aggregate_score == 0.45
     assert len(score.matches) == 1
     assert score.matches[0].c_point_id == "p1"
@@ -90,6 +100,7 @@ def test_compare_chunks_no_matches_zero_score():
 
     with patch(_CHUNK, return_value=nodes), \
          patch(_EMBED, return_value=embedded), \
+         patch(_GET_DOC, return_value={"chunk_count": 1}), \
          patch(_SEARCH, return_value=[("p1", 0.1)]):
         score = compare_chunks(
             kb_id="kb-1", doc_id="doc-a", documents=[], candidate_doc_id="doc-c", cfg=_make_cfg()
@@ -101,6 +112,54 @@ def test_compare_chunks_no_matches_zero_score():
 
 def test_compare_chunks_empty_documents_zero_score():
     with patch(_CHUNK, return_value=[]), patch(_EMBED) as mock_embed:
+        score = compare_chunks(
+            kb_id="kb-1", doc_id="doc-a", documents=[], candidate_doc_id="doc-c", cfg=_make_cfg()
+        )
+
+    assert score.aggregate_score == 0.0
+    mock_embed.assert_not_called()
+
+
+def test_compare_chunks_scales_score_by_chunk_ratio():
+    nodes = [MagicMock(), MagicMock(), MagicMock()]
+    embedded = [_embedded_node(), _embedded_node(), _embedded_node()]
+
+    with patch(_CHUNK, return_value=nodes), \
+         patch(_EMBED, return_value=embedded), \
+         patch(_GET_DOC, return_value={"chunk_count": 4}), \
+         patch(_SEARCH, return_value=[("p1", 1.0)]):
+        score = compare_chunks(
+            kb_id="kb-1", doc_id="doc-a", documents=[], candidate_doc_id="doc-c", cfg=_make_cfg()
+        )
+
+    # raw coverage = 1.0 (all 3 A-chunks matched at score 1.0); chunk_ratio = 3/4 = 0.75
+    assert score.aggregate_score == 0.75
+
+
+def test_compare_chunks_skips_embed_when_chunk_ratio_below_similar_threshold():
+    nodes = [MagicMock()]
+
+    with patch(_CHUNK, return_value=nodes), \
+         patch(_GET_DOC, return_value={"chunk_count": 10}), \
+         patch(_EMBED) as mock_embed, \
+         patch(_SEARCH) as mock_search:
+        score = compare_chunks(
+            kb_id="kb-1", doc_id="doc-a", documents=[], candidate_doc_id="doc-c", cfg=_make_cfg()
+        )
+
+    # chunk_ratio = 1/10 = 0.1 < body_similar_threshold(0.75) -> even a perfect raw score
+    # couldn't clear the threshold once scaled, so embed+search are skipped entirely.
+    assert score.aggregate_score == 0.0
+    mock_embed.assert_not_called()
+    mock_search.assert_not_called()
+
+
+def test_compare_chunks_missing_candidate_chunk_count_skips():
+    nodes = [MagicMock()]
+
+    with patch(_CHUNK, return_value=nodes), \
+         patch(_GET_DOC, return_value=None), \
+         patch(_EMBED) as mock_embed:
         score = compare_chunks(
             kb_id="kb-1", doc_id="doc-a", documents=[], candidate_doc_id="doc-c", cfg=_make_cfg()
         )
@@ -125,23 +184,39 @@ def _similar_result(duplicate_doc_id="doc-c", candidate_doc_ids=None):
     )
 
 
-def test_run_chunk_compare_confirms_identical():
-    with patch(f"{_MODULE}.compare_chunks", return_value=ChunkCompareScore("doc-c", 0.97)):
+def test_run_chunk_compare_confirms_identical_same_title():
+    fingerprints = {"doc-c": {"title_hash": None}}
+    with patch(f"{_MODULE}.compare_chunks", return_value=ChunkCompareScore("doc-c", 0.97)), \
+         patch(_FINGERPRINTS, return_value=fingerprints):
         result = run_chunk_compare(
-            doc_id="doc-a", kb_id="kb-1", documents=[], result=_similar_result(), cfg=_make_cfg()
+            doc_id="doc-a", kb_id="kb-1", documents=[_doc("a.md")], result=_similar_result(), cfg=_make_cfg()
         )
 
     assert result.body_match == "identical_level"
     assert result.needs_indexing is False
     assert result.duplicate_doc_id == "doc-c"
     assert result.candidate_doc_ids == ["doc-c"]
-    assert result.title_match == "unknown"
+    assert result.title_match == "changed"
+
+
+def test_run_chunk_compare_confirms_identical_title_matches_winner():
+    from rag_api.pipeline.ops.dedup.simhash import compute_title_hash
+
+    fingerprints = {"doc-c": {"title_hash": compute_title_hash("a.md")}}
+    with patch(f"{_MODULE}.compare_chunks", return_value=ChunkCompareScore("doc-c", 0.97)), \
+         patch(_FINGERPRINTS, return_value=fingerprints):
+        result = run_chunk_compare(
+            doc_id="doc-a", kb_id="kb-1", documents=[_doc("a.md")], result=_similar_result(), cfg=_make_cfg()
+        )
+
+    assert result.title_match == "same"
 
 
 def test_run_chunk_compare_confirms_similar():
-    with patch(f"{_MODULE}.compare_chunks", return_value=ChunkCompareScore("doc-c", 0.80)):
+    with patch(f"{_MODULE}.compare_chunks", return_value=ChunkCompareScore("doc-c", 0.80)), \
+         patch(_FINGERPRINTS, return_value={}):
         result = run_chunk_compare(
-            doc_id="doc-a", kb_id="kb-1", documents=[], result=_similar_result(), cfg=_make_cfg()
+            doc_id="doc-a", kb_id="kb-1", documents=[_doc("a.md")], result=_similar_result(), cfg=_make_cfg()
         )
 
     assert result.body_match == "similar"
@@ -179,8 +254,9 @@ def test_run_chunk_compare_all_candidates_picks_highest_score():
         scores = {"c1": 0.80, "c2": 0.97}
         return ChunkCompareScore(kwargs["candidate_doc_id"], scores[kwargs["candidate_doc_id"]])
 
-    with patch(f"{_MODULE}.compare_chunks", side_effect=_side_effect) as mock_cc:
-        out = run_chunk_compare(doc_id="doc-a", kb_id="kb-1", documents=[], result=result, cfg=cfg)
+    with patch(f"{_MODULE}.compare_chunks", side_effect=_side_effect) as mock_cc, \
+         patch(_FINGERPRINTS, return_value={}):
+        out = run_chunk_compare(doc_id="doc-a", kb_id="kb-1", documents=[_doc("a.md")], result=result, cfg=cfg)
 
     assert mock_cc.call_count == 2
     assert out.duplicate_doc_id == "c2"
@@ -196,8 +272,9 @@ def test_run_chunk_compare_all_candidates_excludes_none_band_from_candidate_list
         scores = {"c1": 0.80, "c2": 0.10}
         return ChunkCompareScore(kwargs["candidate_doc_id"], scores[kwargs["candidate_doc_id"]])
 
-    with patch(f"{_MODULE}.compare_chunks", side_effect=_side_effect):
-        out = run_chunk_compare(doc_id="doc-a", kb_id="kb-1", documents=[], result=result, cfg=cfg)
+    with patch(f"{_MODULE}.compare_chunks", side_effect=_side_effect), \
+         patch(_FINGERPRINTS, return_value={}):
+        out = run_chunk_compare(doc_id="doc-a", kb_id="kb-1", documents=[_doc("a.md")], result=result, cfg=cfg)
 
     assert out.duplicate_doc_id == "c1"
     assert out.candidate_doc_ids == ["c1"]

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from rag_api.pipeline.ops.dedup.types import BodyMatch, DedupResult, TitleMatch
 
 if TYPE_CHECKING:
-    from rag_api.config.settings import DedupSettings
+    from rag_api.config.settings import SimHashSettings
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ def run_simhash_detection(
     doc_id: str,
     title: str,
     body: str,
-    cfg: DedupSettings,
+    cfg: SimHashSettings,
     kb_id: str = "",
 ) -> DedupResult:
     """Run SimHash-based duplicate detection using Postgres band index.

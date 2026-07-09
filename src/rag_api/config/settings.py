@@ -142,24 +142,40 @@ class TracingSettings(BaseModel):
     service_name: str = "rag-api"
 
 
-class DedupSettings(BaseModel):
-    enabled: bool = True
+class SimHashSettings(BaseModel):
+    """Stage1 — SimHash near-duplicate detection."""
+
     ngram: int = 3
     num_bands: int = 4
     simhash_bits: int = 64
     hamming_identical_threshold: int = 3
     hamming_similar_threshold: int = 10
-    # minhash thresholds
+
+
+class MinHashSettings(BaseModel):
+    """Stage2 — MinHash / title fuzzy-match detection (runs only when Stage1 finds no candidate)."""
+
     jaccard_threshold: float = 0.65
     title_fuzzy_threshold: float = 0.85
     title_only_min_jaccard_floor: float = 0.25
     # Kiwi user word dictionary (relative to project root; empty = no user dict)
     user_words_path: str = ""
-    # chunk_compare (stage 3) thresholds
+
+
+class ChunkCompareSettings(BaseModel):
+    """Stage3 — embedding-based chunk-level comparison (confirms Stage1/2 'similar' verdicts)."""
+
     chunk_match_threshold: float = 0.50
     body_identical_threshold: float = 0.95
     body_similar_threshold: float = 0.75
     compare_all_candidates: bool = False
+
+
+class DedupSettings(BaseModel):
+    enabled: bool = True
+    simhash: SimHashSettings = Field(default_factory=SimHashSettings)
+    minhash: MinHashSettings = Field(default_factory=MinHashSettings)
+    chunk_compare: ChunkCompareSettings = Field(default_factory=ChunkCompareSettings)
 
 
 class KBDefinition(BaseModel):

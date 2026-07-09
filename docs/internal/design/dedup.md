@@ -333,33 +333,35 @@ Postgres 트랜잭션 격리로 band 조회와 INSERT가 직렬화된다.
 
 **입력**
 - A doc_id (청크별 임베딩 벡터)
-- 비교 대상 C 집합 — config `dedup.compare_all_candidates` (bool, settings.yaml `dedup` 섹션, 하드코딩 금지). **3·4단계(3.3.3) 공통 적용** (한 번 정해지면 두 단계 모두 동일 범위로 동작)
+- 비교 대상 C 집합 — config `dedup.chunk_compare.compare_all_candidates` (bool, settings.yaml `dedup` 섹션, 하드코딩 금지). **3·4단계(3.3.3) 공통 적용** (한 번 정해지면 두 단계 모두 동일 범위로 동작)
   - `false` (**기본값**): 1·2단계 `duplicate_doc_id`(best match) 1건에 대해서만 아래 처리 수행
   - `true`: 1·2단계 `candidate_doc_ids` 전체를 순회 — C마다 아래 처리를 반복
 - threshold = **0.50** (3.4 점수구간표의 "무관" 경계와 동일하게 맞춤 — 이 값 미달은 매칭 목록에서 자동 제외되어 별도 분류 불필요)
 
 **처리**
 
-0. config `dedup.compare_all_candidates`에 따라 비교 대상 C 목록 확정 (`false` → `duplicate_doc_id` 단건, `true` → `candidate_doc_ids` 전체)
+0. config `dedup.chunk_compare.compare_all_candidates`에 따라 비교 대상 C 목록 확정 (`false` → `duplicate_doc_id` 단건, `true` → `candidate_doc_ids` 전체)
 1. (이하 C 하나당) A의 각 청크별로 C의 청크들을 대상으로 벡터스토어 조회 (top_k 후보 조회)
 2. top_k 결과 중 threshold(0.50) 이상인 것만 필터링
 3. 필터링된 후보 중 **score가 가장 높은 것 1개만 선택** (Top-1) — A 청크 하나당 매칭은 0개 또는 1개로 정리
 4. 위 과정을 A의 모든 청크에 대해 반복 → (A_청크, C_청크, score) 매칭 목록 생성 (모든 score는 0.50 이상)
-5. 문서 레벨 집계 점수 산출: **커버리지 가중 평균** — `score(A,C) = Σ(matched score_i) / N` (N = A 전체 청크 수, 미매칭 청크는 0으로 취급, matched 개수가 아닌 N으로 나눔)
-6. `compare_all_candidates=true`인 경우 0~5를 대상 C마다 반복 → (A doc_id, C doc_id, score) 쌍이 C 개수만큼 생성
+5. 문서 레벨 원점수 산출: **커버리지 가중 평균** — `raw_score(A,C) = Σ(matched score_i) / N` (N = A 전체 청크 수, 미매칭 청크는 0으로 취급, matched 개수가 아닌 N으로 나눔)
+6. **청크 수 비율(chunk_ratio)로 스케일링**: `chunk_ratio = min(A청크수, C청크수) / max(A청크수, C청크수)`, `score(A,C) = raw_score(A,C) * chunk_ratio`. `chunk_ratio`가 이미 `body_similar_threshold` 미만이면 raw_score가 1.0이어도 스케일링 후 threshold를 못 넘으므로, 이 경우 3~5단계(임베딩/벡터스토어 조회)를 생략하고 `score=0.0`으로 즉시 확정한다 (구현: `pipeline/ops/dedup/chunk_compare.py::compare_chunks`)
+7. `compare_all_candidates=true`인 경우 0~6을 대상 C마다 반복 → (A doc_id, C doc_id, score) 쌍이 C 개수만큼 생성
 
 **출력**
 - 매칭 목록: (A_청크, C_청크, score) — A 청크당 최대 1개, 전부 ≥0.50 (C별로 별도 목록)
-- 문서 레벨 집계 점수: (A doc_id, C doc_id, score) → 3.3.3 전달 (`compare_all_candidates=true`이면 C 개수만큼)
+- 문서 레벨 집계 점수(청크 수 비율 스케일링 적용됨): (A doc_id, C doc_id, score) → 3.3.3 전달 (`compare_all_candidates=true`이면 C 개수만큼)
 
 **완료 기준:** 대상 C 각각에 대해 모든 A 청크의 매칭이 0개 또는 1개로 정리되고, 문서 레벨 집계 점수가 산출됨을 확인
 
 **결정 사항**
 - 집계 방식은 **커버리지 가중 평균**(`Σscore / N`, N=A 전체 청크 수)으로 확정 — 단순 평균(matched 개수로 나눔)은 커버리지를 무시해 일부만 겹쳐도 점수가 과대평가되고, 최댓값은 문서 전체가 아닌 "가장 비슷한 청크 1개" 신호에 불과함. `Σscore/N`은 매칭 안 된 청크를 0으로 포함시켜 커버리지를 자동 반영하며, 3.4가 이미 쓰는 비율 기반 판정(동일비율/유사비율/관련비율, 분모 N=A 전체 청크 수)과 동일한 뼈대라 두 단계 간 논리가 일관됨
-- `dedup.compare_all_candidates` 기본값은 **`false`** — best match 1건만 정밀 비교해 Qdrant 조회·집계 비용을 최소화. 여러 후보를 모두 정밀 검증해야 할 필요가 생기면 `true`로 전환. 3·4단계(3.3.3)가 같은 값을 참조하므로 단계별로 값이 어긋나는 경우는 없음
+- `dedup.chunk_compare.compare_all_candidates` 기본값은 **`false`** — best match 1건만 정밀 비교해 Qdrant 조회·집계 비용을 최소화. 여러 후보를 모두 정밀 검증해야 할 필요가 생기면 `true`로 전환. 3·4단계(3.3.3)가 같은 값을 참조하므로 단계별로 값이 어긋나는 경우는 없음
+- **청크 수 비율 스케일링 도입 (2026-07-09):** `Σscore/N`(N=A 전체 청크 수)은 IR 문헌의 containment(포함도, Broder 1997) 공식과 동일 — A가 C에 완전히 포함된 부분집합이면 raw_score가 1.0에 가깝게 나오지만, 이는 "A와 C가 같은 문서"가 아니라 "A가 C의 일부"라는 뜻일 뿐이다. 실제로 A(짧은 문서)가 훨씬 큰 C의 일부와만 겹쳐도 `identical_level`로 오판되는 사례가 발견됨(README-2.md가 더 큰 README.md의 부분집합으로 오판된 사례). resemblance(대칭 Jaccard, C도 임베딩해 A와 역방향 매칭)로 바꾸는 대신, 계산 비용이 거의 없는 **청크 수 비율 스케일링**으로 이 문제를 보정 — `chunk_ratio`가 1에 가까울수록(두 문서 크기가 비슷할수록) raw_score를 그대로 신뢰하고, 크기 차이가 클수록 점수를 깎는다. 새 threshold를 추가하지 않고 기존 `body_similar_threshold`/`body_identical_threshold`를 그대로 재사용— `chunk_ratio` 자체가 `body_similar_threshold` 미만이면 최대 raw_score(1.0)로도 threshold를 못 넘는다는 게 수학적으로 보장되므로, 이 경우 임베딩/벡터스토어 조회 자체를 생략해 비용도 절감한다.
 
 **오픈 이슈**
-- 3.3.3의 body_identical_threshold(0.95)/body_similar_threshold(0.75)는 3.4의 청크쌍 밴드값을 그대로 재사용한 것으로, 커버리지 가중 평균 특성(미매칭 청크가 0으로 분모에 포함돼 점수가 상대적으로 낮게 나옴)을 반영한 재산정이 아직 안 됨 — 운영 데이터로 재검증 필요
+- 3.3.3의 body_identical_threshold(0.95)/body_similar_threshold(0.75)는 3.4의 청크쌍 밴드값을 그대로 재사용한 것으로, 커버리지 가중 평균 특성(미매칭 청크가 0으로 분모에 포함돼 점수가 상대적으로 낮게 나옴)을 반영한 재산정이 아직 안 됨 — 운영 데이터로 재검증 필요 (청크 수 비율 스케일링 도입 이후에도 유효한 오픈 이슈)
 
 ---
 
@@ -374,7 +376,7 @@ Postgres 트랜잭션 격리로 band 조회와 INSERT가 직렬화된다.
 4. 그 외(1단계 `identical`/`title_changed`, 또는 1·2단계 모두 후보 없음) → 3단계를 거치지 않고 해당 결과 그대로 verdict 확정 (2.1절 기존 규칙 그대로)
 
 **입력**
-- 3.3.2 출력: (A doc_id, C doc_id) 문서 레벨 집계 점수 — `dedup.compare_all_candidates=true`면 후보 C마다 독립적으로 아래 판정 수행, 기본값(`false`)이면 best match 1건만
+- 3.3.2 출력: (A doc_id, C doc_id) 문서 레벨 집계 점수 (청크 수 비율로 스케일링된 값) — `dedup.chunk_compare.compare_all_candidates=true`면 후보 C마다 독립적으로 아래 판정 수행, 기본값(`false`)이면 best match 1건만
 
 **처리**
 

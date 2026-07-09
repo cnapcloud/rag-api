@@ -22,7 +22,7 @@ except ImportError:
 def get_kiwi():
     """Return a shared Kiwi instance, initializing it once on first call.
 
-    Loads user word dictionary from settings.dedup.user_words_path when set.
+    Loads user word dictionary from settings.dedup.minhash.user_words_path when set.
     Returns None when kiwipiepy is not installed.
     """
     if not _KIWI_AVAILABLE:
@@ -40,7 +40,7 @@ def get_kiwi():
         from rag_api.config.settings import get_settings
 
         kiwi = Kiwi()
-        path_str = get_settings().dedup.user_words_path
+        path_str = get_settings().dedup.minhash.user_words_path
         if path_str:
             _load_user_words(kiwi, Path(path_str))
 

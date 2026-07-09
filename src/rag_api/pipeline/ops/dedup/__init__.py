@@ -75,18 +75,20 @@ def run_dedup_pipeline(
         doc_id=doc_id,
         title=title,
         body=body,
-        cfg=cfg.dedup,
+        cfg=cfg.dedup.simhash,
         kb_id=kb_id,
     )
 
     # minhash step (only when the simhash step found no candidates)
     if result.body_match == "none":
         from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
-        result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup, kb_id=kb_id)
+        result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup.minhash, kb_id=kb_id)
 
     # chunk_compare step (only when simhash/minhash routed a near-duplicate candidate)
     if result.body_match == "similar":
-        result = run_chunk_compare(doc_id=doc_id, kb_id=kb_id, documents=documents, result=result, cfg=cfg.dedup)
+        result = run_chunk_compare(
+            doc_id=doc_id, kb_id=kb_id, documents=documents, result=result, cfg=cfg.dedup.chunk_compare
+        )
 
     run_verdict(doc_id=doc_id, result=result, run_id=run_id)
     return result

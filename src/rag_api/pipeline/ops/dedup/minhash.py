@@ -27,7 +27,7 @@ from rag_api.pipeline.ops.dedup.tokenizer import get_kiwi
 from rag_api.pipeline.ops.dedup.types import DedupResult
 
 if TYPE_CHECKING:
-    from rag_api.config.settings import DedupSettings
+    from rag_api.config.settings import MinHashSettings
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def compute_jaccard(sig_a: list[int], sig_b: list[int]) -> float:
 # minhash pipeline
 # ──────────────────────────────────────────────
 
-def run_minhash_detection(doc_id: str, text: str, title: str, cfg: DedupSettings, kb_id: str = "") -> DedupResult:
+def run_minhash_detection(doc_id: str, text: str, title: str, cfg: MinHashSettings, kb_id: str = "") -> DedupResult:
     """Detect duplicates via MinHash Jaccard similarity and pg_trgm title fuzzy matching.
 
     Saves A's MinHash signature to minhash_bands AFTER querying candidates

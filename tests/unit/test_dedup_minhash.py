@@ -264,7 +264,7 @@ def test_get_kiwi_returns_instance_when_available():
          patch.object(tok, "_kiwi", None), \
          patch.dict(sys.modules, {"kiwipiepy": mock_kiwi_module}), \
          patch("rag_api.config.settings.get_settings") as ms:
-        ms.return_value.dedup.user_words_path = ""
+        ms.return_value.dedup.minhash.user_words_path = ""
         result = tok.get_kiwi()
 
     assert result is mock_kiwi_instance
@@ -284,7 +284,7 @@ def test_get_kiwi_missing_user_words_file_logs_warning(tmp_path, caplog):
          patch.dict(sys.modules, {"kiwipiepy": mock_kiwi_module}), \
          patch("rag_api.config.settings.get_settings") as ms, \
          caplog.at_level(logging.WARNING, logger="rag_api.pipeline.ops.dedup.tokenizer"):
-        ms.return_value.dedup.user_words_path = str(tmp_path / "nonexistent.tsv")
+        ms.return_value.dedup.minhash.user_words_path = str(tmp_path / "nonexistent.tsv")
         tok.get_kiwi()
 
     assert any("not found" in r.message for r in caplog.records)
