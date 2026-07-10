@@ -33,7 +33,5 @@ run_monitoring:
 python_logs:
   python_log_level: INFO
   managed_python_loggers:
-    - pipeline.ops
-    - pipeline.queue_worker
-    - rag
-    - infra
+    - ""
+#   - "rag_api" # Restrict logging to a specific package

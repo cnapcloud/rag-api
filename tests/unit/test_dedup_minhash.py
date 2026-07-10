@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import pipeline.ops.dedup.tokenizer as _tok_module
-from pipeline.ops.dedup.minhash import (
+from rag_api import pipeline as _tok_module
+from rag_api.pipeline.ops.dedup.minhash import (
     compute_jaccard,
     compute_minhash,
     split_bands,
@@ -118,14 +118,14 @@ def _make_cfg(jaccard_threshold=0.65, title_fuzzy_threshold=0.85, title_only_min
     return cfg
 
 
-_PG_FIND_BODY = "infra.postgres.find_minhash_candidates"
-_PG_FIND_TITLE = "infra.postgres.find_title_candidates"
-_PG_SAVE = "infra.postgres.save_minhash_bands"
-_PG_GET = "infra.postgres.get_minhash_signature"
+_PG_FIND_BODY = "rag_api.infra.postgres.find_minhash_candidates"
+_PG_FIND_TITLE = "rag_api.infra.postgres.find_title_candidates"
+_PG_SAVE = "rag_api.infra.postgres.save_minhash_bands"
+_PG_GET = "rag_api.infra.postgres.get_minhash_signature"
 
 
 def test_run_minhash_detection_no_candidates_returns_proceed():
-    from pipeline.ops.dedup.minhash import run_minhash_detection
+    from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
 
     with patch(_PG_FIND_BODY, return_value=set()), \
          patch(_PG_FIND_TITLE, return_value={}), \
@@ -137,7 +137,7 @@ def test_run_minhash_detection_no_candidates_returns_proceed():
 
 
 def test_run_minhash_detection_saves_signature():
-    from pipeline.ops.dedup.minhash import run_minhash_detection
+    from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
 
     with patch(_PG_FIND_BODY, return_value=set()), \
          patch(_PG_FIND_TITLE, return_value={}), \
@@ -150,7 +150,7 @@ def test_run_minhash_detection_saves_signature():
 
 
 def test_run_minhash_detection_similar_by_jaccard():
-    from pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
+    from rag_api.pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
 
     tokens = ["shared_word"] * 60 + [f"unique_a_{i}" for i in range(5)]
     sig = compute_minhash(tokens)
@@ -167,7 +167,7 @@ def test_run_minhash_detection_similar_by_jaccard():
 
 
 def test_run_minhash_detection_similar_excludes_self():
-    from pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
+    from rag_api.pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
 
     tokens = ["word"] * 50
     sig = compute_minhash(tokens)
@@ -182,7 +182,7 @@ def test_run_minhash_detection_similar_excludes_self():
 
 
 def test_run_minhash_detection_similar_by_title_above_floor():
-    from pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
+    from rag_api.pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
 
     # Make sig_a and sig_c share ~30% of values (above floor=0.25, below threshold=0.65)
     shared = [f"token_{i}" for i in range(30)]
@@ -208,7 +208,7 @@ def test_run_minhash_detection_similar_by_title_above_floor():
 
 
 def test_run_minhash_detection_proceed_when_jaccard_below_floor():
-    from pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
+    from rag_api.pipeline.ops.dedup.minhash import compute_minhash, run_minhash_detection
 
     # Completely different tokens → Jaccard ≈ 0 → below floor
     tokens_a = [f"apple_{i}" for i in range(50)]
@@ -229,7 +229,7 @@ def test_run_minhash_detection_proceed_when_jaccard_below_floor():
 
 
 def test_run_minhash_detection_candidate_without_signature_is_skipped():
-    from pipeline.ops.dedup.minhash import run_minhash_detection
+    from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
 
     with patch(_PG_FIND_BODY, return_value={"doc-c"}), \
          patch(_PG_FIND_TITLE, return_value={}), \
@@ -245,7 +245,7 @@ def test_run_minhash_detection_candidate_without_signature_is_skipped():
 # ──────────────────────────────────────────────
 
 def test_get_kiwi_returns_none_when_unavailable():
-    from pipeline.ops.dedup import tokenizer as tok
+    from rag_api.pipeline.ops.dedup import tokenizer as tok
 
     with patch.object(tok, "_KIWI_AVAILABLE", False):
         result = tok.get_kiwi()
@@ -254,16 +254,17 @@ def test_get_kiwi_returns_none_when_unavailable():
 
 def test_get_kiwi_returns_instance_when_available():
     import sys
-    from pipeline.ops.dedup import tokenizer as tok
+    from rag_api.pipeline.ops.dedup import tokenizer as tok
 
     mock_kiwi_instance = MagicMock()
     mock_kiwi_module = MagicMock()
     mock_kiwi_module.Kiwi = MagicMock(return_value=mock_kiwi_instance)
 
     with patch.object(tok, "_KIWI_AVAILABLE", True), \
+         patch.object(tok, "_kiwi", None), \
          patch.dict(sys.modules, {"kiwipiepy": mock_kiwi_module}), \
-         patch("config.settings.get_settings") as ms:
-        ms.return_value.dedup.user_words_path = ""
+         patch("rag_api.config.settings.get_settings") as ms:
+        ms.return_value.dedup.minhash.user_words_path = ""
         result = tok.get_kiwi()
 
     assert result is mock_kiwi_instance
@@ -272,17 +273,18 @@ def test_get_kiwi_returns_instance_when_available():
 def test_get_kiwi_missing_user_words_file_logs_warning(tmp_path, caplog):
     import logging
     import sys
-    from pipeline.ops.dedup import tokenizer as tok
+    from rag_api.pipeline.ops.dedup import tokenizer as tok
 
     mock_kiwi_instance = MagicMock()
     mock_kiwi_module = MagicMock()
     mock_kiwi_module.Kiwi = MagicMock(return_value=mock_kiwi_instance)
 
     with patch.object(tok, "_KIWI_AVAILABLE", True), \
+         patch.object(tok, "_kiwi", None), \
          patch.dict(sys.modules, {"kiwipiepy": mock_kiwi_module}), \
-         patch("config.settings.get_settings") as ms, \
-         caplog.at_level(logging.WARNING, logger="pipeline.ops.dedup.tokenizer"):
-        ms.return_value.dedup.user_words_path = str(tmp_path / "nonexistent.tsv")
+         patch("rag_api.config.settings.get_settings") as ms, \
+         caplog.at_level(logging.WARNING, logger="rag_api.pipeline.ops.dedup.tokenizer"):
+        ms.return_value.dedup.minhash.user_words_path = str(tmp_path / "nonexistent.tsv")
         tok.get_kiwi()
 
     assert any("not found" in r.message for r in caplog.records)
@@ -290,7 +292,7 @@ def test_get_kiwi_missing_user_words_file_logs_warning(tmp_path, caplog):
 
 
 def test_load_user_words_registers_entries(tmp_path):
-    from pipeline.ops.dedup.tokenizer import _load_user_words
+    from rag_api.pipeline.ops.dedup.tokenizer import _load_user_words
 
     tsv = tmp_path / "words.tsv"
     tsv.write_text("# comment\n임베딩\tNNG\t10.0\nRAG\tSL\t8.0\n\n", encoding="utf-8")
@@ -305,13 +307,13 @@ def test_load_user_words_registers_entries(tmp_path):
 
 def test_load_user_words_skips_malformed_lines(tmp_path, caplog):
     import logging
-    from pipeline.ops.dedup.tokenizer import _load_user_words
+    from rag_api.pipeline.ops.dedup.tokenizer import _load_user_words
 
     tsv = tmp_path / "words.tsv"
     tsv.write_text("good\tNNG\t5.0\nno_tab_here\n", encoding="utf-8")
 
     mock_kiwi = MagicMock()
-    with caplog.at_level(logging.WARNING, logger="pipeline.ops.dedup.tokenizer"):
+    with caplog.at_level(logging.WARNING, logger="rag_api.pipeline.ops.dedup.tokenizer"):
         _load_user_words(mock_kiwi, tsv)
 
     assert mock_kiwi.add_user_word.call_count == 1

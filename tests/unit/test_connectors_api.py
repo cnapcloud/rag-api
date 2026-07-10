@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from api.app import create_app
+from rag_api.api.app import create_app
 
 CONNECTOR_ID = "conn-web-01"
 KB_ID = "kb-01"
@@ -25,6 +25,7 @@ _BASE_CONNECTOR = {
     "sync_started_at": None,
     "last_synced_at": None,
     "status": "active",
+    "last_error": None,
     "created_at": "2026-06-01T00:00:00+00:00",
     "updated_at": "2026-06-01T00:00:00+00:00",
 }
@@ -42,7 +43,7 @@ _BASE_KB = {
 
 @pytest.fixture
 def client():
-    with patch("api.app._init_infrastructure"):
+    with patch("rag_api.api.app._init_infrastructure"):
         app = create_app()
     return TestClient(app)
 
@@ -55,8 +56,8 @@ class TestCreateConnector:
 
     def test_returns_201_with_connector(self, client):
         with (
-            patch("infra.postgres.get_kb_meta", return_value=_BASE_KB),
-            patch("infra.postgres.create_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
+            patch("rag_api.infra.postgres.create_connector", return_value=_BASE_CONNECTOR),
         ):
             resp = client.post("/api/connectors", json={
                 "connector_id": CONNECTOR_ID,
@@ -98,8 +99,8 @@ class TestCreateConnector:
 
     def test_non_web_connector_without_seed_urls_is_accepted(self, client):
         with (
-            patch("infra.postgres.get_kb_meta", return_value=_BASE_KB),
-            patch("infra.postgres.create_connector", return_value={
+            patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
+            patch("rag_api.infra.postgres.create_connector", return_value={
                 **_BASE_CONNECTOR, "source_type": "confluence",
             }),
         ):
@@ -114,7 +115,7 @@ class TestCreateConnector:
         assert resp.status_code == 201
 
     def test_kb_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_kb_meta", return_value=None):
+        with patch("rag_api.infra.postgres.get_kb_meta", return_value=None):
             resp = client.post("/api/connectors", json={
                 "connector_id": CONNECTOR_ID,
                 "kb_id": "missing-kb",
@@ -132,8 +133,8 @@ class TestCreateConnector:
             raise psycopg.errors.UniqueViolation()
 
         with (
-            patch("infra.postgres.get_kb_meta", return_value=_BASE_KB),
-            patch("infra.postgres.create_connector", side_effect=raise_unique),
+            patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
+            patch("rag_api.infra.postgres.create_connector", side_effect=raise_unique),
         ):
             resp = client.post("/api/connectors", json={
                 "connector_id": CONNECTOR_ID,
@@ -153,7 +154,7 @@ class TestCreateConnector:
 class TestListConnectors:
 
     def test_returns_items_list(self, client):
-        with patch("infra.postgres.list_connectors", return_value=[_BASE_CONNECTOR]):
+        with patch("rag_api.infra.postgres.list_connectors", return_value=[_BASE_CONNECTOR]):
             resp = client.get("/api/connectors")
 
         assert resp.status_code == 200
@@ -166,7 +167,7 @@ class TestListConnectors:
             captured.update({"kb_id": kb_id, "source_type": source_type, "status": status})
             return []
 
-        with patch("infra.postgres.list_connectors", side_effect=fake_list):
+        with patch("rag_api.infra.postgres.list_connectors", side_effect=fake_list):
             client.get("/api/connectors?kb_id=kb-01&source_type=web&status=active")
 
         assert captured == {"kb_id": "kb-01", "source_type": "web", "status": "active"}
@@ -178,7 +179,7 @@ class TestListConnectors:
             captured.update({"kb_id": kb_id, "source_type": source_type, "status": status})
             return []
 
-        with patch("infra.postgres.list_connectors", side_effect=fake_list):
+        with patch("rag_api.infra.postgres.list_connectors", side_effect=fake_list):
             client.get("/api/connectors")
 
         assert captured == {"kb_id": None, "source_type": None, "status": None}
@@ -191,14 +192,14 @@ class TestListConnectors:
 class TestGetConnector:
 
     def test_returns_connector(self, client):
-        with patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR):
+        with patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR):
             resp = client.get(f"/api/connectors/{CONNECTOR_ID}")
 
         assert resp.status_code == 200
         assert resp.json()["connector_id"] == CONNECTOR_ID
 
     def test_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_connector", return_value=None):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
             resp = client.get("/api/connectors/nonexistent")
 
         assert resp.status_code == 404
@@ -213,8 +214,8 @@ class TestPatchConnector:
     def test_updates_allowed_fields(self, client):
         updated = {**_BASE_CONNECTOR, "name": "New Name", "schedule_enabled": False}
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.update_connector", return_value=updated),
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.update_connector", return_value=updated),
         ):
             resp = client.patch(f"/api/connectors/{CONNECTOR_ID}", json={
                 "name": "New Name",
@@ -226,7 +227,7 @@ class TestPatchConnector:
         assert resp.json()["schedule_enabled"] is False
 
     def test_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_connector", return_value=None):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
             resp = client.patch(f"/api/connectors/{CONNECTOR_ID}", json={"name": "X"})
 
         assert resp.status_code == 404
@@ -239,8 +240,8 @@ class TestPatchConnector:
             return _BASE_CONNECTOR
 
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.update_connector", side_effect=fake_update),
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.update_connector", side_effect=fake_update),
         ):
             client.patch(f"/api/connectors/{CONNECTOR_ID}", json={"name": "Only Name"})
 
@@ -255,10 +256,10 @@ class TestDeleteConnector:
 
     def test_returns_202_and_triggers_cascade(self, client):
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.set_connector_status") as mock_set_status,
-            patch("infra.postgres.list_docs_by_connector", return_value=[]),
-            patch("infra.postgres.delete_connector") as mock_delete,
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.set_connector_status") as mock_set_status,
+            patch("rag_api.infra.postgres.list_docs_by_connector", return_value=[]),
+            patch("rag_api.infra.postgres.delete_connector") as mock_delete,
         ):
             resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
 
@@ -268,10 +269,23 @@ class TestDeleteConnector:
         mock_delete.assert_called_once_with(CONNECTOR_ID)
 
     def test_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_connector", return_value=None):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
             resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
 
         assert resp.status_code == 404
+
+    def test_returns_409_when_sync_running(self, client):
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.infra.postgres.set_connector_status") as mock_set_status,
+            patch("rag_api.infra.postgres.delete_connector") as mock_delete,
+        ):
+            resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
+
+        assert resp.status_code == 409
+        mock_set_status.assert_not_called()
+        mock_delete.assert_not_called()
 
     def test_cascade_soft_deletes_docs(self, client):
         doc = {
@@ -284,13 +298,13 @@ class TestDeleteConnector:
         soft_delete_calls = []
 
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.set_connector_status"),
-            patch("infra.postgres.list_docs_by_connector", return_value=[doc]),
-            patch("infra.qdrant.delete_chunks_by_doc_id"),
-            patch("infra.s3.delete_by_key"),
-            patch("infra.postgres.soft_delete_doc", side_effect=lambda did: soft_delete_calls.append(did)),
-            patch("infra.postgres.delete_connector"),
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.set_connector_status"),
+            patch("rag_api.infra.postgres.list_docs_by_connector", return_value=[doc]),
+            patch("rag_api.infra.qdrant.delete_chunks_by_doc_id"),
+            patch("rag_api.infra.s3.delete_by_key"),
+            patch("rag_api.infra.postgres.soft_delete_doc", side_effect=lambda did: soft_delete_calls.append(did)),
+            patch("rag_api.infra.postgres.delete_connector"),
         ):
             resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
 
@@ -312,13 +326,13 @@ class TestDeleteConnector:
             raise S3ClientError({"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "DeleteObject")
 
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.set_connector_status"),
-            patch("infra.postgres.list_docs_by_connector", return_value=[doc]),
-            patch("infra.qdrant.delete_chunks_by_doc_id"),
-            patch("infra.s3.delete_by_key", side_effect=raise_s3),
-            patch("infra.postgres.soft_delete_doc"),
-            patch("infra.postgres.delete_connector"),
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.set_connector_status"),
+            patch("rag_api.infra.postgres.list_docs_by_connector", return_value=[doc]),
+            patch("rag_api.infra.qdrant.delete_chunks_by_doc_id"),
+            patch("rag_api.infra.s3.delete_by_key", side_effect=raise_s3),
+            patch("rag_api.infra.postgres.soft_delete_doc"),
+            patch("rag_api.infra.postgres.delete_connector"),
         ):
             resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
 
@@ -335,9 +349,9 @@ class TestTriggerSync:
         set_sync_calls = []
 
         with (
-            patch("infra.postgres.get_connector", return_value={**_BASE_CONNECTOR}),
-            patch("infra.postgres.set_connector_sync_status", side_effect=lambda *a, **kw: set_sync_calls.append(a)),
-            patch("infra.postgres.set_connector_status"),
+            patch("rag_api.infra.postgres.get_connector", return_value={**_BASE_CONNECTOR}),
+            patch("rag_api.infra.postgres.set_connector_sync_status", side_effect=lambda *a, **kw: set_sync_calls.append(a)),
+            patch("rag_api.infra.postgres.set_connector_status"),
         ):
             resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
 
@@ -346,13 +360,13 @@ class TestTriggerSync:
         assert set_sync_calls[0] == (CONNECTOR_ID, "running")
 
     def test_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_connector", return_value=None):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
             resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
 
         assert resp.status_code == 404
 
     def test_paused_connector_returns_409(self, client):
-        with patch("infra.postgres.get_connector", return_value={**_BASE_CONNECTOR, "status": "paused"}):
+        with patch("rag_api.infra.postgres.get_connector", return_value={**_BASE_CONNECTOR, "status": "paused"}):
             resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
 
         assert resp.status_code == 409
@@ -365,25 +379,69 @@ class TestTriggerSync:
             "sync_status": "running",
             "sync_started_at": recent,
         }
-        with patch("infra.postgres.get_connector", return_value=connector):
+        with patch("rag_api.infra.postgres.get_connector", return_value=connector):
             resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
 
         assert resp.status_code == 409
         assert "in progress" in resp.json()["detail"]
 
 
+    def test_success_sets_status_active_and_clears_error(self, client):
+        """A successful sync auto-recovers status=error -> active (last_error cleared as a side effect)."""
+        from rag_api.api.routers.connectors import _run_sync
+
+        status_calls = []
+        with (
+            patch("rag_api.api.routers.connectors._dispatch_sync"),
+            patch("rag_api.api.routers.connectors._wait_for_indexing"),
+            patch("rag_api.connectors.abort.is_abort_requested", return_value=False),
+            patch("rag_api.connectors.abort.clear_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch(
+                "rag_api.infra.postgres.set_connector_status",
+                side_effect=lambda cid, s, error=None: status_calls.append(s),
+            ),
+        ):
+            _run_sync({**_BASE_CONNECTOR, "status": "error", "last_error": "old failure"})
+
+        assert status_calls == ["active"]
+
+    def test_aborted_sync_does_not_change_status(self, client):
+        """An aborted (not truly completed) sync leaves status untouched."""
+        from rag_api.api.routers.connectors import _run_sync
+
+        status_calls = []
+        with (
+            patch("rag_api.api.routers.connectors._dispatch_sync"),
+            patch("rag_api.connectors.abort.is_abort_requested", return_value=True),
+            patch("rag_api.connectors.abort.clear_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch(
+                "rag_api.infra.postgres.set_connector_status",
+                side_effect=lambda cid, s, error=None: status_calls.append(s),
+            ),
+        ):
+            _run_sync({**_BASE_CONNECTOR, "status": "error", "last_error": "old failure"})
+
+        assert status_calls == []
+
     def test_background_task_marks_error_on_dispatch_failure(self, client):
         status_calls = []
+        error_calls = []
 
         with (
-            patch("infra.postgres.get_connector", return_value={**_BASE_CONNECTOR}),
-            patch("infra.postgres.set_connector_sync_status"),
-            patch("infra.postgres.set_connector_status", side_effect=lambda cid, s: status_calls.append(s)),
+            patch("rag_api.infra.postgres.get_connector", return_value={**_BASE_CONNECTOR}),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch(
+                "rag_api.infra.postgres.set_connector_status",
+                side_effect=lambda cid, s, error=None: (status_calls.append(s), error_calls.append(error)),
+            ),
         ):
             client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
 
         # _dispatch_sync raises ConfigError; _run_sync catches it and sets status=error
         assert "error" in status_calls
+        assert error_calls[0]
 
 
 # ──────────────────────────────────────────────
@@ -395,8 +453,8 @@ class TestGetSyncStatus:
     def test_returns_sync_state_and_doc_counts(self, client):
         counts = {"indexed": 10, "failed": 1, "total": 11}
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.get_connector_doc_counts", return_value=counts),
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.get_connector_doc_counts", return_value=counts),
         ):
             resp = client.get(f"/api/connectors/{CONNECTOR_ID}/sync/status")
 
@@ -404,11 +462,23 @@ class TestGetSyncStatus:
         body = resp.json()
         assert body["connector_id"] == CONNECTOR_ID
         assert body["sync_status"] == "idle"
+        assert body["last_error"] is None
         assert body["doc_counts"]["total"] == 11
         assert body["doc_counts"]["indexed"] == 10
 
+    def test_surfaces_last_error_when_status_is_error(self, client):
+        errored_connector = {**_BASE_CONNECTOR, "status": "error", "last_error": "ConfigError: bad config"}
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=errored_connector),
+            patch("rag_api.infra.postgres.get_connector_doc_counts", return_value={"total": 0}),
+        ):
+            resp = client.get(f"/api/connectors/{CONNECTOR_ID}/sync/status")
+
+        assert resp.status_code == 200
+        assert resp.json()["last_error"] == "ConfigError: bad config"
+
     def test_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_connector", return_value=None):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
             resp = client.get(f"/api/connectors/{CONNECTOR_ID}/sync/status")
 
         assert resp.status_code == 404
@@ -430,8 +500,8 @@ class TestListConnectorDocs:
             "status": "indexed",
         }
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.list_docs_by_connector_paginated", return_value=([doc], 1)),
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.list_docs_by_connector_paginated", return_value=([doc], 1)),
         ):
             resp = client.get(f"/api/connectors/{CONNECTOR_ID}/docs")
 
@@ -441,7 +511,7 @@ class TestListConnectorDocs:
         assert body["items"][0]["doc_id"] == "dddd-0001"
 
     def test_not_found_returns_404(self, client):
-        with patch("infra.postgres.get_connector", return_value=None):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
             resp = client.get(f"/api/connectors/{CONNECTOR_ID}/docs")
 
         assert resp.status_code == 404
@@ -454,9 +524,96 @@ class TestListConnectorDocs:
             return ([], 0)
 
         with (
-            patch("infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
-            patch("infra.postgres.list_docs_by_connector_paginated", side_effect=fake_paginated),
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.list_docs_by_connector_paginated", side_effect=fake_paginated),
         ):
             client.get(f"/api/connectors/{CONNECTOR_ID}/docs?page_size=999")
 
         assert captured["page_size"] == 100
+
+
+# ──────────────────────────────────────────────
+# POST /api/connectors/{connector_id}/sync/abort
+# ──────────────────────────────────────────────
+
+class TestAbortSync:
+
+    def test_not_found_returns_404(self, client):
+        with patch("rag_api.infra.postgres.get_connector", return_value=None):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 404
+
+    def test_no_sync_in_progress_returns_409(self, client):
+        with patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 409
+
+    def test_pending_docs_dequeued_and_failed(self, client):
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        doc = {"doc_id": "doc-pending", "status": "pending", "run_id": ""}
+        set_failed_calls = []
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.connectors.abort.request_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
+            patch(
+                "rag_api.pipeline.utils.doc_state.set_failed",
+                side_effect=lambda did, *_a, **_kw: set_failed_calls.append(did),
+            ),
+            patch("rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids") as mock_lookup,
+            patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
+        ):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 202
+        mock_dequeue.assert_called_once_with("doc-pending")
+        assert set_failed_calls == ["doc-pending"]
+        mock_lookup.assert_not_called()
+        mock_terminate.assert_not_called()
+
+    def test_running_doc_with_run_id_terminates_directly(self, client):
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        doc = {"doc_id": "doc-running", "status": "running", "run_id": "run-abc"}
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.connectors.abort.request_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.utils.doc_state.set_failed"),
+            patch("rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids") as mock_lookup,
+            patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
+        ):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 202
+        mock_lookup.assert_not_called()
+        mock_terminate.assert_called_once_with("run-abc")
+
+    def test_running_doc_without_run_id_looked_up_by_doc_id_tag(self, client):
+        """QUEUED/STARTING window: run_id not yet recorded -- looked up via GraphQL tag and terminated."""
+        running_connector = {**_BASE_CONNECTOR, "sync_status": "running"}
+        doc = {"doc_id": "doc-queued", "status": "running", "run_id": ""}
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=running_connector),
+            patch("rag_api.connectors.abort.request_abort"),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.utils.doc_state.set_failed"),
+            patch(
+                "rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids",
+                return_value=["run-queued"],
+            ) as mock_lookup,
+            patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
+        ):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
+
+        assert resp.status_code == 202
+        mock_lookup.assert_called_once_with(["doc-queued"])
+        mock_terminate.assert_called_once_with("run-queued")

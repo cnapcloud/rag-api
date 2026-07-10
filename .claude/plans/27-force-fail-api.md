@@ -40,7 +40,7 @@ def terminate_dagster_run(run_id: str) -> None:
 
     No-op if run not found or already finished. Raises RuntimeError if termination fails.
     """
-    from config.settings import get_settings
+    from rag_api.config.settings import get_settings
     cfg = get_settings()
 
     if cfg.queue_worker.enabled:
@@ -69,7 +69,7 @@ def dequeue_upload_events(doc_id: str) -> None:
     """Remove all upload events for doc_id from upload queue and delay queue."""
     import json
     from infra.redis import get_redis_client
-    from pipeline.enqueue import UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
+    from rag_api.pipeline import UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
 
     r = get_redis_client()
     for force in (False, True):
@@ -83,14 +83,14 @@ def dequeue_upload_events(doc_id: str) -> None:
 ```python
 @router.post("/kb/{kb_id}/docs/{doc_id}/fail", status_code=200)
 async def force_fail_doc(
-    kb_id: str,
-    doc_id: str,
-    reason: str = Query(default="Manually failed via API"),
+        kb_id: str,
+        doc_id: str,
+        reason: str = Query(default="Manually failed via API"),
 ):
-    from exceptions import ConflictError
+    from rag_api.exceptions import ConflictError
     from infra.dagster_utils import terminate_dagster_run
     from infra.postgres import get_doc_by_id
-    from pipeline.ops.meta import set_failed
+    from rag_api.pipeline.ops.meta import set_failed
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:

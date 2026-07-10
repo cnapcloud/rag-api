@@ -1,12 +1,15 @@
+x-env-file: &env-file
+  env_file:
+    - .env
+
 services:
 
   rag-api:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile
     container_name: rag-api
-    env_file:
-      - .env
     volumes:
       - ./settings.yaml:/app/settings.yaml:ro
       - ./data/kiwi_user_words.tsv:/app/data/kiwi_user_words.tsv:ro
@@ -23,6 +26,7 @@ services:
         condition: service_healthy
 
   rag-admin:
+    <<: *env-file
     build:
       context: ../../rag-admin
       dockerfile: Dockerfile
@@ -36,28 +40,36 @@ services:
         condition: service_started
 
   dagster-rag-api:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile
     container_name: dagster-rag-api
     stop_grace_period: 120s
-    command: dagster code-server start -h 0.0.0.0 -p 4000 -f src/defs/definitions.py
+    command: dagster code-server start -h 0.0.0.0 -p 4000 -m rag_api.defs.definitions
     environment:
       PYTHONPATH: /app/src
       DAGSTER_HOME: /opt/dagster/dagster_home
       DAGSTER_POSTGRES_URL: postgresql://dagster:password@postgresql:5432/dagster
     volumes:
       - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
-      - dagster-storage:/opt/dagster/dagster_home/storage
       - ./settings.yaml:/app/settings.yaml:ro
-      - ./data/kiwi_user_words.tsv:/app/data/kiwi_user_words.tsv:ro
-    ports:
-      - "4000:4000"
+      - ./data/kiwi_user_words.tsv:/data/kiwi_user_words.tsv:ro
+      # compute_logs, io_logs will be stored here
+      # io manager s3를 사용하는 경우, compute_logs만 저장
+      - dagster-storage:/opt/dagster/dagster_home/storage
     depends_on:
       postgresql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "dagster", "api", "grpc-health-check", "-h", "0.0.0.0", "-p", "4000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   dagster-webserver:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile.dagster
@@ -82,9 +94,10 @@ services:
       postgresql:
         condition: service_healthy
       dagster-rag-api:
-        condition: service_started
+        condition: service_healthy
 
   dagster-daemon:
+    <<: *env-file
     build:
       context: ..
       dockerfile: Dockerfile.dagster
@@ -104,15 +117,18 @@ services:
       postgresql:
         condition: service_healthy
       dagster-rag-api:
-        condition: service_started
+        condition: service_healthy
 
   postgresql:
+    <<: *env-file
     image: postgres:15-alpine
     container_name: postgresql
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -123,20 +139,22 @@ services:
       retries: 5
 
   redis:
+    <<: *env-file
     image: redis:7-alpine
     container_name: redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-redis}
+    command: redis-server --requirepass ${REDIS__PASSWORD:-redis}
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS__PASSWORD:-redis}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   qdrant:
+    <<: *env-file
     image: qdrant/qdrant:v1.18.2
     container_name: qdrant
     ports:
@@ -151,14 +169,13 @@ services:
       retries: 5
 
   minio:
+    <<: *env-file
     image: minio/minio:latest
     container_name: minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      MINIO_NOTIFY_WEBHOOK_ENABLE_PRIMARY: "on"
-      MINIO_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY: "http://rag-api:8000/internal/s3-event"
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -171,6 +188,7 @@ services:
       retries: 5
 
   minio-init:
+    <<: *env-file
     image: minio/mc:latest
     container_name: minio-init
     depends_on:
@@ -178,17 +196,47 @@ services:
         condition: service_healthy
       rag-api:
         condition: service_started
-    env_file:
-      - .env
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin};
       mc mb --ignore-existing local/rag-api;
-      mc mb --ignore-existing local/dagster-storage;
-      mc event add local/rag-api arn:minio:sqs::PRIMARY:webhook --event put,delete --ignore-existing;
-      echo 'MinIO webhook event subscription configured';
+      mc mb --ignore-existing local/dagster;
+      echo 'MinIO buckets initialized';
       "
     restart: "no"
+
+  mailpit:
+    <<: *env-file
+    image: axllent/mailpit:v1.29.6
+    container_name: mailpit
+    restart: unless-stopped
+
+    command:
+      - --db-file
+      - /var/lib/mailpit/mailpit.db
+      - --webroot
+      - /
+      - --smtp-auth-file
+      - /etc/mailpit/smtp.htpasswd
+      - --smtp-auth-allow-insecure
+
+    environment:
+      TZ: Asia/Seoul
+
+    ports:
+      - "8025:8025" # Web UI
+      - "1025:1025" # SMTP
+
+    volumes:
+      - ./data/mailpit:/var/lib/mailpit
+      - ./smtp.htpasswd:/etc/mailpit/smtp.htpasswd:ro
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8025/livez"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   pg_data:

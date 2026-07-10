@@ -156,65 +156,95 @@ redis:
 ingestion:
   max_file_size_mb: 10
   min_content_chars: 200
+  html_favor_precision: true
 ```
 
 | 키 | 기본값 | 설명 |
 |----|--------|------|
 | `max_file_size_mb` | `10` | 파일 업로드 최대 크기(MB). 초과 시 422 반환 |
 | `min_content_chars` | `200` | 웹 커넥터 전용. trafilatura 본문 추출 결과가 이 값 미만인 페이지는 저장 제외 |
+| `html_favor_precision` | `true` | `pipeline/ops/parse.py`의 `HTMLCleanReader`(`.html`/`.htm` 파싱)가 trafilatura로 본문을 추출할 때 정밀도(precision) 우선 모드 사용 여부. `true`면 본문인지 애매한 블록(사이드바 경계 등)을 제외해 dedup stage 1(SimHash) 안정성을 높이지만 본문 일부가 드물게 손실될 수 있다. `false`면 재현율(recall) 우선으로 전환되어 애매한 블록도 포함한다 |
 
 **운영 고려사항**
 
 - `max_file_size_mb`를 크게 올리면 파싱·임베딩 시간이 선형 이상으로 늘어날 수 있다. 대용량 PDF(100MB+)는 LlamaIndex 파서가 메모리를 수백 MB 사용한다. 실제 필요 크기를 기준으로 보수적으로 설정한다.
 - `min_content_chars`는 크롤 대상 사이트의 특성에 따라 조정한다. 짧은 페이지(FAQ, 카드형 UI)가 많은 사이트에서는 너무 높게 설정하면 유효한 문서가 걸러질 수 있다. 수집 결과를 확인한 후 조정한다.
+- `html_favor_precision`은 기본값(`true`)을 유지하는 것을 권장한다. HTML 문서에서 본문이 자주 잘려나간다는 신호(청크 수가 비정상적으로 적음, 특정 사이트의 문서가 계속 dedup 오탐됨 등)가 관찰되면 `false`로 전환해 재검증한다 (`docs/internal/design/html-extraction.md` 3.2, 6절 오픈 이슈 참고).
 
 ---
 
 ## 7. dedup
 
-중복 문서 탐지 설정. 파이프라인에서 validate 단계 직후, parse 전에 실행된다.
+중복 문서 탐지 설정. 파이프라인에서 validate 단계 직후, parse 전에 실행된다. Stage별(SimHash/MinHash/
+chunk_compare) 하위 섹션으로 중첩되어 있다 — 어떤 값이 어느 단계 것인지 이름만으로 구분하기 위함
+(2026-07-09, `docs/internal/design/dedup.md` 3.3 참고).
+
+중복 비교 대상은 **정상 색인된(`indexed`) 문서로 한정된다.** 이미 중복으로 처리되어 검색에서
+제외된 문서(`outdated`)나 처리 중/실패/삭제된 문서는 비교 대상에 포함되지 않는다.
 
 ```yaml
 dedup:
   enabled: true
-  ngram: 3
-  num_bands: 4
-  simhash_bits: 64
-  hamming_identical_threshold: 5
-  hamming_similar_threshold: 10
-  jaccard_threshold: 0.65
-  title_fuzzy_threshold: 0.85
-  title_only_min_jaccard_floor: 0.25
-  user_words_path: "data/kiwi_user_words.tsv"
+
+  simhash:                                 # Stage1 - SimHash 근접 중복 탐지
+    ngram: 3
+    num_bands: 4
+    simhash_bits: 64
+    hamming_identical_threshold: 2
+    hamming_similar_threshold: 5
+
+  minhash:                                 # Stage2 - MinHash/제목 유사도 (Stage1 후보 없을 때만 실행)
+    jaccard_threshold: 0.65
+    title_fuzzy_threshold: 0.85
+    title_only_min_jaccard_floor: 0.25
+    user_words_path: "data/kiwi_user_words.tsv"
+
+  chunk_compare:                           # Stage3 - 임베딩 기반 청크 단위 정밀 비교
+    chunk_match_threshold: 0.50
+    body_identical_threshold: 0.95
+    body_similar_threshold: 0.75
+    compare_all_candidates: false
 ```
 
 ### 7-1. 작동 흐름
 
 ```
 Stage 1 (SimHash)
-  → hamming distance <= hamming_identical_threshold  → identical 판정 → 인덱싱 건너뜀
-  → hamming distance <= hamming_similar_threshold    → Stage 2 진입
-  → 그 외                                            → unique 판정 → 정상 인덱싱
+  → hamming distance <= simhash.hamming_identical_threshold  → identical 판정 → 인덱싱 건너뜀
+  → hamming distance <= simhash.hamming_similar_threshold    → Stage 3(chunk_compare)로 라우팅
+  → 그 외                                                    → Stage 2 진입
 
-Stage 2 (MinHash + pg_trgm)
-  → MinHash Jaccard >= jaccard_threshold             → duplicate 판정 → 인덱싱 건너뜀
-  → Title pg_trgm similarity >= title_fuzzy_threshold
-    AND MinHash Jaccard >= title_only_min_jaccard_floor  → duplicate 판정
-  → 그 외                                            → unique 판정 → 정상 인덱싱
+Stage 2 (MinHash + pg_trgm, Stage1 후보 없을 때만)
+  → MinHash Jaccard >= minhash.jaccard_threshold             → Stage 3(chunk_compare)로 라우팅
+  → Title pg_trgm similarity >= minhash.title_fuzzy_threshold
+    AND MinHash Jaccard >= minhash.title_only_min_jaccard_floor → Stage 3(chunk_compare)로 라우팅
+  → 그 외                                                    → unique 판정 → 정상 인덱싱
+
+Stage 3 (chunk_compare, Stage1/2가 "similar" 후보를 넘겼을 때만)
+  → 임베딩 코사인 유사도 집계 점수(청크 수 비율로 스케일링됨) >= chunk_compare.body_identical_threshold → identical 판정
+  → 집계 점수 >= chunk_compare.body_similar_threshold                                                → similar 판정 (기존 문서 outdated, 신규 색인)
+  → 그 외                                                                                            → unique 판정 → 정상 인덱싱
 ```
 
 | 키 | 기본값 | 설명 |
 |----|--------|------|
 | `enabled` | `true` | `false`로 설정하면 dedup 단계 전체 건너뜀 |
-| `ngram` | `3` | SimHash / MinHash 생성에 사용할 n-gram 크기 |
-| `num_bands` | `4` | MinHash LSH 밴드 수. 클수록 Stage 2 후보 정밀도 증가, 처리량 감소 |
-| `simhash_bits` | `64` | SimHash 해시 비트 수 (64 고정 권장) |
-| `hamming_identical_threshold` | `5` | Stage 1: 이 값 이하이면 identical로 즉시 판정 |
-| `hamming_similar_threshold` | `10` | Stage 1: 이 값 이하이면 Stage 2로 넘김 |
-| `jaccard_threshold` | `0.65` | Stage 2: MinHash Jaccard 유사도 임계값 |
-| `title_fuzzy_threshold` | `0.85` | Stage 2: 제목 유사도 임계값 (pg_trgm similarity) |
-| `title_only_min_jaccard_floor` | `0.25` | 제목만으로 duplicate 판정할 때 본문 유사도 최솟값 |
-| `user_words_path` | `""` | Kiwi 형태소 분석기 사용자 사전 경로 (빈 값 = 사용 안 함) |
+| **simhash** (Stage1) | | |
+| `simhash.ngram` | `3` | SimHash 생성에 사용할 문자 n-gram 크기 |
+| `simhash.num_bands` | `4` | SimHash 밴드 수. 클수록 후보 정밀도 증가, 처리량 감소 |
+| `simhash.simhash_bits` | `64` | SimHash 해시 비트 수 (64 고정 권장) |
+| `simhash.hamming_identical_threshold` | `2` | 이 값 이하이면 identical로 즉시 판정 |
+| `simhash.hamming_similar_threshold` | `5` | 이 값 이하이면 Stage 3(chunk_compare)로 넘김 |
+| **minhash** (Stage2) | | |
+| `minhash.jaccard_threshold` | `0.65` | MinHash Jaccard 유사도 임계값 |
+| `minhash.title_fuzzy_threshold` | `0.85` | 제목 유사도 임계값 (pg_trgm similarity) |
+| `minhash.title_only_min_jaccard_floor` | `0.25` | 제목만으로 후보 판정할 때 본문 유사도 최솟값 |
+| `minhash.user_words_path` | `""` | Kiwi 형태소 분석기 사용자 사전 경로 (빈 값 = 사용 안 함) |
+| **chunk_compare** (Stage3) | | |
+| `chunk_compare.chunk_match_threshold` | `0.50` | 청크쌍 필터 임계값 (Top-1 매칭 최소 점수) |
+| `chunk_compare.body_identical_threshold` | `0.95` | 집계 점수가 이 값 이상이면 body=identical |
+| `chunk_compare.body_similar_threshold` | `0.75` | 집계 점수가 이 값 이상(identical 미만)이면 body=similar |
+| `chunk_compare.compare_all_candidates` | `false` | `false`=best match 1건만 정밀 비교, `true`=후보 전체 순회 |
 
 **운영 고려사항**
 

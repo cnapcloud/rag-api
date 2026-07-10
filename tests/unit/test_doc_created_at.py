@@ -6,8 +6,6 @@ import asyncio
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 DOC_ID = "11111111-1111-1111-1111-111111111111"
 STORAGE_KEY = "kb-test/doc.pdf"
 
@@ -18,7 +16,7 @@ STORAGE_KEY = "kb-test/doc.pdf"
 
 class TestExtractDocCreatedAt:
     def _call(self, file_path, suffix, storage_key=STORAGE_KEY):
-        from pipeline.ops.parse import _extract_doc_created_at
+        from rag_api.pipeline.ops.parse import _extract_doc_created_at
         return _extract_doc_created_at(file_path, suffix, storage_key)
 
     def test_pdf_creation_date(self, tmp_path):
@@ -46,7 +44,7 @@ class TestExtractDocCreatedAt:
         with open(pdf_path, "wb") as f:
             writer.write(f)
 
-        with patch("infra.s3.get_object_last_modified_by_key", return_value="2024-01-01T00:00:00+00:00"):
+        with patch("rag_api.infra.s3.get_object_last_modified_by_key", return_value="2024-01-01T00:00:00+00:00"):
             result = self._call(pdf_path, ".pdf")
         assert result == "2024-01-01T00:00:00+00:00"
 
@@ -73,7 +71,7 @@ class TestExtractDocCreatedAt:
         txt_path = tmp_path / "test.txt"
         txt_path.write_text("hello")
 
-        with patch("infra.s3.get_object_last_modified_by_key", return_value="2024-06-01T12:00:00+00:00"):
+        with patch("rag_api.infra.s3.get_object_last_modified_by_key", return_value="2024-06-01T12:00:00+00:00"):
             result = self._call(txt_path, ".txt")
         assert result == "2024-06-01T12:00:00+00:00"
 
@@ -82,7 +80,7 @@ class TestExtractDocCreatedAt:
         txt_path = tmp_path / "test.txt"
         txt_path.write_text("hello")
 
-        with patch("infra.s3.get_object_last_modified_by_key", side_effect=Exception("S3 error")):
+        with patch("rag_api.infra.s3.get_object_last_modified_by_key", side_effect=Exception("S3 error")):
             result = self._call(txt_path, ".txt")
         assert result == ""
 
@@ -110,7 +108,7 @@ class TestExtractDocCreatedAt:
 class TestUpsertDocCreatedAt:
     def _make_embedded_node(self, doc_created_at: str = ""):
         from llama_index.core.schema import TextNode
-        from pipeline.ops.embed import EmbeddedNode
+        from rag_api.pipeline.ops.embed import EmbeddedNode
 
         node = TextNode(text="sample chunk", metadata={"doc_created_at": doc_created_at})
         return EmbeddedNode(
@@ -121,21 +119,21 @@ class TestUpsertDocCreatedAt:
         )
 
     def test_upsert_result_carries_doc_created_at(self, mock_qdrant):
-        from pipeline.utils.upsert import upsert
+        from rag_api.pipeline.utils.upsert import upsert
 
         en = self._make_embedded_node("2023-05-15T10:30:00+00:00")
         with (
-            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.upsert_chunks"),
         ):
             result = upsert("kb-test", DOC_ID, [en])
 
         assert result.doc_created_at == "2023-05-15T10:30:00+00:00"
 
     def test_qdrant_payload_includes_doc_created_at(self, mock_qdrant):
-        from pipeline.utils.upsert import upsert
+        from rag_api.pipeline.utils.upsert import upsert
 
         expected = "2023-05-15T10:30:00+00:00"
         en = self._make_embedded_node(expected)
@@ -146,10 +144,10 @@ class TestUpsertDocCreatedAt:
             captured_points.extend(points)
 
         with (
-            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks", side_effect=capture_upsert),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.upsert_chunks", side_effect=capture_upsert),
         ):
             upsert("kb-test", DOC_ID, [en])
 
@@ -158,16 +156,16 @@ class TestUpsertDocCreatedAt:
 
     def test_qdrant_payload_uses_doc_id_not_doc_key(self, mock_qdrant):
         """Payload contains doc_id field (not doc_key or doc_source)."""
-        from pipeline.utils.upsert import upsert
+        from rag_api.pipeline.utils.upsert import upsert
 
         en = self._make_embedded_node("2023-05-15T10:30:00+00:00")
         captured_points = []
 
         with (
-            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks", side_effect=lambda kb, pts, client=None: captured_points.extend(pts)),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.upsert_chunks", side_effect=lambda kb, pts, client=None: captured_points.extend(pts)),
         ):
             upsert("kb-test", DOC_ID, [en])
 
@@ -177,13 +175,13 @@ class TestUpsertDocCreatedAt:
         assert "doc_source" not in payload
 
     def test_empty_embedded_nodes_doc_created_at_is_empty(self, mock_qdrant):
-        from pipeline.utils.upsert import upsert
+        from rag_api.pipeline.utils.upsert import upsert
 
         with (
-            patch("pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
-            patch("pipeline.utils.upsert.qdrant_infra.ensure_collection"),
-            patch("pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
-            patch("pipeline.utils.upsert.qdrant_infra.upsert_chunks"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.get_qdrant_client", return_value=mock_qdrant),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.ensure_collection"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.delete_chunks_by_doc_id"),
+            patch("rag_api.pipeline.utils.upsert.qdrant_infra.upsert_chunks"),
         ):
             result = upsert("kb-test", DOC_ID, [])
 
@@ -202,10 +200,10 @@ class TestMetaDocCreatedAt:
         doc = Document(text="hello", metadata={"doc_created_at": "2023-05-15T10:30:00+00:00", "file_name": "x.md"})
         stored: dict = {}
 
-        with patch("infra.postgres.update_doc_fields", side_effect=lambda doc_id, fields: stored.update(fields)), \
-             patch("pipeline.ops.parse.parse", return_value=[doc]):
+        with patch("rag_api.infra.postgres.update_doc_fields", side_effect=lambda doc_id, fields: stored.update(fields)), \
+             patch("rag_api.pipeline.ops.parse.parse", return_value=[doc]):
             from dagster import build_op_context
-            from defs.ops.ingest_ops import parse_op
+            from rag_api.defs.ops.ingest_ops import parse_op
             ctx = build_op_context()
             parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})
 
@@ -217,10 +215,10 @@ class TestMetaDocCreatedAt:
 
         doc = Document(text="hello", metadata={"doc_created_at": "", "file_name": "x.md"})
 
-        with patch("infra.postgres.update_doc_fields") as mock_udf, \
-             patch("pipeline.ops.parse.parse", return_value=[doc]):
+        with patch("rag_api.infra.postgres.update_doc_fields") as mock_udf, \
+             patch("rag_api.pipeline.ops.parse.parse", return_value=[doc]):
             from dagster import build_op_context
-            from defs.ops.ingest_ops import parse_op
+            from rag_api.defs.ops.ingest_ops import parse_op
             ctx = build_op_context()
             parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})
 
@@ -241,11 +239,11 @@ class TestReindexKb:
         enqueued = []
 
         with (
-            patch("infra.postgres.list_docs", return_value=docs),
-            patch("infra.s3.get_object_meta", return_value=("etag-a", 1024)),
-            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("rag_api.infra.postgres.list_docs", return_value=docs),
+            patch("rag_api.infra.s3.get_object_meta", return_value=("etag-a", 1024)),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
-            from api.routers.docs import reindex_kb
+            from rag_api.api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
 
         assert result["skipped"] == 1
@@ -261,11 +259,11 @@ class TestReindexKb:
         enqueued = []
 
         with (
-            patch("infra.postgres.list_docs", return_value=docs),
-            patch("infra.s3.get_object_meta", return_value=("new-etag", 1024)),
-            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("rag_api.infra.postgres.list_docs", return_value=docs),
+            patch("rag_api.infra.s3.get_object_meta", return_value=("new-etag", 1024)),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
-            from api.routers.docs import reindex_kb
+            from rag_api.api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
 
         assert result["queued"] == 1
@@ -281,10 +279,10 @@ class TestReindexKb:
         enqueued = []
 
         with (
-            patch("infra.postgres.list_docs", return_value=docs),
-            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("rag_api.infra.postgres.list_docs", return_value=docs),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
-            from api.routers.docs import reindex_kb
+            from rag_api.api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=True))
 
         assert result["queued"] == 1
@@ -299,10 +297,10 @@ class TestReindexKb:
         enqueued = []
 
         with (
-            patch("infra.postgres.list_docs", return_value=docs),
-            patch("pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
+            patch("rag_api.infra.postgres.list_docs", return_value=docs),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event", side_effect=lambda doc_id, force=False: enqueued.append(doc_id)),
         ):
-            from api.routers.docs import reindex_kb
+            from rag_api.api.routers.docs import reindex_kb
             result = asyncio.run(reindex_kb(kb_id="kb-test", force=False))
 
         assert result["skipped"] == 1

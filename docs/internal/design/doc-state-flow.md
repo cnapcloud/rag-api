@@ -11,7 +11,7 @@
 | `running` | 인제스트 파이프라인 실행 중 | 활성 |
 | `deleting` | 삭제 파이프라인 실행 중 | 활성 |
 | `indexed` | 인덱싱 완료 — 검색 가능 | 안정 |
-| `failed` | 파이프라인 실패 — error 필드에 원인 기록 | 안정 |
+| `failed` | 파이프라인 실패 — last_error 필드에 원인 기록 | 안정 |
 | `deleted` | soft-delete 완료 — Qdrant 청크 제거, S3 파일 유지 | 안정 |
 | `outdated` | dedup에 의해 구버전으로 판정됨 | 안정 |
 
@@ -181,7 +181,7 @@ HTTP 202 Accepted
 수행 작업 (순서대로):
 1. `run_id`가 있으면 Dagster run force-terminate
 2. Redis 큐에서 이 문서의 upload 이벤트 제거 (`dequeue_upload_events`)
-3. `status → failed` + error 필드 기록
+3. `status → failed` + last_error 필드 기록
 
 > queue_worker 모드에서 `running` / `deleting` 상태인 경우, 백그라운드 태스크를 종료할 수 없어 상태만 `failed`로 전환된다. 태스크가 완료되면 상태를 덮어쓸 수 있다. 응답에 `warning` 필드가 포함된다.
 

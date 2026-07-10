@@ -1,12 +1,14 @@
+server:
+  production: true
+  workers: 1
+
 dagster:
   endpoint: "http://dagster-webserver:3000"
 
 s3:
   endpoint: "http://minio:9000"
-  access_key: "minioadmin"   # matches MINIO_ROOT_USER in .env
-  secret_key: "minioadmin"   # matches MINIO_ROOT_PASSWORD in .env
   rag_bucket: "rag-api"
-  dagster_bucket: "dagster-storage"
+  dagster_bucket: "dagster"
   region: "us-east-1"
   insecure: true
 
@@ -14,8 +16,6 @@ postgres:
   host: "postgresql"
   port: 5432
   dbname: "rag-api"
-  user: "rag-api"
-  password: "password"
   pool_size: 5
   connect_timeout: 30
 
@@ -27,28 +27,10 @@ qdrant:
 redis:
   host: "redis"
   port: 6379
-  password: "redis"
   db: 0
 
-ingestion:
-  max_file_size_mb: 10
-  min_content_chars: 200
-  
-dedup:
-  enabled: true
-  ngram: 3
-  num_bands: 4
-  simhash_bits: 64
-  hamming_identical_threshold: 5
-  hamming_similar_threshold: 10
-  lock_ttl: 10
-  lock_acquire_timeout: 5
-  jaccard_threshold: 0.65
-  title_fuzzy_threshold: 0.85
-  user_words_path: "data/kiwi_user_words.tsv"
-
 queue_worker:
-  enabled: false # true이면 dagster가 비활성화됨
+  enabled: false
   max_workers: 4
 
 queue_poll:
@@ -56,33 +38,58 @@ queue_poll:
   max_per_poll: 5
   retry_interval_sec: 10
 
+ingestion:
+  max_file_size_mb: 10
+  min_content_chars: 200
+  html_favor_precision: true
+
+dedup:
+  enabled: true
+
+  simhash:
+    ngram: 3
+    num_bands: 4
+    simhash_bits: 64
+    hamming_identical_threshold: 2
+    hamming_similar_threshold: 5
+
+  minhash:
+    jaccard_threshold: 0.65
+    title_fuzzy_threshold: 0.85
+    title_only_min_jaccard_floor: 0.25
+    user_words_path: "/app/data/kiwi_user_words.tsv"
+
+  chunk_compare:
+    chunk_match_threshold: 0.50
+    body_identical_threshold: 0.95
+    body_similar_threshold: 0.75
+    compare_all_candidates: false
+
 chunking:
-  strategy: "recursive"    # recursive / semantic
+  strategy: "recursive"
   chunk_size: 1024
   chunk_overlap: 128
   min_chunk_chars: 30
   semantic_threshold: 0.8
 
 embedding:
-  provider: "ollama"            # ollama / openai
+  provider: "ollama"
   model: "bge-m3"
-  vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
+  vector_size: 1024
   ollama_url: "http://192.168.0.75:11434"
-  openai_api_key: ""
   openai_model: "text-embedding-3-small"
 
 retrieval:
   mode: "hybrid"
   top_k: 10
   hybrid:
-    alpha: 0.5                  # alpha=1.0 -> dense only, alpha=0.0 -> sparse only
+    alpha: 0.5
     rrf_k: 60
   similarity:
-    min_score: 0.0              # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
+    min_score: 0.0
   rerank:
     enabled: true
     provider: "jina"
-    api_key: jina_026dc0b5a8ff4e6480914e208c1e0682eZK1BWvhq7gdXbQQxRPjP2rZXFo-"
     model: "jina-reranker-v2-base-multilingual"
     top_n: 3
     timeout_sec: 5
@@ -106,8 +113,6 @@ mcp:
 tracing:
   enabled: false
   langfuse_baseurl: ""
-  langfuse_public_key: ""
-  langfuse_secret_key: ""
   service_name: "rag-api"
 
 logging:

@@ -22,7 +22,7 @@ yield RunRequest(...)
 
 # 변경 후
 from infra import redis as redis_infra
-from pipeline.ops.meta import set_failed, set_processing
+from rag_api.pipeline.ops.meta import set_failed, set_processing
 
 prev = redis_infra.get_doc_status(kb_id, doc_source)
 if prev:

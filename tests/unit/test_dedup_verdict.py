@@ -6,15 +6,15 @@ import logging
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from pipeline.ops.dedup.types import DedupResult
-from pipeline.ops.dedup.verdict import handle_identical, handle_similar, handle_title_changed, run_verdict
+from rag_api.pipeline.ops.dedup.types import DedupResult
+from rag_api.pipeline.ops.dedup.verdict import handle_similar, handle_title_changed, run_verdict
 
-_PG = "infra.postgres.update_doc_fields"
-_GET_DOC = "infra.postgres.get_doc_by_id"
-_UPDATE_PAYLOAD = "infra.qdrant.update_payload_by_doc_id"
-_DEL_BANDS = "infra.postgres.delete_simhash_bands"
-_DEL_MINHASH = "infra.postgres.delete_minhash_bands"
-_DEL_CHUNKS = "infra.qdrant.delete_chunks_by_doc_id"
+_PG = "rag_api.infra.postgres.update_doc_fields"
+_GET_DOC = "rag_api.infra.postgres.get_doc_by_id"
+_UPDATE_PAYLOAD = "rag_api.infra.qdrant.update_payload_by_doc_id"
+_DEL_BANDS = "rag_api.infra.postgres.delete_simhash_bands"
+_DEL_MINHASH = "rag_api.infra.postgres.delete_minhash_bands"
+_DEL_CHUNKS = "rag_api.infra.qdrant.delete_chunks_by_doc_id"
 
 _TS_NEW = datetime(2026, 6, 26, 10, 0, 0, tzinfo=timezone.utc)
 _TS_OLD = datetime(2026, 6, 25, 10, 0, 0, tzinfo=timezone.utc)
@@ -37,20 +37,20 @@ def _result(body_match, title_match="unknown", needs_indexing=True, duplicate_do
 # ──────────────────────────────────────────────
 
 def test_run_verdict_identical_dispatches():
-    with patch("pipeline.ops.dedup.verdict.handle_identical") as mock_h, patch(_PG):
+    with patch("rag_api.pipeline.ops.dedup.verdict.handle_identical") as mock_h, patch(_PG):
         run_verdict("doc-1", _result("identical_level", "same", False, "doc-orig"), run_id="r1")
         mock_h.assert_called_once_with("doc-1", "doc-orig")
 
 
 def test_run_verdict_title_changed_dispatches():
-    with patch("pipeline.ops.dedup.verdict.handle_title_changed") as mock_h, patch(_PG):
+    with patch("rag_api.pipeline.ops.dedup.verdict.handle_title_changed") as mock_h, patch(_PG):
         run_verdict("doc-2", _result("identical_level", "changed", False, "doc-old"), run_id="r2")
         mock_h.assert_called_once_with("doc-2", "doc-old", "r2")
 
 
 def test_run_verdict_proceed_no_handler_called():
-    with patch("pipeline.ops.dedup.verdict.handle_identical") as mock_i, \
-         patch("pipeline.ops.dedup.verdict.handle_title_changed") as mock_t:
+    with patch("rag_api.pipeline.ops.dedup.verdict.handle_identical") as mock_i, \
+         patch("rag_api.pipeline.ops.dedup.verdict.handle_title_changed") as mock_t:
         run_verdict("doc-3", _result("none"))
         mock_i.assert_not_called()
         mock_t.assert_not_called()
@@ -59,13 +59,13 @@ def test_run_verdict_proceed_no_handler_called():
 def test_run_verdict_similar_dispatches():
     result = _result("similar", needs_indexing=False, duplicate_doc_id="doc-c")
 
-    with patch("pipeline.ops.dedup.verdict.handle_similar") as mock_h:
+    with patch("rag_api.pipeline.ops.dedup.verdict.handle_similar") as mock_h:
         run_verdict("doc-a", result, run_id="r1")
         mock_h.assert_called_once_with("doc-a", result, "r1")
 
 
 def test_run_verdict_unknown_body_match_logs_warning(caplog):
-    with caplog.at_level(logging.WARNING, logger="pipeline.ops.dedup.verdict"):
+    with caplog.at_level(logging.WARNING, logger="rag_api.pipeline.ops.dedup.verdict"):
         run_verdict("doc-6", _result("unknown_body"))  # type: ignore[arg-type]
     assert "unhandled body_match=unknown_body" in caplog.text
 
@@ -102,7 +102,7 @@ def test_title_changed_a_newer_updates_c():
     assert "process_finished_at" in c_call[0][1]
     mock_del.assert_called_once_with("doc-c")
     mock_udf.assert_any_call("doc-a", {
-        "status": "indexed", "error": None, "run_id": "r1",
+        "status": "indexed", "last_error": None, "run_id": "r1",
         "process_finished_at": mock_udf.call_args_list[-1][0][1]["process_finished_at"],
     })
 

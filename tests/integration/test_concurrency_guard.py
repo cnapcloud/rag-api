@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from unittest.mock import MagicMock, patch
 
 DOC_ID = "11111111-1111-1111-1111-111111111111"
@@ -80,19 +79,19 @@ def _run_sensor(fake_redis, get_run_by_id=None):
     from unittest.mock import MagicMock, PropertyMock
 
     from dagster import RunRequest, build_sensor_context
-    from defs.sensors.event_queue_sensor import event_queue_sensor
+    from rag_api.defs.sensors.event_queue_sensor import event_queue_sensor
 
     mock_settings = MagicMock()
     mock_settings.queue_worker.enabled = False
 
     ctx = build_sensor_context()
     with ExitStack() as stack:
-        stack.enter_context(patch("infra.redis.get_redis_client", return_value=fake_redis))
-        stack.enter_context(patch("defs.sensors.event_queue_sensor._get_settings", return_value=mock_settings))
+        stack.enter_context(patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis))
+        stack.enter_context(patch("rag_api.defs.sensors.event_queue_sensor._get_settings", return_value=mock_settings))
         stack.enter_context(
-            patch("infra.postgres.get_doc_by_id", side_effect=lambda doc_id: fake_redis.get_doc(doc_id))
+            patch("rag_api.infra.postgres.get_doc_by_id", side_effect=lambda doc_id: fake_redis.get_doc(doc_id))
         )
-        stack.enter_context(patch("infra.postgres.update_doc_fields"))
+        stack.enter_context(patch("rag_api.infra.postgres.update_doc_fields"))
         if get_run_by_id is not None:
             mock_instance = MagicMock()
             mock_instance.get_run_by_id.side_effect = get_run_by_id
@@ -168,7 +167,7 @@ class TestSensorConcurrencyGuard:
 class TestQueueWorkerConcurrencyGuard:
 
     def _run_poll(self, fake_redis):
-        from pipeline.queue.queue_worker import QueueWorker
+        from rag_api.pipeline.queue.queue_worker import QueueWorker
 
         worker = QueueWorker()
         worker._semaphore = asyncio.Semaphore(4)
@@ -181,11 +180,11 @@ class TestQueueWorkerConcurrencyGuard:
             return MagicMock()
 
         with (
-            patch("infra.redis.get_redis_client", return_value=fake_redis),
-            patch("infra.postgres.get_doc_by_id", side_effect=lambda doc_id: fake_redis.get_doc(doc_id)),
-            patch("infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
+            patch("rag_api.infra.postgres.get_doc_by_id", side_effect=lambda doc_id: fake_redis.get_doc(doc_id)),
+            patch("rag_api.infra.postgres.update_doc_fields"),
             patch("asyncio.create_task", side_effect=fake_create_task),
-            patch("config.settings.get_settings") as mock_cfg,
+            patch("rag_api.config.settings.get_settings") as mock_cfg,
         ):
             mock_cfg.return_value.queue_poll.retry_interval_sec = 30
             asyncio.run(worker._poll())

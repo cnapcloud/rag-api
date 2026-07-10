@@ -1,8 +1,12 @@
+server:
+  production: false
+  workers: 1
+
 dagster:
   endpoint: "http://localhost:3000"
 
 s3:
-  endpoint: "http://192.168.0.185:9000"
+  endpoint: "http://localhost:9000"
   access_key: "admin"
   secret_key: "password"
   rag_bucket: "rag-api"
@@ -11,7 +15,7 @@ s3:
   insecure: true
 
 postgres:
-  host: "postgresql"
+  host: "localhost"
   port: 5432
   dbname: "rag-api"
   user: "rag-api"
@@ -20,66 +24,78 @@ postgres:
   connect_timeout: 30
 
 qdrant:
-  host: "192.168.0.184"
+  host: "localhost"
   port: 6333
   insecure: true
 
 redis:
-  host: "192.168.0.183"
+  host: "localhost"
   port: 6379
   password: "redis"
   db: 0
-
-ingestion:
-  max_file_size_mb: 10        # upload file size limit
-  min_content_chars: 200      # web connector only: skip crawled pages with fewer extractable characters
-
-dedup:
-  enabled: true
-  ngram: 3
-  num_bands: 4
-  simhash_bits: 64
-  hamming_identical_threshold: 5   # SimHash distance <= this → treated as identical
-  hamming_similar_threshold: 10    # SimHash distance <= this → candidate for stage 2
-  jaccard_threshold: 0.65          # MinHash Jaccard similarity threshold for stage 2
-  title_fuzzy_threshold: 0.85      # pg_trgm title similarity threshold for stage 2
-  user_words_path: "data/kiwi_user_words.tsv"
-  title_only_min_jaccard_floor: 0.25
+  timeout_seconds: 2.0
 
 queue_worker:
-  enabled: true   # true: FastAPI QueueWorker, false: Dagster sensor
+  enabled: true
   max_workers: 5
 
 queue_poll:
   poll_interval_sec: 5
   max_per_poll: 5
-  retry_interval_sec: 10   # delay before retrying the same document
+  retry_interval_sec: 10
+
+ingestion:
+  max_file_size_mb: 10
+  min_content_chars: 200
+  html_favor_precision: true
+
+dedup:
+  enabled: true
+
+  simhash:
+    ngram: 3
+    num_bands: 4
+    simhash_bits: 64
+    hamming_identical_threshold: 2
+    hamming_similar_threshold: 5
+
+  minhash:
+    jaccard_threshold: 0.65
+    title_fuzzy_threshold: 0.85
+    title_only_min_jaccard_floor: 0.25
+    user_words_path: "data/kiwi_user_words.tsv"
+
+  chunk_compare:
+    chunk_match_threshold: 0.50
+    body_identical_threshold: 0.95
+    body_similar_threshold: 0.75
+    compare_all_candidates: false
 
 chunking:
-  strategy: "recursive"    # recursive / semantic
+  strategy: "recursive"
   chunk_size: 1024
   chunk_overlap: 128
-  min_chunk_chars: 30      # discard chunks shorter than this after splitting
+  min_chunk_chars: 30
   semantic_threshold: 0.8
   code_chunk_lines: 40
   code_chunk_lines_overlap: 5
 
 embedding:
-  provider: "ollama"            # ollama / openai
+  provider: "ollama"
   model: "bge-m3"
-  vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
+  vector_size: 1024
   ollama_url: "http://localhost:11434"
   openai_api_key: ""
   openai_model: "text-embedding-3-small"
 
 retrieval:
-  mode: "hybrid"                # hybrid / similarity
+  mode: "hybrid"
   top_k: 5
   hybrid:
-    alpha: 0.5                  # 1.0 = dense only, 0.0 = sparse only
-    rrf_k: 60                   # RRF rank constant — higher value reduces score gap between ranks
+    alpha: 0.5
+    rrf_k: 60
   similarity:
-    min_score: 0.0              # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
+    min_score: 0.0
   rerank:
     enabled: false
     provider: "jina"
@@ -87,7 +103,7 @@ retrieval:
     model: "jina-reranker-v2-base-multilingual"
     top_n: 3
     timeout_sec: 5
-    fallback_on_error: true     # use RRF score as fallback if reranker fails
+    fallback_on_error: true
 
 knowledge_bases:
   - id: "kb-01"
@@ -100,7 +116,7 @@ knowledge_bases:
 
 mcp:
   enabled: true
-  transport: streamable-http    # stdio / sse / streamable-http
+  transport: streamable-http
 
 tracing:
   enabled: true
@@ -110,4 +126,5 @@ tracing:
   service_name: "rag-api"
 
 logging:
-  level: INFO                   # DEBUG / INFO / WARNING / ERROR
+  level: INFO
+  names: [rag_api]

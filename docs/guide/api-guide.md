@@ -229,7 +229,7 @@ curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/{doc_id}
 | `pending` | 파이프라인 큐 대기 중 |
 | `running` | 파이프라인 처리 중 |
 | `indexed` | 인덱싱 완료 |
-| `failed` | 처리 실패 (`error` 필드에 사유) |
+| `failed` | 처리 실패 (`last_error` 필드에 사유) |
 | `deleting` | 삭제 진행 중 |
 | `deleted` | 삭제 완료 (행은 보존, 검색에서 제외) |
 
@@ -384,7 +384,7 @@ curl "http://localhost:8000/api/kb/kb-01/docs?page=2&page_size=10&status=indexed
       "chunk_count": 42,
       "file_size": 1258291,
       "embedding_model": "ollama/nomic-embed-text",
-      "error": null,
+      "last_error": null,
       "created_at": "2026-06-19T14:30:00+09:00",
       "updated_at": "2026-06-19T14:32:00+09:00"
     }
@@ -602,12 +602,15 @@ curl "http://localhost:8000/api/connectors?sort_by=name&sort_order=asc"
       "sync_started_at": null,
       "last_synced_at": "2026-06-20T02:00:05+09:00",
       "status": "active",
+      "last_error": null,
       "created_at": "2026-06-19T10:00:00+09:00",
       "updated_at": "2026-06-20T02:00:05+09:00"
     }
   ]
 }
 ```
+
+`last_error`는 마지막 sync 실패 메시지입니다(최대 500자) — 로그를 보지 않고도 실패 원인을 확인할 수 있습니다. `status=active`/`paused`로 수동 전환하거나 sync 재시도가 성공(abort 아님)하면 자동으로 클리어됩니다.
 
 ### 커넥터 단건 조회
 
@@ -696,7 +699,7 @@ curl -X PATCH http://localhost:8000/api/connectors/b59168c41e5e4a0d \
 |----------|------|
 | `active` | 정상 운영. 수동/자동 sync 모두 허용 |
 | `paused` | 전면 중단. 수동/자동 sync 모두 차단 (409 반환) |
-| `error` | 시스템 자동 설정. sync 실패 시 기록되며 직접 설정 불가 |
+| `error` | 시스템 자동 설정. sync 실패 시 기록되며 직접 설정 불가. 실패 메시지는 `last_error`에 기록. sync 재시도가 성공하면 `active`로 자동 복구되고 `last_error`도 클리어됨 (abort로 중단된 경우는 복구되지 않음) |
 
 ### 동기화 중단 (Abort)
 
@@ -737,6 +740,7 @@ curl http://localhost:8000/api/connectors/70779147cfc149de/sync/status
   "sync_status": "idle",
   "sync_started_at": null,
   "last_synced_at": "2026-06-20T02:00:05+09:00",
+  "last_error": null,
   "doc_counts": {
     "indexed": 142,
     "pending": 3,
@@ -908,6 +912,7 @@ curl http://localhost:8000/api/connectors/{connector_id}/sync/status
   "sync_status": "idle",
   "sync_started_at": null,
   "last_synced_at": "2026-06-20T02:00:05+09:00",
+  "last_error": null,
   "doc_counts": {
     "indexed": 142,
     "pending": 0,

@@ -73,7 +73,7 @@ Step 3에서 `set_failed()` 호출 후 `is_doc_busy()` 가 False를 반환하는
 @router.post("/kb/{kb_id}/docs/{key:path}/recover", status_code=202)
 async def recover_doc(kb_id: str, key: str):
     from infra.redis import get_doc_status, get_redis_client
-    from pipeline.ops.meta import set_failed
+    from rag_api.pipeline.ops.meta import set_failed
     import json
 
     data = get_doc_status(kb_id, key)

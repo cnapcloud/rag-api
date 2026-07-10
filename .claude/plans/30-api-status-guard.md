@@ -27,7 +27,7 @@ def is_active(status: str) -> bool:
 현재 `if status == "running":` → `is_active()` 전체로 교체:
 
 ```python
-from pipeline.utils.doc_state import is_active
+from rag_api.pipeline.utils.doc_state import is_active
 
 status = doc.get("status", "")
 if is_active(status):
@@ -50,7 +50,7 @@ if current == "deleted":
 `enqueue_upload_event` 호출 전에 추가:
 
 ```python
-from pipeline.utils.doc_state import is_active
+from rag_api.pipeline.utils.doc_state import is_active
 
 status = doc.get("status", "")
 if is_active(status):
@@ -63,7 +63,7 @@ if is_active(status):
 `pg_list_docs` 결과 순회 시 두 조건 추가:
 
 ```python
-from pipeline.utils.doc_state import is_active
+from rag_api.pipeline.utils.doc_state import is_active
 
 status = doc.get("status", "")
 if status == "outdated":
@@ -81,7 +81,7 @@ if is_active(status):
 기존 doc(`existing is not None`) 분기에서 `set_uploading` 호출 전에 추가:
 
 ```python
-from pipeline.utils.doc_state import is_active
+from rag_api.pipeline.utils.doc_state import is_active
 
 if existing is not None:
     status = existing.get("status", "")

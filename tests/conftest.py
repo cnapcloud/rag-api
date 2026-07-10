@@ -93,7 +93,7 @@ class FakePostgresStore:
             "status": status,
             "deleted_at": None,
             "run_id": "",
-            "error": None,
+            "last_error": None,
             "created_at": now,
             "updated_at": now,
             "process_started_at": None,
@@ -210,6 +210,7 @@ class FakePostgresStore:
             "sync_started_at": None,
             "last_synced_at": None,
             "status": "active",
+            "last_error": None,
             "created_at": now,
             "updated_at": now,
         }
@@ -245,6 +246,8 @@ class FakePostgresStore:
         for k, v in fields.items():
             if k in allowed:
                 self._connectors[connector_id][k] = v
+        if "status" in fields:
+            self._connectors[connector_id]["last_error"] = None
         self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
         return dict(self._connectors[connector_id])
 
@@ -268,9 +271,10 @@ class FakePostgresStore:
             self._connectors[connector_id]["last_synced_at"] = last_synced_at.isoformat()
         self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    def set_connector_status(self, connector_id: str, status: str) -> None:
+    def set_connector_status(self, connector_id: str, status: str, error: str | None = None) -> None:
         if connector_id in self._connectors:
             self._connectors[connector_id]["status"] = status
+            self._connectors[connector_id]["last_error"] = (error or "")[:500] if status == "error" else None
             self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     def get_connector_doc_counts(self, connector_id: str) -> dict[str, int]:
@@ -319,31 +323,31 @@ class FakePostgresStore:
 def mock_postgres(monkeypatch):
     """In-memory Postgres substitute (new doc_id-based API)."""
     store = FakePostgresStore()
-    monkeypatch.setattr("infra.postgres.register_kb", store.register_kb)
-    monkeypatch.setattr("infra.postgres.get_kb_meta", store.get_kb_meta)
-    monkeypatch.setattr("infra.postgres.list_kb_ids", store.list_kb_ids)
-    monkeypatch.setattr("infra.postgres.update_kb_meta", store.update_kb_meta)
-    monkeypatch.setattr("infra.postgres.update_kb_status", store.update_kb_status)
-    monkeypatch.setattr("infra.postgres.delete_kb_meta", store.delete_kb_meta)
-    monkeypatch.setattr("infra.postgres.create_doc", store.create_doc)
-    monkeypatch.setattr("infra.postgres.get_doc_by_id", store.get_doc_by_id)
-    monkeypatch.setattr("infra.postgres.get_doc_by_source", store.get_doc_by_source)
-    monkeypatch.setattr("infra.postgres.update_doc_fields", store.update_doc_fields)
-    monkeypatch.setattr("infra.postgres.soft_delete_doc", store.soft_delete_doc)
-    monkeypatch.setattr("infra.postgres.list_docs", store.list_docs)
-    monkeypatch.setattr("infra.postgres.list_docs_paginated", store.list_docs_paginated)
-    monkeypatch.setattr("infra.postgres.list_docs_by_connector", store.list_docs_by_connector)
-    monkeypatch.setattr("infra.postgres.list_docs_by_connector_paginated", store.list_docs_by_connector_paginated)
-    monkeypatch.setattr("infra.postgres.ping", store.ping)
-    monkeypatch.setattr("infra.postgres.run_migrations", store.run_migrations)
-    monkeypatch.setattr("infra.postgres.create_connector", store.create_connector)
-    monkeypatch.setattr("infra.postgres.get_connector", store.get_connector)
-    monkeypatch.setattr("infra.postgres.list_connectors", store.list_connectors)
-    monkeypatch.setattr("infra.postgres.update_connector", store.update_connector)
-    monkeypatch.setattr("infra.postgres.delete_connector", store.delete_connector)
-    monkeypatch.setattr("infra.postgres.set_connector_sync_status", store.set_connector_sync_status)
-    monkeypatch.setattr("infra.postgres.set_connector_status", store.set_connector_status)
-    monkeypatch.setattr("infra.postgres.get_connector_doc_counts", store.get_connector_doc_counts)
+    monkeypatch.setattr("rag_api.infra.postgres.register_kb", store.register_kb)
+    monkeypatch.setattr("rag_api.infra.postgres.get_kb_meta", store.get_kb_meta)
+    monkeypatch.setattr("rag_api.infra.postgres.list_kb_ids", store.list_kb_ids)
+    monkeypatch.setattr("rag_api.infra.postgres.update_kb_meta", store.update_kb_meta)
+    monkeypatch.setattr("rag_api.infra.postgres.update_kb_status", store.update_kb_status)
+    monkeypatch.setattr("rag_api.infra.postgres.delete_kb_meta", store.delete_kb_meta)
+    monkeypatch.setattr("rag_api.infra.postgres.create_doc", store.create_doc)
+    monkeypatch.setattr("rag_api.infra.postgres.get_doc_by_id", store.get_doc_by_id)
+    monkeypatch.setattr("rag_api.infra.postgres.get_doc_by_source", store.get_doc_by_source)
+    monkeypatch.setattr("rag_api.infra.postgres.update_doc_fields", store.update_doc_fields)
+    monkeypatch.setattr("rag_api.infra.postgres.soft_delete_doc", store.soft_delete_doc)
+    monkeypatch.setattr("rag_api.infra.postgres.list_docs", store.list_docs)
+    monkeypatch.setattr("rag_api.infra.postgres.list_docs_paginated", store.list_docs_paginated)
+    monkeypatch.setattr("rag_api.infra.postgres.list_docs_by_connector", store.list_docs_by_connector)
+    monkeypatch.setattr("rag_api.infra.postgres.list_docs_by_connector_paginated", store.list_docs_by_connector_paginated)
+    monkeypatch.setattr("rag_api.infra.postgres.ping", store.ping)
+    monkeypatch.setattr("rag_api.infra.postgres.run_migrations", store.run_migrations)
+    monkeypatch.setattr("rag_api.infra.postgres.create_connector", store.create_connector)
+    monkeypatch.setattr("rag_api.infra.postgres.get_connector", store.get_connector)
+    monkeypatch.setattr("rag_api.infra.postgres.list_connectors", store.list_connectors)
+    monkeypatch.setattr("rag_api.infra.postgres.update_connector", store.update_connector)
+    monkeypatch.setattr("rag_api.infra.postgres.delete_connector", store.delete_connector)
+    monkeypatch.setattr("rag_api.infra.postgres.set_connector_sync_status", store.set_connector_sync_status)
+    monkeypatch.setattr("rag_api.infra.postgres.set_connector_status", store.set_connector_status)
+    monkeypatch.setattr("rag_api.infra.postgres.get_connector_doc_counts", store.get_connector_doc_counts)
     return store
 
 
@@ -404,7 +408,7 @@ def mock_embed_model():
 
 @pytest.fixture
 def mock_dagster_resources(mock_redis, mock_qdrant, mock_minio):
-    from defs.resources.resources import (
+    from rag_api.defs.resources.resources import (
         EmbeddingResource,
         MinIOResource,
         QdrantResource,

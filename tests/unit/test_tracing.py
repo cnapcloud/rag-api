@@ -9,7 +9,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from tracing.span import _extract_traceparent, tool_span
+from rag_api.tracing.span import _extract_traceparent, tool_span
 
 VALID_TRACEPARENT = "00-" + "a" * 32 + "-" + "b" * 16 + "-01"
 

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import infra.postgres as pg
+import rag_api.infra.postgres as pg
 
 
 # ──────────────────────────────────────────────
@@ -36,7 +36,7 @@ def _make_doc_row(
     status: str = "pending",
     deleted_at=None,
     run_id: str = "",
-    error=None,
+    last_error=None,
     created_at=_NOW,
     updated_at=_NOW,
     process_started_at=None,
@@ -52,7 +52,7 @@ def _make_doc_row(
     """Build a tuple matching _DOC_COLS order."""
     return (
         doc_id, kb_id, title, source_type, source, storage_key,
-        content_version, connector_id, status, deleted_at, run_id, error,
+        content_version, connector_id, status, deleted_at, run_id, last_error,
         created_at, updated_at, process_started_at, process_finished_at,
         chunk_count, file_size, doc_type, embedding_model, doc_created_at,
         title_hash, content_simhash,
@@ -74,7 +74,7 @@ def _fake_pool(fetchone_row=None, fetchall_rows=None):
     pool.connection.return_value.__enter__ = lambda s: conn
     pool.connection.return_value.__exit__ = MagicMock(return_value=False)
 
-    with patch("infra.postgres.get_pool", return_value=pool):
+    with patch("rag_api.infra.postgres.get_pool", return_value=pool):
         yield conn, cursor
 
 
@@ -183,6 +183,60 @@ def test_soft_delete_sets_status_and_deleted_at():
     assert "deleted_at = NOW()" in sql
     assert "updated_at = NOW()" in sql
     conn.commit.assert_called_once()
+
+
+# ──────────────────────────────────────────────
+# update_connector
+# ──────────────────────────────────────────────
+
+_CONNECTOR_ROW = (
+    "conn-01", "kb-test", "Docs", "web", {}, None, False, "idle", None,
+    None, "active", None, _NOW, _NOW,
+)
+
+
+def test_update_connector_status_change_clears_last_error():
+    with _fake_pool(fetchone_row=_CONNECTOR_ROW) as (conn, _):
+        pg.update_connector("conn-01", {"status": "active"})
+    sql, params = conn.execute.call_args_list[0][0]
+    assert "last_error = NULL" in sql
+    assert "status = %s" in sql
+
+
+def test_update_connector_without_status_keeps_last_error():
+    with _fake_pool(fetchone_row=_CONNECTOR_ROW) as (conn, _):
+        pg.update_connector("conn-01", {"name": "New Name"})
+    sql, _ = conn.execute.call_args_list[0][0]
+    set_clause = sql.split("RETURNING")[0]
+    assert "last_error" not in set_clause
+
+
+# ──────────────────────────────────────────────
+# set_connector_status
+# ──────────────────────────────────────────────
+
+def test_set_connector_status_error_stores_message():
+    with _fake_pool() as (conn, _):
+        pg.set_connector_status("conn-01", "error", error="boom")
+    sql, params = conn.execute.call_args_list[0][0]
+    assert "last_error = %s" in sql
+    assert params == ["error", "boom", "conn-01"]
+    conn.commit.assert_called_once()
+
+
+def test_set_connector_status_error_truncates_message():
+    with _fake_pool() as (conn, _):
+        pg.set_connector_status("conn-01", "error", error="x" * 600)
+    _, params = conn.execute.call_args_list[0][0]
+    assert len(params[1]) == 500
+
+
+def test_set_connector_status_non_error_clears_last_error():
+    with _fake_pool() as (conn, _):
+        pg.set_connector_status("conn-01", "active")
+    sql, params = conn.execute.call_args_list[0][0]
+    assert "last_error = NULL" in sql
+    assert params == ["active", "conn-01"]
 
 
 # ──────────────────────────────────────────────

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS connectors (
     sync_started_at   TIMESTAMPTZ,
     last_synced_at    TIMESTAMPTZ,
     status            TEXT         NOT NULL DEFAULT 'active',
+    last_error        TEXT,
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
@@ -42,7 +43,7 @@ CREATE TABLE IF NOT EXISTS documents (
     status              TEXT         NOT NULL DEFAULT 'pending',
     deleted_at          TIMESTAMPTZ,
     run_id              TEXT         NOT NULL DEFAULT '',
-    error               TEXT,
+    last_error          TEXT,
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     process_started_at  TIMESTAMPTZ,

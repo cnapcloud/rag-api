@@ -63,22 +63,23 @@ def _run_sensor(
 ):
     """Execute the sensor once and return RunRequest objects.
 
-    pg_doc_by_id: value returned by infra.postgres.get_doc_by_id (None or dict).
+    pg_doc_by_id: value returned by rag_api.infra.postgres.get_doc_by_id (None or dict).
     """
     from dagster import RunRequest, build_sensor_context
-    from defs.sensors.event_queue_sensor import event_queue_sensor
+
+    from rag_api.defs.sensors.event_queue_sensor import event_queue_sensor
 
     mock_settings = MagicMock()
     mock_settings.queue_worker.enabled = False
 
     ctx = build_sensor_context()
     with ExitStack() as stack:
-        stack.enter_context(patch("infra.redis.get_redis_client", return_value=fake_redis))
+        stack.enter_context(patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis))
         stack.enter_context(
-            patch("defs.sensors.event_queue_sensor._get_settings", return_value=mock_settings)
+            patch("rag_api.defs.sensors.event_queue_sensor._get_settings", return_value=mock_settings)
         )
-        stack.enter_context(patch("infra.postgres.get_doc_by_id", return_value=pg_doc_by_id))
-        stack.enter_context(patch("infra.postgres.update_doc_fields"))
+        stack.enter_context(patch("rag_api.infra.postgres.get_doc_by_id", return_value=pg_doc_by_id))
+        stack.enter_context(patch("rag_api.infra.postgres.update_doc_fields"))
         if get_run_by_id is not None:
             mock_instance = MagicMock()
             mock_instance.get_run_by_id.side_effect = get_run_by_id
@@ -88,7 +89,7 @@ def _run_sensor(
         if set_failed_calls is not None:
             stack.enter_context(
                 patch(
-                    "pipeline.ops.meta.set_failed",
+                    "rag_api.pipeline.ops.meta.set_failed",
                     side_effect=lambda doc_id, err, run_id="": set_failed_calls.append((doc_id, run_id)),
                 )
             )
@@ -220,16 +221,16 @@ def test_sensor_upload_run_not_found_dispatches():
     assert calls[0][1] == "run-ghost"
 
 
-def test_sensor_upload_dispatch_lock_remnant_dispatches():
-    """Upload event: status=running with no run_id (dispatch lock remnant) -> dispatch immediately."""
+def test_sensor_upload_dispatch_lock_remnant_dropped():
+    """Upload event: status=running with no run_id (QUEUED/STARTING window) -> dropped, not re-queued."""
     fake_redis = _make_redis(put_events=[{"doc_id": DOC_ID, "force": False}])
     result = _run_sensor(
         fake_redis,
         pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running", "run_id": ""},
     )
 
-    assert len(result) == 1
-    assert result[0].job_name == "ingest_job"
+    assert result == []
+    assert len(fake_redis._zsets.get("rag:upload:delay", {})) == 0
 
 
 def test_sensor_upload_deleting_delayed():
@@ -292,16 +293,16 @@ def test_sensor_delete_zombie_run_dispatches():
     assert calls[0][1] == "run-dead"
 
 
-def test_sensor_delete_no_run_id_dispatches():
-    """Delete event: doc is running but run_id is empty -> dispatch immediately."""
+def test_sensor_delete_no_run_id_dropped():
+    """Delete event: status=running with no run_id (QUEUED/STARTING window) -> dropped, not re-queued."""
     fake_redis = _make_redis(delete_events=[{"doc_id": DOC_ID}])
     result = _run_sensor(
         fake_redis,
         pg_doc_by_id={"doc_id": DOC_ID, "kb_id": "kb-test", "status": "running", "run_id": ""},
     )
 
-    assert len(result) == 1
-    assert result[0].job_name == "delete_job"
+    assert result == []
+    assert len(fake_redis._zsets.get("rag:delete:delay", {})) == 0
 
 
 def test_sensor_drain_delay_queue():
@@ -319,7 +320,7 @@ def test_sensor_drain_delay_queue():
 
 def test_drain_delay_queue_sets_pending_when_not_running():
     """_drain_delay_queue: doc not running -> update_doc_fields called with status=pending."""
-    from defs.sensors.event_queue_sensor import _drain_delay_queue
+    from rag_api.defs.sensors.event_queue_sensor import _drain_delay_queue
 
     raw = json.dumps({"doc_id": DOC_ID})
     fake_redis = FakeRedis()
@@ -328,9 +329,9 @@ def test_drain_delay_queue_sets_pending_when_not_running():
     update_calls = []
 
     with (
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "status": "indexed"}),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "status": "indexed"}),
         patch(
-            "infra.postgres.update_doc_fields",
+            "rag_api.infra.postgres.update_doc_fields",
             side_effect=lambda doc_id, fields: update_calls.append((doc_id, fields)),
         ),
     ):
@@ -344,7 +345,7 @@ def test_drain_delay_queue_sets_pending_when_not_running():
 
 def test_drain_delay_queue_skips_pending_when_still_running():
     """_drain_delay_queue: doc still running -> update_doc_fields NOT called, lpush still happens."""
-    from defs.sensors.event_queue_sensor import _drain_delay_queue
+    from rag_api.defs.sensors.event_queue_sensor import _drain_delay_queue
 
     raw = json.dumps({"doc_id": DOC_ID})
     fake_redis = FakeRedis()
@@ -353,9 +354,9 @@ def test_drain_delay_queue_skips_pending_when_still_running():
     update_calls = []
 
     with (
-        patch("infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "status": "running", "run_id": "r1"}),
+        patch("rag_api.infra.postgres.get_doc_by_id", return_value={"doc_id": DOC_ID, "status": "running", "run_id": "r1"}),
         patch(
-            "infra.postgres.update_doc_fields",
+            "rag_api.infra.postgres.update_doc_fields",
             side_effect=lambda doc_id, fields: update_calls.append((doc_id, fields)),
         ),
     ):

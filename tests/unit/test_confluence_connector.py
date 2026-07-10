@@ -75,7 +75,7 @@ def _make_client() -> MagicMock:
 
 
 def _make_confluence_connector(base_url: str = BASE_URL_CLOUD, extra: dict | None = None):
-    from connectors.confluence import ConfluenceConnector
+    from rag_api.connectors.confluence import ConfluenceConnector
 
     config = {"base_url": base_url, "space_key": SPACE_KEY, "request_delay_ms": 0}
     config.update(extra or {})
@@ -89,15 +89,15 @@ def _make_confluence_connector(base_url: str = BASE_URL_CLOUD, extra: dict | Non
 class TestInit:
 
     def test_missing_base_url_raises(self):
-        from exceptions import ConfigError
-        from connectors.confluence import ConfluenceConnector
+        from rag_api.exceptions import ConfigError
+        from rag_api.connectors.confluence import ConfluenceConnector
 
         with pytest.raises(ConfigError, match="base_url"):
             ConfluenceConnector({"space_key": "DEV"})
 
     def test_missing_space_key_raises(self):
-        from exceptions import ConfigError
-        from connectors.confluence import ConfluenceConnector
+        from rag_api.exceptions import ConfigError
+        from rag_api.connectors.confluence import ConfluenceConnector
 
         with pytest.raises(ConfigError, match="space_key"):
             ConfluenceConnector({"base_url": BASE_URL_CLOUD})
@@ -197,11 +197,11 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc) as mock_create,
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
 
@@ -230,9 +230,9 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments") as mock_atts,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -247,10 +247,10 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments"),
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -266,10 +266,10 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=deleted_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments"),
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -284,9 +284,9 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source") as mock_get,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source") as mock_get,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, page)
 
@@ -300,11 +300,11 @@ class TestProcessPage:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object", side_effect=Exception("S3 down")),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object", side_effect=Exception("S3 down")),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             patch.object(c, "_process_page_attachments") as mock_atts,
         ):
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
@@ -334,11 +334,11 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response())
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc) as mock_create,
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc) as mock_create,
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -362,8 +362,8 @@ class TestProcessAttachment:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source") as mock_get,
-            patch("infra.s3.upload_object") as mock_upload,
+            patch("rag_api.infra.postgres.get_doc_by_source") as mock_get,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
 
@@ -376,8 +376,8 @@ class TestProcessAttachment:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source") as mock_get,
-            patch("infra.s3.upload_object") as mock_upload,
+            patch("rag_api.infra.postgres.get_doc_by_source") as mock_get,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
 
@@ -392,11 +392,11 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response(b"x" * (9 * 1024 * 1024)))
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields"),
-            patch("infra.s3.upload_object"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
 
@@ -408,9 +408,9 @@ class TestProcessAttachment:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=existing_doc),
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -424,10 +424,10 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response())
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=deleted_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=deleted_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -442,11 +442,11 @@ class TestProcessAttachment:
         client.get = MagicMock(side_effect=httpx.ConnectError("timeout"))
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object") as mock_upload,
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -462,11 +462,11 @@ class TestProcessAttachment:
         client.get = MagicMock(return_value=self._make_download_response())
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value=new_doc),
-            patch("infra.postgres.update_doc_fields") as mock_update,
-            patch("infra.s3.upload_object", side_effect=Exception("S3 error")),
-            patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object", side_effect=Exception("S3 error")),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
         ):
             c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
 
@@ -475,7 +475,7 @@ class TestProcessAttachment:
         mock_enqueue.assert_not_called()
 
     def test_all_supported_extensions_accepted(self):
-        from pipeline.ops.parse import SUPPORTED_EXTENSIONS
+        from rag_api.pipeline.ops.parse import SUPPORTED_EXTENSIONS
 
         c = _make_confluence_connector()
         client = _make_client()
@@ -485,11 +485,11 @@ class TestProcessAttachment:
             att = {**_ATTACHMENT, "title": f"file{ext}"}
             new_doc = {**_BASE_ATT_DOC, "doc_type": ext.lstrip(".")}
             with (
-                patch("infra.postgres.get_doc_by_source", return_value=None),
-                patch("infra.postgres.create_doc", return_value=new_doc),
-                patch("infra.postgres.update_doc_fields"),
-                patch("infra.s3.upload_object"),
-                patch("pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+                patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+                patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+                patch("rag_api.infra.postgres.update_doc_fields"),
+                patch("rag_api.infra.s3.upload_object"),
+                patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
             ):
                 c._process_attachment(client, KB_ID, CONNECTOR_ID, att)
             mock_enqueue.assert_called_once()
@@ -502,7 +502,7 @@ class TestProcessAttachment:
 class TestDispatchSync:
 
     def test_confluence_connector_dispatched(self):
-        from api.routers.connectors import _dispatch_sync
+        from rag_api.api.routers.connectors import _dispatch_sync
 
         connector = {
             "connector_id": CONNECTOR_ID,
@@ -511,7 +511,7 @@ class TestDispatchSync:
             "config": {"base_url": BASE_URL_CLOUD, "space_key": SPACE_KEY},
         }
 
-        with patch("connectors.confluence.ConfluenceConnector.sync") as mock_sync:
+        with patch("rag_api.connectors.confluence.ConfluenceConnector.sync") as mock_sync:
             _dispatch_sync(connector)
 
         mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
@@ -544,11 +544,11 @@ class TestSync:
         client = _make_client()
 
         with (
-            patch("infra.postgres.get_doc_by_source", return_value=None),
-            patch("infra.postgres.create_doc", return_value={**_BASE_PAGE_DOC, "status": "fetching"}),
-            patch("infra.postgres.update_doc_fields"),
-            patch("infra.s3.upload_object"),
-            patch("pipeline.queue.enqueue.enqueue_upload_event"),
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value={**_BASE_PAGE_DOC, "status": "fetching"}),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event"),
             patch.object(
                 c, "_iter_attachments", side_effect=Exception("attachment API down")
             ),

@@ -16,6 +16,7 @@
 | v5.1 | 이벤트 처리 경로 상세화, delay queue dedup 제거(_retry_id 도입) |
 | v5.2 | 커넥터 섹션 추가 |
 | v6.0 | 문서 전면 개편 — 레이어 구성, 예외처리, 로깅, 보안, 확장성, 가용성, 설정 관리 섹션 추가 |
+| v6.1 | S3 Webhook(/internal/s3-event) 경로 제거 — 실제 코드와 일치하도록 정정 (업로드 API·커넥터가 S3 저장 후 직접 Redis 큐 적재). internal 라우터 표기 삭제 |
 
 ---
 
@@ -24,22 +25,14 @@
 ### 개요도
 
 ```
-                    ┌─────────────┐
-                    │   FastAPI   │
-                    └──────┬──────┘
-                           │ 업로드 / 삭제
-                           ↓
-                    ┌─────────────┐
-                    │  S3(MinIO)  │
-                    └──────┬──────┘
-                           │ 이벤트
-                           ↓
-                    ┌──────────────────────────────┐
-                    │ S3 Webhook (POST /internal/  │
-                    │            s3-event)         │
-                    └──────┬───────────────────────┘
-                           │
-                           ↓
+        ┌─────────────┐          ┌──────────────┐
+        │   FastAPI   │          │  Connector   │
+        │ 업로드/삭제/  │          │  (web/conf/  │
+        │ 재인덱싱     │          │   github)    │
+        └──────┬──────┘          └──────┬───────┘
+               │ S3 저장                 │ S3 스테이징
+               │ + Redis 큐 적재          │ + Redis 큐 적재
+               ↓                        ↓
               ┌────────────────────────┐
               │       Redis 큐          │
               └────────────┬───────────┘
@@ -53,6 +46,7 @@
               ┌────────────────────────┐
               │    인제스트 파이프라인      │
               │  validate → parse      │
+              │  → dedup(중복 시 중단)   │
               │  → chunk → embed       │
               │  → upsert → meta       │
               └────────────┬───────────┘
@@ -81,12 +75,12 @@
 │  진입점 — serve / ingest / search / kb        │
 ├──────────────────────────────────────────────┤
 │  API (FastAPI)         src/api/              │
-│  라우터: health, kb, docs, search, internal   │
+│  라우터: health, kb, docs, search, connectors │
 │  예외 핸들러, 미들웨어, 앱 팩토리               │
 ├──────────────────────────────────────────────┤
 │  Pipeline (Dagster Ops) src/pipeline/ops/    │
-│  validate → parse → chunk → embed            │
-│  → upsert → meta / dedup / delete            │
+│  validate → parse → dedup → chunk → embed    │
+│  → upsert → meta / delete                    │
 │  순수 함수. Dagster 래퍼는 src/defs/에 분리     │
 ├──────────────────────────────────────────────┤
 │  RAG                   src/rag/              │
@@ -144,10 +138,10 @@ rag/
 
 | 흐름 | 경로 |
 |------|------|
-| 인제스트 | API → S3 → Webhook → Redis → Sensor/Worker → Pipeline → Qdrant + Postgres |
+| 인제스트 | API가 S3 저장 + Redis 큐 적재 → Sensor/Worker → Pipeline → Qdrant + Postgres |
 | 삭제 | API → Redis → Sensor/Worker → Qdrant + S3 + Postgres |
 | 검색 | API → RAG retriever → Qdrant → RRF merger → Jina reranker → 응답 |
-| 커넥터 sync | API trigger → Connector → S3 → Redis → Pipeline |
+| 커넥터 sync | API trigger 또는 Dagster Schedule → Connector가 S3 스테이징 + Redis 큐 적재 → Pipeline |
 
 ---
 
@@ -248,7 +242,7 @@ RAGError (base)
 ### API 인증·인가
 
 현재 API 레벨 인증 없음. 내부 서비스(같은 네트워크)에서만 접근하는 것을 전제로 한다.
-`/internal/` 경로는 S3 Webhook 전용이며 외부 노출 금지.
+인증·인가가 필요한 배포는 rag-ent-api(OIDC + KB RBAC 확장 레이어)를 사용한다.
 
 ### 민감 정보 암호화
 
@@ -329,9 +323,9 @@ settings.example.yaml   # 민감값 제외 예시 (git 추적)
 ### 접근 패턴
 
 ```python
-from config.settings import get_settings
+from rag_api.config.settings import get_settings
 
-cfg = get_settings()   # 싱글턴, 최초 1회 로드 후 캐시
+cfg = get_settings()  # 싱글턴, 최초 1회 로드 후 캐시
 chunk_size = cfg.chunking.chunk_size
 ```
 

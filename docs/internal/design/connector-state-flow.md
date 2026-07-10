@@ -2,14 +2,15 @@
 
 ## 1. 개요
 
-커넥터는 두 개의 독립적인 상태 필드를 가진다.
+커넥터는 두 개의 독립적인 상태 필드와 마지막 에러 메시지를 가진다.
 
 | 필드 | 타입 | 의미 |
 |------|------|------|
 | `status` | 커넥터 자체 운영 상태 | 활성화/일시중단/오류/삭제 중 |
 | `sync_status` | 현재 sync 실행 여부 | 실행 중 / 유휴 |
+| `last_error` | 마지막 sync 실패 메시지 (500자 제한) | `status=error`가 아니어도 과거 기록이 남아있을 수 없음 — `status`가 `error`가 아닌 값으로 바뀌는 순간 항상 함께 클리어됨 |
 
-두 필드는 독립적으로 관리된다. `status=error`이어도 `sync_status=idle`이면 수동 sync는 가능하다.
+두 상태 필드는 독립적으로 관리된다. `status=error`이어도 `sync_status=idle`이면 수동 sync는 가능하다.
 
 ---
 
@@ -17,9 +18,9 @@
 
 | 값 | 진입 조건 | 설명 |
 |----|-----------|------|
-| `active` | 생성 시 기본값, 또는 `paused`에서 resume | 정상 운영. 수동/자동 sync 모두 허용 |
+| `active` | 생성 시 기본값, `paused`에서 resume, 또는 (이전 상태가 `error`였더라도) sync 성공 시 자동 복구 | 정상 운영. 수동/자동 sync 모두 허용 |
 | `paused` | `PATCH /connectors/{id}` — `status: paused` | 전면 중단. 수동/자동 sync 모두 차단 |
-| `error` | sync 실패 시 자동 설정 | 마지막 sync가 예외로 종료됨. sync 재시도는 가능 |
+| `error` | sync 실패 시 자동 설정 | 마지막 sync가 예외로 종료됨. sync 재시도는 가능. 예외 메시지가 `last_error`에 기록됨 (`GET /connectors/{id}/sync/status`, `GET /connectors/{id}`로 로그 없이 확인 가능) |
 | `deleting` | `DELETE /connectors/{id}` | 캐스케이드 삭제 진행 중. 완료 후 레코드 삭제 |
 
 ### status 전이
@@ -31,13 +32,14 @@
     │     PATCH(resume)     │
     └───────────────────────┘
 
-  active/paused ──(sync 실패: 예외 발생)──► error
-  error         ──(sync 재시도 성공)──► (error 유지, sync_status만 idle로)
+  active/paused/error ──(sync 실패: 예외 발생)──► error (last_error = 예외 메시지)
+  error               ──(sync 재시도 성공, abort 아님)──► active (last_error = NULL로 자동 클리어)
+  error/active/paused ──(PATCH status: active|paused)──► 지정 상태 (last_error = NULL로 클리어)
 
   any ──(DELETE 호출)──► deleting ──(cascade 완료)──► (레코드 삭제)
 ```
 
-> `error` → `active` 자동 복구는 미구현. sync 재시도 성공 후에도 `status`는 `error`로 유지된다.
+> `error` → `active` 자동 복구는 sync가 예외 없이 완료됐을 때만 일어난다 (`_run_sync`/`connector_sync_op`가 `_dispatch_sync` 완료 후 `set_connector_status(connector_id, "active")` 호출). abort로 중단된 sync는 "정상 완료"가 아니므로 status를 건드리지 않고 이전 상태(예: `error`)를 그대로 둔다 — abort 자체가 실패 원인을 고친 것은 아니기 때문이다.
 
 ---
 
