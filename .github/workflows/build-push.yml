@@ -12,6 +12,7 @@ on:
       - "tests/**"
       - "src/**"
       - "migrations/**"
+      - ".github/workflows/**"
   workflow_dispatch: {}
 
 jobs:
