@@ -122,6 +122,8 @@ def event_queue_sensor(context: SensorEvaluationContext):
             if raw is not None:
                 logger.warning("Unexpected type from upload queue: %s", type(raw).__name__)
             break
+        if isinstance(raw, bytes):
+            raw = raw.decode()
          
         try:
             event = json.loads(raw)
@@ -169,8 +171,12 @@ def event_queue_sensor(context: SensorEvaluationContext):
     # DELETE queue -> delete_job
     while count < _max_per_poll:
         raw = r.rpop(DELETE_QUEUE_KEY)
-        if raw is None:
+        if not isinstance(raw, (bytes, str)):
+            if raw is not None:
+                logger.warning("Unexpected type from delete queue: %s", type(raw).__name__)
             break
+        if isinstance(raw, bytes):
+            raw = raw.decode()
 
         try:
             event = json.loads(raw)

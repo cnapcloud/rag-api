@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Query
@@ -69,7 +69,7 @@ class ConnectorCreate(BaseModel):
     schedule_enabled: bool = False
 
     @model_validator(mode="after")
-    def validate_config(self) -> "ConnectorCreate":
+    def validate_config(self) -> ConnectorCreate:
         if self.source_type == "web":
             seed_urls = self.config.get("seed_urls")
             if not seed_urls:
@@ -88,7 +88,7 @@ class ConnectorPatch(BaseModel):
     status: Literal["active", "paused"] | None = None
 
     @model_validator(mode="after")
-    def validate_patch(self) -> "ConnectorPatch":
+    def validate_patch(self) -> ConnectorPatch:
         if self.config:
             _validate_int_fields(self.config, _ALL_INT_FIELDS)
         _validate_cron(self.sync_schedule)
@@ -100,7 +100,8 @@ async def create_connector(body: ConnectorCreate, background_tasks: BackgroundTa
     import psycopg.errors
 
     from rag_api.infra.crypto import encrypt_config, mask_config
-    from rag_api.infra.postgres import create_connector as pg_create, get_kb_meta
+    from rag_api.infra.postgres import create_connector as pg_create
+    from rag_api.infra.postgres import get_kb_meta
 
     if get_kb_meta(body.kb_id) is None:
         raise NotFoundError(f"KB not found: {body.kb_id}")
@@ -170,6 +171,8 @@ async def patch_connector(connector_id: str, body: ConnectorPatch, background_ta
     if "config" in fields and fields["config"]:
         fields["config"] = encrypt_config(fields["config"])
     updated = update_connector(connector_id, fields)
+    if updated is None:
+        raise NotFoundError(f"Connector not found: {connector_id}")
 
     if "sync_schedule" in fields:
         from rag_api.infra.dagster_utils import reload_code_location
@@ -278,7 +281,7 @@ def _run_sync(connector: dict) -> None:
             _wait_for_indexing(connector_id)
             set_connector_status(connector_id, "active")
             logger.info("Connector sync complete: connector_id=%s", connector_id)
-        set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(timezone.utc))
+        set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(UTC))
     except Exception as e:
         if is_abort_requested(connector_id):
             logger.info("Connector sync interrupted by abort: connector_id=%s err=%s", connector_id, e)
@@ -320,7 +323,11 @@ def _dispatch_sync(connector: dict) -> None:
 async def abort_sync(connector_id: str):
     from rag_api.connectors.abort import request_abort
     from rag_api.infra.dagster_utils import find_active_run_ids_by_doc_ids, terminate_dagster_run
-    from rag_api.infra.postgres import get_active_ingest_docs_for_connector, get_connector, set_connector_sync_status
+    from rag_api.infra.postgres import (
+        get_active_ingest_docs_for_connector,
+        get_connector,
+        set_connector_sync_status,
+    )
     from rag_api.pipeline.queue.enqueue import dequeue_upload_events
     from rag_api.pipeline.utils.doc_state import set_failed
 

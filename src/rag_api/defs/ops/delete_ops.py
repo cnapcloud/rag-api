@@ -13,8 +13,8 @@ def delete_failure_hook(context: HookContext) -> None:
         if not doc_id:
             return
         from rag_api.pipeline.ops.meta import set_failed
-        set_failed(doc_id, f"delete_job op failed: {context.op_def.name}", run_id=context.run_id)
-        context.log.info("delete_failure_hook: set_failed doc_id=%s op=%s", doc_id, context.op_def.name)
+        set_failed(doc_id, f"delete_job op failed: {context.op.name}", run_id=context.run_id)
+        context.log.info("delete_failure_hook: set_failed doc_id=%s op=%s", doc_id, context.op.name)
     except Exception as e:
         context.log.error("delete_failure_hook error: %s", e)
 

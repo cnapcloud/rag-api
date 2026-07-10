@@ -218,7 +218,6 @@ def test_duplicate_delay_overwrites_not_accumulates():
     worker = QueueWorker()
     worker._semaphore = asyncio.Semaphore(4)
 
-    raw = json.dumps({"doc_id": DOC_ID, "force": False})
     fake_redis, _, zsets = _make_redis(upload_events=[
         {"doc_id": DOC_ID, "force": False},
         {"doc_id": DOC_ID, "force": False},

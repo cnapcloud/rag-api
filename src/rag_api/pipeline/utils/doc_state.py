@@ -8,7 +8,7 @@ update_doc_fields directly with status fields.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import rag_api.infra.postgres as _pg
@@ -65,7 +65,7 @@ def set_processing(doc_id: str, run_id: str = "") -> None:
     _pg.update_doc_fields(doc_id, {
         "status": "running",
         "run_id": run_id,
-        "process_started_at": datetime.now(timezone.utc).isoformat(),
+        "process_started_at": datetime.now(UTC).isoformat(),
     })
 
 
@@ -89,7 +89,7 @@ def set_indexed(
         "chunk_count": upsert_result.chunk_count,
         "run_id": run_id,
         "last_error": None,
-        "process_finished_at": datetime.now(timezone.utc).isoformat(),
+        "process_finished_at": datetime.now(UTC).isoformat(),
     }
     if doc_type:
         fields["doc_type"] = doc_type
@@ -118,7 +118,7 @@ def set_failed(doc_id: str, error: str, *, run_id: str = "") -> None:
         "status": "failed",
         "last_error": error[:500],
         "run_id": run_id,
-        "process_finished_at": datetime.now(timezone.utc).isoformat(),
+        "process_finished_at": datetime.now(UTC).isoformat(),
     })
     logger.error("Pipeline failed: doc_id=%s error=%s", doc_id, error[:200])
 

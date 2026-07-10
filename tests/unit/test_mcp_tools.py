@@ -115,7 +115,6 @@ async def test_search_with_explicit_kb_ids():
     fake_settings = MagicMock()
     fake_settings.knowledge_bases = []
 
-    candidate = _make_result()
     reranked = _make_result()
     reranked.rerank_score = 0.95
 

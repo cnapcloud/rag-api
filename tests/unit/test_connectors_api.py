@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -30,7 +30,7 @@ _BASE_CONNECTOR = {
     "updated_at": "2026-06-01T00:00:00+00:00",
 }
 
-_BASE_KB = {
+_BASE_KB: dict[str, object] = {
     "kb_id": KB_ID,
     "kb_name": "KB 01",
     "description": None,
@@ -373,7 +373,7 @@ class TestTriggerSync:
         assert "paused" in resp.json()["detail"]
 
     def test_running_within_timeout_returns_409(self, client):
-        recent = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        recent = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
         connector = {
             **_BASE_CONNECTOR,
             "sync_status": "running",

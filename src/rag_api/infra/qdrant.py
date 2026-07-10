@@ -61,7 +61,13 @@ def ensure_collection(
     vector_size = get_settings().embedding.vector_size
     try:
         info = c.get_collection(kb_id)
-        existing_size = info.config.params.vectors[DENSE_VECTOR_NAME].size
+        vectors = info.config.params.vectors
+        if not isinstance(vectors, dict) or DENSE_VECTOR_NAME not in vectors:
+            raise ConfigError(
+                f"Collection '{kb_id}' has no named '{DENSE_VECTOR_NAME}' vector — "
+                "expected a hybrid collection with named dense/sparse vectors."
+            )
+        existing_size = vectors[DENSE_VECTOR_NAME].size
         if existing_size != vector_size:
             raise ConfigError(
                 f"Collection '{kb_id}' has vector_size={existing_size} "

@@ -11,7 +11,7 @@ from rag_api.api.app import create_app
 
 KB_ID = "kb-01"
 
-_BASE_KB = {
+_BASE_KB: dict[str, object] = {
     "kb_id": KB_ID,
     "kb_name": "KB 01",
     "description": None,

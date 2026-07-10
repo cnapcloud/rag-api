@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 DOC_ID = "11111111-1111-1111-1111-111111111111"
@@ -26,7 +26,7 @@ class TestExtractDocCreatedAt:
         pdf_path = tmp_path / "test.pdf"
         writer = PdfWriter()
         writer.add_blank_page(width=72, height=72)
-        dt = datetime(2023, 5, 15, 10, 30, 0, tzinfo=timezone.utc)
+        dt = datetime(2023, 5, 15, 10, 30, 0, tzinfo=UTC)
         writer.add_metadata({"/CreationDate": dt.strftime("D:%Y%m%d%H%M%SZ")})
         with open(pdf_path, "wb") as f:
             writer.write(f)
@@ -57,7 +57,7 @@ class TestExtractDocCreatedAt:
         document.add_paragraph("Hello")
         document.save(str(docx_path))
 
-        dt = datetime(2022, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2022, 3, 10, 8, 0, 0, tzinfo=UTC)
         with patch("docx.Document") as mock_doc_cls:
             mock_doc = MagicMock()
             mock_doc.core_properties.created = dt
@@ -108,6 +108,7 @@ class TestExtractDocCreatedAt:
 class TestUpsertDocCreatedAt:
     def _make_embedded_node(self, doc_created_at: str = ""):
         from llama_index.core.schema import TextNode
+
         from rag_api.pipeline.ops.embed import EmbeddedNode
 
         node = TextNode(text="sample chunk", metadata={"doc_created_at": doc_created_at})
@@ -203,6 +204,7 @@ class TestMetaDocCreatedAt:
         with patch("rag_api.infra.postgres.update_doc_fields", side_effect=lambda doc_id, fields: stored.update(fields)), \
              patch("rag_api.pipeline.ops.parse.parse", return_value=[doc]):
             from dagster import build_op_context
+
             from rag_api.defs.ops.ingest_ops import parse_op
             ctx = build_op_context()
             parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})
@@ -218,6 +220,7 @@ class TestMetaDocCreatedAt:
         with patch("rag_api.infra.postgres.update_doc_fields") as mock_udf, \
              patch("rag_api.pipeline.ops.parse.parse", return_value=[doc]):
             from dagster import build_op_context
+
             from rag_api.defs.ops.ingest_ops import parse_op
             ctx = build_op_context()
             parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})

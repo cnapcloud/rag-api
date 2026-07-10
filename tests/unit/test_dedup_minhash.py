@@ -254,6 +254,7 @@ def test_get_kiwi_returns_none_when_unavailable():
 
 def test_get_kiwi_returns_instance_when_available():
     import sys
+
     from rag_api.pipeline.ops.dedup import tokenizer as tok
 
     mock_kiwi_instance = MagicMock()
@@ -273,6 +274,7 @@ def test_get_kiwi_returns_instance_when_available():
 def test_get_kiwi_missing_user_words_file_logs_warning(tmp_path, caplog):
     import logging
     import sys
+
     from rag_api.pipeline.ops.dedup import tokenizer as tok
 
     mock_kiwi_instance = MagicMock()
@@ -307,6 +309,7 @@ def test_load_user_words_registers_entries(tmp_path):
 
 def test_load_user_words_skips_malformed_lines(tmp_path, caplog):
     import logging
+
     from rag_api.pipeline.ops.dedup.tokenizer import _load_user_words
 
     tsv = tmp_path / "words.tsv"

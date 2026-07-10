@@ -8,23 +8,22 @@ from __future__ import annotations
 import re
 import zlib
 from collections import Counter
-from typing import List, Tuple
 
-BatchSparseEncoding = Tuple[List[List[int]], List[List[float]]]
+BatchSparseEncoding = tuple[list[list[int]], list[list[float]]]
 
 
 def _token_id(token: str) -> int:
     return zlib.crc32(token.encode()) & 0x7FFFFFFF
 
 
-def compute_sparse_tf(texts: List[str]) -> BatchSparseEncoding:
+def compute_sparse_tf(texts: list[str]) -> BatchSparseEncoding:
     """
     텍스트 배치를 TF sparse 벡터로 변환한다.
 
     SparseEncoderCallable 시그니처: List[str] → (List[List[int]], List[List[float]])
     """
-    all_indices: List[List[int]] = []
-    all_values: List[List[float]] = []
+    all_indices: list[list[int]] = []
+    all_values: list[list[float]] = []
 
     for text in texts:
         tokens = re.findall(r"\w+", text.lower())

@@ -14,7 +14,7 @@ RAG API — CLI 진입점.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Literal, cast
 
 import typer
 
@@ -48,7 +48,7 @@ def ingest(
     from rag_api.infra.s3 import upload_object
     from rag_api.pipeline.queue.enqueue import enqueue_upload_event
     from rag_api.pipeline.utils.doc_state import set_pending, set_uploading
-    from rag_api.pipeline.utils import normalize_source_uri
+    from rag_api.pipeline.utils.source_uri import normalize_source_uri
 
     if kb_id not in list_kb_ids():
         typer.echo(f"KB not found: {kb_id}", err=True)
@@ -94,8 +94,8 @@ def ingest(
 
 @app.command("serve-mcp")
 def serve_mcp(
-    transport: Optional[str] = typer.Option(None, "--transport", help="stdio | sse | streamable-http (overrides settings.yaml)"),
-    port: Optional[int] = typer.Option(None, "--port", help="HTTP port for sse/streamable-http (overrides settings.yaml)"),
+    transport: str | None = typer.Option(None, "--transport", help="stdio | sse | streamable-http (overrides settings.yaml)"),
+    port: int | None = typer.Option(None, "--port", help="HTTP port for sse/streamable-http (overrides settings.yaml)"),
 ):
     """Start the MCP server (stdio, SSE, or streamable-http transport)."""
     from rag_api.config.settings import get_settings
@@ -106,7 +106,11 @@ def serve_mcp(
         typer.echo("MCP server is disabled (mcp.enabled=false in settings.yaml).", err=True)
         raise typer.Exit(1)
 
-    _transport = transport or cfg.transport
+    _transport_raw = transport or cfg.transport
+    if _transport_raw not in ("stdio", "sse", "streamable-http"):
+        typer.echo(f"Invalid transport: {_transport_raw} (expected stdio | sse | streamable-http)", err=True)
+        raise typer.Exit(1)
+    _transport = cast(Literal["stdio", "sse", "streamable-http"], _transport_raw)
     _port = port or cfg.port
 
     uses_http = _transport in ("sse", "streamable-http")

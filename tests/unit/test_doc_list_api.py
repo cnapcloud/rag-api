@@ -219,7 +219,7 @@ class TestListDocsSort:
         store = FakePostgresStore()
         store.register_kb("kb1")
         doc_a = store.create_doc("kb1", "a.pdf", "a.pdf", "s3", status="indexed")
-        doc_b = store.create_doc("kb1", "b.pdf", "b.pdf", "s3", status="indexed")  # chunk_count stays None
+        store.create_doc("kb1", "b.pdf", "b.pdf", "s3", status="indexed")  # chunk_count stays None
         doc_c = store.create_doc("kb1", "c.pdf", "c.pdf", "s3", status="indexed")
         store.update_doc_fields(doc_a["doc_id"], {"chunk_count": 50})
         store.update_doc_fields(doc_c["doc_id"], {"chunk_count": 10})
@@ -234,7 +234,7 @@ class TestListDocsSort:
         store = FakePostgresStore()
         store.register_kb("kb1")
         doc_a = store.create_doc("kb1", "a.pdf", "a.pdf", "s3", status="indexed")
-        doc_b = store.create_doc("kb1", "b.pdf", "b.pdf", "s3", status="indexed")
+        store.create_doc("kb1", "b.pdf", "b.pdf", "s3", status="indexed")
         doc_c = store.create_doc("kb1", "c.pdf", "c.pdf", "s3", status="indexed")
         store.update_doc_fields(doc_a["doc_id"], {"chunk_count": 50})
         store.update_doc_fields(doc_c["doc_id"], {"chunk_count": 10})

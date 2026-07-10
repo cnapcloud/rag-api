@@ -89,15 +89,15 @@ def _make_confluence_connector(base_url: str = BASE_URL_CLOUD, extra: dict | Non
 class TestInit:
 
     def test_missing_base_url_raises(self):
-        from rag_api.exceptions import ConfigError
         from rag_api.connectors.confluence import ConfluenceConnector
+        from rag_api.exceptions import ConfigError
 
         with pytest.raises(ConfigError, match="base_url"):
             ConfluenceConnector({"space_key": "DEV"})
 
     def test_missing_space_key_raises(self):
-        from rag_api.exceptions import ConfigError
         from rag_api.connectors.confluence import ConfluenceConnector
+        from rag_api.exceptions import ConfigError
 
         with pytest.raises(ConfigError, match="space_key"):
             ConfluenceConnector({"base_url": BASE_URL_CLOUD})

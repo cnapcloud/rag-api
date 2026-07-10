@@ -244,3 +244,7 @@ volumes:
   redis-data:
   qdrant-data:
   minio-data:
+
+networks:
+  rag_api_network:
+      driver: bridge

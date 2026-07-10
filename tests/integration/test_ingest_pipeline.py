@@ -27,6 +27,7 @@ def ingest_run_config():
 def test_ingest_job_success(ingest_run_config):
     """ingest_job full flow integration test (requires infrastructure)."""
     from dagster import execute_in_process
+
     from rag_api.defs.jobs.ingest_job import ingest_job
 
     doc = {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/test.pdf", "file_size": 1024, "status": "pending"}
@@ -69,7 +70,7 @@ def test_ingest_job_validate_passes(ingest_run_config):
         patch("rag_api.pipeline.ops.chunk.chunk", return_value=[MagicMock()]),
         patch("rag_api.pipeline.ops.embed.embed", return_value=[]),
         patch("rag_api.pipeline.utils.upsert.upsert") as mock_upsert,
-        patch("rag_api.pipeline.ops.meta.update_meta"),
+        patch("rag_api.pipeline.ops.meta.set_indexed"),
     ):
         from rag_api.pipeline.utils.upsert import UpsertResult
         mock_upsert.return_value = UpsertResult(kb_id="kb-test", doc_id=DOC_ID, chunk_count=1, doc_created_at="")

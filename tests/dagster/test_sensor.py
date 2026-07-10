@@ -93,7 +93,7 @@ def _run_sensor(
                     side_effect=lambda doc_id, err, run_id="": set_failed_calls.append((doc_id, run_id)),
                 )
             )
-        return [r for r in event_queue_sensor(ctx) if isinstance(r, RunRequest)]
+        return [r for r in (event_queue_sensor(ctx) or []) if isinstance(r, RunRequest)]
 
 
 def test_upload_sensor_put_generates_ingest_run():

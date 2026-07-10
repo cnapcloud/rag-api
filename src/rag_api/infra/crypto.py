@@ -11,7 +11,6 @@ import hashlib
 import json
 import logging
 import os
-from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 

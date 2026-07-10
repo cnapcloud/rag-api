@@ -8,7 +8,7 @@ from rag_api.pipeline.utils.doc_state import (  # noqa: F401
     restore_indexed,
     set_deleting,
     set_failed,
-    set_indexed as update_meta,
+    set_indexed,
     set_pending,
     set_processing,
 )

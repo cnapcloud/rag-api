@@ -23,6 +23,7 @@
   - [13. SimHash stage1 'similar' 판정이 stage2(MinHash) 확인 없이 바로 커밋됨](#13-simhash-stage1-similar-판정이-stage2minhash-확인-없이-바로-커밋됨)
   - [14. chunk_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
   - [15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가](#15-reindex-시-simhashminhash-후보-조회가-statusindexed만-대상으로-하여-outdated-문서-방향-탐지-불가)
+  - [16. Dagster 컨테이너 강제 중단 시 STARTING 상태 run이 재시작 후에도 영구히 STARTING에 남음](#16-dagster-컨테이너-강제-중단-시-starting-상태-run이-재시작-후에도-영구히-starting에-남음)
 
 ---
 
@@ -713,3 +714,77 @@ chunk_compare까지 도달하지만(재확인 후 outdated 유지), 반대로 B�
 재검증해야 하는 시나리오(예: 운영자가 dedup 임계값 변경 후 기존 관계를 재검증하고 싶은 경우)가
 생기면, 후보 조회에 status 필터를 완화하거나 `duplicate_of` 역참조 조회를 별도로 추가하는 방안을
 검토해야 한다. 현재는 별도 조치 없음(워크어라운드로 대체 가능).
+
+---
+
+## 16. Dagster 컨테이너 강제 중단 시 STARTING 상태 run이 재시작 후에도 영구히 STARTING에 남음
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-10 |
+| 심각도 | MED |
+
+**증상**
+
+job이 `STARTING` 상태인 도중 Dagster 컨테이너(daemon 또는 code-server)를 강제로 중단하면 실행
+중이던 프로세스가 사라진다. 컨테이너를 다시 시작해도 해당 run은 자동으로 정리되지 않고 `STARTING`
+상태에 영구히 남아, 이후 같은 문서/커넥터에 대한 신규 요청이 계속 막히거나 중복 처리 가드에 걸릴
+수 있다.
+
+**원인**
+
+컨테이너를 강제 종료하면 run을 실제로 실행하던 프로세스는 죽지만, run storage(Postgres)에 남아
+있는 run record는 `STARTING`(또는 `STARTED`) 그대로 유지된다. `docker/dagster.yaml`에는 이미
+`run_monitoring`이 설정되어 있다.
+
+```yaml
+run_monitoring:
+  enabled: true
+  poll_interval_seconds: 120
+  max_resume_run_attempts: 0
+```
+
+설치된 Dagster 패키지 소스를 추적한 결과, 이 설정은 상태에 따라 동작 여부가 갈린다.
+
+- **`STARTING` 상태**: `monitor_starting_run()`이 run launcher와 무관하게 `RUN_STARTING` 이벤트
+  타임스탬프 기준 경과 시간만으로 판정한다(`start_timeout_seconds`, 기본값 180초 — 이 파일에도
+  미설정이라 기본값 적용). 이론상 다음 poll 주기(최대 120초 뒤) 안에 자동으로 `report_run_failed()`가
+  호출돼 정리돼야 한다.
+- **`STARTED` 상태**: `monitor_started_run()`은 (1) `run_launcher.check_run_worker_health()`와
+  (2) `max_runtime_seconds` 두 경로로만 죽은 워커를 감지하는데, 이 저장소는 `run_launcher`를
+  명시하지 않아 기본값인 `DefaultRunLauncher`가 쓰인다. 이 launcher는
+  `check_run_worker_health()`를 아예 지원하지 않고(`NotImplementedError`), `max_runtime_seconds`도
+  미설정(기본 0, 비활성)이다. **즉 run이 일단 `STARTED`로 넘어간 뒤 워커 프로세스가 죽으면 두
+  경로 다 막혀 있어 run_monitoring이 전혀 감지하지 못한다.**
+
+코드상 `STARTING` 자체는 자동 정리돼야 하므로, 실제로 "영원히 STARTING에 남는" case는 (a) 이미
+`STARTED`로 넘어간 뒤 죽어서 위 gap에 해당하거나, (b) 모니터링이 해당 run에서 매 poll마다
+예외를 던져(내부에서 잡고 로그만 남김) 정리가 계속 스킵되는 경우일 가능성이 높다.
+`dagster-daemon` 로그에서 `Hit error while monitoring run <run_id>`를 검색하면 (b) 여부를 바로
+확인할 수 있다.
+
+정상적인 `terminate_dagster_run()` 경로([이슈 3](#3-커넥터-동기화-중단-불가) 참조)는 살아있는
+프로세스에 SIGTERM을 보내는 방식이라, 프로세스 자체가 이미 사라진 이 케이스에는 애초에 적용되지
+않는다.
+
+**현재 대안**
+
+- API 쪽에서 force abort(강제 실패 처리)를 호출하거나,
+- Dagster 콘솔(Dagit UI)에서 해당 run을 직접 수동으로 terminate 해야 한다.
+
+**미해결**
+
+- `dagster-daemon` 로그에서 이 run에 대해 `Hit error while monitoring run`이 반복되는지 확인
+  필요(위 4번 경로가 실제로 예외로 막히고 있는지 검증).
+- `STARTED` 상태 이후의 워커 사망(3번 gap)에 대한 근본 대응은 두 가지 방향이 있고 아직 어느 쪽도
+  적용되지 않았다:
+  - `run_monitoring.max_runtime_seconds`(또는 run 태그 `dagster/max_runtime_seconds`)를 설정해
+    최소한 "너무 오래 실행 중인 run"은 강제 timeout으로 정리되게 한다 — 다만 이는 죽은 워커
+    감지가 아니라 실행 시간 상한이므로, 정상적으로 오래 걸리는 job과 구분이 안 되는 트레이드오프가
+    있다.
+  - run launcher를 `DockerRunLauncher`(run마다 별도 컨테이너로 실행, Docker API로 실제 컨테이너
+    생존 여부를 확인 가능해 `check_run_worker_health`가 의미 있게 동작)로 교체한다 — 현재
+    `DefaultRunLauncher`(code-server 프로세스의 subprocess로 실행)는 애초에 헬스체크 자체를
+    지원하지 않아 이 설정만으로는 해결 불가능.
+  - 둘 다 아직 백로그 미등록, 별도 논의 필요.

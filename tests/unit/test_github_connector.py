@@ -249,8 +249,9 @@ class TestProcessFile:
 class TestChunkCodeRouting:
     def test_py_file_uses_code_strategy_metadata(self):
         """Documents with doc_type=py get chunk_strategy='code' in metadata."""
-        from llama_index.core import Document
         from unittest.mock import patch as _patch
+
+        from llama_index.core import Document
 
         from rag_api.pipeline.ops.chunk import chunk
 
@@ -264,15 +265,16 @@ class TestChunkCodeRouting:
         mock_parser.get_nodes_from_documents.return_value = [mock_node]
 
         with _patch("rag_api.pipeline.ops.chunk._build_code_parser", return_value=mock_parser) as mock_build:
-            nodes = chunk([doc])
+            chunk([doc])
 
         mock_build.assert_called_once()
         assert mock_node.metadata.get("chunk_strategy") == "code"
 
     def test_pdf_file_uses_text_strategy(self):
         """Documents with doc_type=pdf use the configured text strategy."""
-        from llama_index.core import Document
         from unittest.mock import patch as _patch
+
+        from llama_index.core import Document
 
         from rag_api.pipeline.ops.chunk import chunk
 

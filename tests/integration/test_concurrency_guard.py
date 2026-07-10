@@ -79,6 +79,7 @@ def _run_sensor(fake_redis, get_run_by_id=None):
     from unittest.mock import MagicMock, PropertyMock
 
     from dagster import RunRequest, build_sensor_context
+
     from rag_api.defs.sensors.event_queue_sensor import event_queue_sensor
 
     mock_settings = MagicMock()

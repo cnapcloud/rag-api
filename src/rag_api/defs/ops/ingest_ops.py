@@ -164,13 +164,13 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
 def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
     """Update Postgres document metadata to status=indexed."""
     from rag_api.config.settings import get_settings
-    from rag_api.pipeline.ops.meta import update_meta
+    from rag_api.pipeline.ops.meta import set_indexed
 
     storage_key = valid_config.get("storage_key", "")
     doc_type = storage_key.rsplit(".", 1)[-1] if "." in storage_key else ""
 
     cfg = get_settings().embedding
-    update_meta(
+    set_indexed(
         doc_id=valid_config["doc_id"],
         upsert_result=upsert_result,
         run_id=valid_config.get("run_id", context.run_id),

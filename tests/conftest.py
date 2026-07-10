@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
 
 # ──────────────────────────────────────────────
 # Fake Postgres store
@@ -32,8 +31,8 @@ class FakePostgresStore:
                 "description": description,
                 "tags": tags or [],
                 "status": "active",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
             }
 
     def get_kb_meta(self, kb_id: str) -> dict | None:
@@ -51,7 +50,7 @@ class FakePostgresStore:
             self._kbs[kb_id]["description"] = description
         if tags is not None:
             self._kbs[kb_id]["tags"] = tags
-        self._kbs[kb_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._kbs[kb_id]["updated_at"] = datetime.now(UTC).isoformat()
 
     def update_kb_status(self, kb_id: str, status: str) -> None:
         if kb_id in self._kbs:
@@ -80,7 +79,7 @@ class FakePostgresStore:
         doc_type: str | None = None,
     ) -> dict:
         doc_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         doc = {
             "doc_id": doc_id,
             "kb_id": kb_id,
@@ -123,13 +122,13 @@ class FakePostgresStore:
             return
         for k, v in fields.items():
             self._docs[doc_id][k] = v
-        self._docs[doc_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._docs[doc_id]["updated_at"] = datetime.now(UTC).isoformat()
 
     def soft_delete_doc(self, doc_id: str) -> None:
         if doc_id in self._docs:
             self._docs[doc_id]["status"] = "deleted"
-            self._docs[doc_id]["deleted_at"] = datetime.now(timezone.utc).isoformat()
-            self._docs[doc_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._docs[doc_id]["deleted_at"] = datetime.now(UTC).isoformat()
+            self._docs[doc_id]["updated_at"] = datetime.now(UTC).isoformat()
 
     def list_docs(self, kb_id: str, *, include_deleted: bool = False, status_filter: str | None = None) -> list[dict]:
         result = []
@@ -197,7 +196,7 @@ class FakePostgresStore:
         sync_schedule: str | None = None,
         schedule_enabled: bool = False,
     ) -> dict:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         connector = {
             "connector_id": connector_id,
             "kb_id": kb_id,
@@ -248,7 +247,7 @@ class FakePostgresStore:
                 self._connectors[connector_id][k] = v
         if "status" in fields:
             self._connectors[connector_id]["last_error"] = None
-        self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._connectors[connector_id]["updated_at"] = datetime.now(UTC).isoformat()
         return dict(self._connectors[connector_id])
 
     def delete_connector(self, connector_id: str) -> None:
@@ -264,18 +263,18 @@ class FakePostgresStore:
             return
         self._connectors[connector_id]["sync_status"] = sync_status
         if sync_status == "running":
-            self._connectors[connector_id]["sync_started_at"] = datetime.now(timezone.utc).isoformat()
+            self._connectors[connector_id]["sync_started_at"] = datetime.now(UTC).isoformat()
         else:
             self._connectors[connector_id]["sync_started_at"] = None
         if last_synced_at is not None:
             self._connectors[connector_id]["last_synced_at"] = last_synced_at.isoformat()
-        self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._connectors[connector_id]["updated_at"] = datetime.now(UTC).isoformat()
 
     def set_connector_status(self, connector_id: str, status: str, error: str | None = None) -> None:
         if connector_id in self._connectors:
             self._connectors[connector_id]["status"] = status
             self._connectors[connector_id]["last_error"] = (error or "")[:500] if status == "error" else None
-            self._connectors[connector_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._connectors[connector_id]["updated_at"] = datetime.now(UTC).isoformat()
 
     def get_connector_doc_counts(self, connector_id: str) -> dict[str, int]:
         counts: dict[str, int] = {}
