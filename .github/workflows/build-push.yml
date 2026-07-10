@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - "Dockerfile"
+      - "tests/**"
+      - "src/**"
+      - "migrations/**"
+      - ".github/workflows/**"
   workflow_dispatch: {}
 
 jobs:
@@ -51,3 +60,11 @@ jobs:
           else
             make IMAGE_ORG=ghcr.io/cnapcloud docker-push
           fi
+
+      - name: Trigger rag-ent-api build
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.AI_REPO_PAT }}
+        run: |
+          gh api repos/cnapcloud/rag-ent-api/dispatches \
+            -f event_type=rag-api-updated
