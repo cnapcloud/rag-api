@@ -37,6 +37,7 @@ def get_kiwi():
             return _kiwi
 
         from kiwipiepy import Kiwi
+
         from rag_api.config.settings import get_settings
 
         kiwi = Kiwi()

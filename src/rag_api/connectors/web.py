@@ -47,7 +47,7 @@ def _has_sufficient_content(html: str, min_chars: int) -> bool:
         import trafilatura
 
         extracted = trafilatura.extract(html)
-        return bool(extracted) and len(extracted) >= min_chars
+        return extracted is not None and len(extracted) >= min_chars
     except Exception:
         return True
 
@@ -93,7 +93,7 @@ def _discover_links(html: str, base_url: str) -> list[str]:
 
         links = []
         for a in BeautifulSoup(html, "html.parser").find_all("a", href=True):
-            href = a["href"].strip()
+            href = str(a["href"]).strip()
             if not href or href.startswith("#"):
                 continue
             abs_url = urljoin(base_url, href)

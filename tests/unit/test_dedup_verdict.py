@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from rag_api.pipeline.ops.dedup.types import DedupResult
@@ -16,8 +16,8 @@ _DEL_BANDS = "rag_api.infra.postgres.delete_simhash_bands"
 _DEL_MINHASH = "rag_api.infra.postgres.delete_minhash_bands"
 _DEL_CHUNKS = "rag_api.infra.qdrant.delete_chunks_by_doc_id"
 
-_TS_NEW = datetime(2026, 6, 26, 10, 0, 0, tzinfo=timezone.utc)
-_TS_OLD = datetime(2026, 6, 25, 10, 0, 0, tzinfo=timezone.utc)
+_TS_NEW = datetime(2026, 6, 26, 10, 0, 0, tzinfo=UTC)
+_TS_OLD = datetime(2026, 6, 25, 10, 0, 0, tzinfo=UTC)
 
 
 def _result(body_match, title_match="unknown", needs_indexing=True, duplicate_doc_id=None,

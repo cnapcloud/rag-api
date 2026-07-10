@@ -51,7 +51,7 @@ def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
         doc_id=doc_id,
         title=title,
         body=body,
-        cfg=cfg.dedup,
+        cfg=cfg.dedup.simhash,
         kb_id=kb_id,
     )
 
@@ -96,7 +96,7 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
     body = " ".join(d.text for d in documents)
 
-    result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup, kb_id=kb_id)
+    result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup.minhash, kb_id=kb_id)
     context.log.info(
         "Minhash step done: body=%s doc_id=%s", result.body_match, doc_id
     )
@@ -124,7 +124,7 @@ def chunk_compare_op(context: OpExecutionContext, valid_config: dict, documents,
 
     cfg = get_settings()
     result = run_chunk_compare(
-        doc_id=doc_id, kb_id=kb_id, documents=documents, result=minhash_result, cfg=cfg.dedup
+        doc_id=doc_id, kb_id=kb_id, documents=documents, result=minhash_result, cfg=cfg.dedup.chunk_compare
     )
     context.log.info(
         "chunk_compare step done: body=%s doc_id=%s duplicate=%s",

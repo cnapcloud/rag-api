@@ -598,7 +598,7 @@ class TestSync:
 
     def test_queue_size_cap_prevents_memory_bloat(self):
         """Links beyond max_pages * 20 are dropped from queue."""
-        from rag_api.connectors.web import WebConnector, _QUEUE_SIZE_MULTIPLIER
+        from rag_api.connectors.web import _QUEUE_SIZE_MULTIPLIER, WebConnector
 
         max_pages = 2
         cap = max_pages * _QUEUE_SIZE_MULTIPLIER
@@ -607,9 +607,6 @@ class TestSync:
             f'<a href="https://example.com/p{i}">p{i}</a>' for i in range(cap + 50)
         )
         html_many_links = f"<html><body>{many_links}</body></html>"
-
-        added_to_queue: list[str] = []
-        original_append = None
 
         def fake_process(client, kb_id, connector_id, url, depth=0):
             return html_many_links
@@ -654,15 +651,15 @@ class TestSync:
         assert c.depth == 2
 
     def test_missing_seed_urls_raises_config_error(self):
-        from rag_api.exceptions import ConfigError
         from rag_api.connectors.web import WebConnector
+        from rag_api.exceptions import ConfigError
 
         with pytest.raises(ConfigError, match="seed_url"):
             WebConnector({})
 
     def test_empty_seed_urls_raises_config_error(self):
-        from rag_api.exceptions import ConfigError
         from rag_api.connectors.web import WebConnector
+        from rag_api.exceptions import ConfigError
 
         with pytest.raises(ConfigError, match="seed_url"):
             WebConnector({"seed_urls": []})

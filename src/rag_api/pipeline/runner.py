@@ -23,10 +23,10 @@ def run_ingest_pipeline(
     from rag_api.infra.postgres import get_doc_by_id
     from rag_api.pipeline.ops.chunk import chunk
     from rag_api.pipeline.ops.embed import embed
-    from rag_api.pipeline.ops.meta import set_failed, set_processing, update_meta
+    from rag_api.pipeline.ops.meta import set_failed, set_indexed, set_processing
     from rag_api.pipeline.ops.parse import parse
-    from rag_api.pipeline.utils.upsert import upsert
     from rag_api.pipeline.ops.validate import validate
+    from rag_api.pipeline.utils.upsert import upsert
 
     doc = get_doc_by_id(doc_id)
     if doc is None:
@@ -77,7 +77,7 @@ def run_ingest_pipeline(
 
         cfg = get_settings().embedding
         doc_type = storage_key.rsplit(".", 1)[-1] if "." in storage_key else ""
-        update_meta(
+        set_indexed(
             doc_id=doc_id,
             upsert_result=upsert_result,
             run_id=run_id,

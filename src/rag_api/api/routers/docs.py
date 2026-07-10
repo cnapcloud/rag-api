@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
@@ -43,6 +43,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     4. Enqueue ingest event
     """
     import psycopg.errors
+
     from rag_api.infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
     from rag_api.infra.s3 import upload_object
     from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -73,13 +74,14 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
                 storage_key=storage_key,
                 file_size=file_size,
                 doc_type=doc_type,
-                doc_created_at=datetime.now(timezone.utc),
+                doc_created_at=datetime.now(UTC),
             )
         except psycopg.errors.UniqueViolation:
             # Race condition: concurrent upload created the row; retry lookup
-            doc = get_doc_by_source(kb_id, source_uri)
-            if doc is None:
+            found = get_doc_by_source(kb_id, source_uri)
+            if found is None:
                 raise
+            doc = found
             set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
     else:
         from rag_api.pipeline.utils.doc_state import is_active
@@ -117,6 +119,7 @@ async def upload_docs_batch(
 ):
     """Row-first batch document upload."""
     import psycopg.errors
+
     from rag_api.infra.postgres import create_doc, get_doc_by_source, list_kb_ids
     from rag_api.infra.s3 import upload_object
     from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -150,12 +153,13 @@ async def upload_docs_batch(
                         storage_key=storage_key,
                         file_size=file_size,
                         doc_type=doc_type,
-                        doc_created_at=datetime.now(timezone.utc),
+                        doc_created_at=datetime.now(UTC),
                     )
                 except psycopg.errors.UniqueViolation:
-                    doc = get_doc_by_source(kb_id, source_uri)
-                    if doc is None:
+                    found = get_doc_by_source(kb_id, source_uri)
+                    if found is None:
                         raise
+                    doc = found
                     set_uploading(doc["doc_id"], file_size=file_size, storage_key=storage_key)
             else:
                 from rag_api.pipeline.utils.doc_state import is_active
@@ -190,7 +194,7 @@ async def upload_docs_batch(
                 "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
             })
         except (IngestValidationError, ClientError) as e:
-            results.append({"title": file.filename, "error": str(e), "status": "error"})
+            results.append({"title": file.filename or "unknown", "error": str(e), "status": "error"})
 
     return {"results": results}
 
@@ -228,7 +232,8 @@ async def list_docs(
 
 @router.get("/kb/{kb_id}/docs/status")
 async def get_kb_doc_counts(kb_id: str):
-    from rag_api.infra.postgres import get_kb_meta, get_kb_doc_counts as pg_get_kb_doc_counts
+    from rag_api.infra.postgres import get_kb_doc_counts as pg_get_kb_doc_counts
+    from rag_api.infra.postgres import get_kb_meta
 
     if get_kb_meta(kb_id) is None:
         raise NotFoundError(f"KB not found: {kb_id}")
@@ -365,8 +370,8 @@ async def force_fail_doc(
     """
     from rag_api.infra.dagster_utils import terminate_dagster_run
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.queue.enqueue import dequeue_upload_events
     from rag_api.pipeline.ops.meta import set_failed
+    from rag_api.pipeline.queue.enqueue import dequeue_upload_events
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
@@ -410,8 +415,8 @@ async def force_fail_doc(
 async def recover_doc(kb_id: str, doc_id: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.queue.enqueue import enqueue_upload_event
     from rag_api.pipeline.ops.meta import set_failed
+    from rag_api.pipeline.queue.enqueue import enqueue_upload_event
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
@@ -454,9 +459,9 @@ async def download_doc(kb_id: str, doc_id: str):
     """Stream the raw file for a document from S3."""
     import mimetypes
 
+    from rag_api.config.settings import get_settings
     from rag_api.infra.postgres import get_doc_by_id
     from rag_api.infra.s3 import get_s3_client
-    from rag_api.config.settings import get_settings
 
     doc = get_doc_by_id(doc_id)
     if doc is None or doc.get("kb_id") != kb_id:
@@ -478,8 +483,7 @@ async def download_doc(kb_id: str, doc_id: str):
     content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
     def _iter():
-        for chunk in resp["Body"].iter_chunks(chunk_size=65536):
-            yield chunk
+        yield from resp["Body"].iter_chunks(chunk_size=65536)
 
     logger.info("Download doc: kb=%s doc_id=%s key=%s", kb_id, doc_id, storage_key)
     ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "download"
@@ -493,7 +497,8 @@ async def download_doc(kb_id: str, doc_id: str):
 
 @router.get("/docs/status")
 async def all_docs_status():
-    from rag_api.infra.postgres import list_kb_ids, get_kb_doc_counts as pg_get_kb_doc_counts
+    from rag_api.infra.postgres import get_kb_doc_counts as pg_get_kb_doc_counts
+    from rag_api.infra.postgres import list_kb_ids
 
     kb_ids = list_kb_ids()
     return {

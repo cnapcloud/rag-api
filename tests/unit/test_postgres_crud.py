@@ -4,19 +4,16 @@ from __future__ import annotations
 
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import rag_api.infra.postgres as pg
-
 
 # ──────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────
 
-_NOW = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
 _DOC_ID = str(uuid.uuid4())
 _KB_ID = "kb-test"
 _SOURCE_URI = "test-doc.pdf"
@@ -189,7 +186,7 @@ def test_soft_delete_sets_status_and_deleted_at():
 # update_connector
 # ──────────────────────────────────────────────
 
-_CONNECTOR_ROW = (
+_CONNECTOR_ROW: tuple[object, ...] = (
     "conn-01", "kb-test", "Docs", "web", {}, None, False, "idle", None,
     None, "active", None, _NOW, _NOW,
 )

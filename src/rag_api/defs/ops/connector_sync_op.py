@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from dagster import op
 
@@ -15,7 +15,11 @@ _STALE_SYNC_TIMEOUT_SEC = 3600
 @op(config_schema={"connector_id": str})
 def connector_sync_op(context) -> None:
     from rag_api.api.routers.connectors import _dispatch_sync
-    from rag_api.infra.postgres import get_connector, set_connector_status, set_connector_sync_status
+    from rag_api.infra.postgres import (
+        get_connector,
+        set_connector_status,
+        set_connector_sync_status,
+    )
 
     connector_id = context.op_config["connector_id"]
     connector = get_connector(connector_id)
@@ -31,8 +35,8 @@ def connector_sync_op(context) -> None:
     if connector["sync_status"] == "running":
         sync_started_at_str = connector.get("sync_started_at")
         if sync_started_at_str:
-            started_at = datetime.fromisoformat(sync_started_at_str).astimezone(timezone.utc)
-            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+            started_at = datetime.fromisoformat(sync_started_at_str).astimezone(UTC)
+            elapsed = (datetime.now(UTC) - started_at).total_seconds()
             if elapsed < _STALE_SYNC_TIMEOUT_SEC:
                 context.log.info(
                     "Sync already running, skipping scheduled sync: connector_id=%s", connector_id
@@ -48,7 +52,7 @@ def connector_sync_op(context) -> None:
     try:
         _dispatch_sync(connector)
         set_connector_status(connector_id, "active")
-        set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(timezone.utc))
+        set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(UTC))
         context.log.info("Scheduled connector sync complete: connector_id=%s", connector_id)
     except Exception as e:
         set_connector_status(connector_id, "error", error=str(e))

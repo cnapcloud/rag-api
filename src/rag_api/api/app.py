@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
-from rag_api.api.routers import search, kb, connectors, health, docs
+from rag_api.api.routers import connectors, docs, health, kb, search
 from rag_api.exceptions import ConfigError, ConflictError, IngestValidationError, NotFoundError
 
 logger = logging.getLogger(__name__)

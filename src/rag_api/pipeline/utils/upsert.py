@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from qdrant_client.http import models as qmodels
 
@@ -33,7 +33,7 @@ def upsert(
 ) -> UpsertResult:
     """Delete all existing chunks for doc_id then insert new ones."""
     client = qdrant_infra.get_qdrant_client()
-    updated_at = datetime.now(timezone.utc).isoformat()
+    updated_at = datetime.now(UTC).isoformat()
 
     qdrant_infra.ensure_collection(kb_id, client)
     qdrant_infra.delete_chunks_by_doc_id(kb_id, doc_id, client)

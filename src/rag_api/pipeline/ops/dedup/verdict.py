@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -94,14 +94,14 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
         "status": "outdated",
         "duplicate_of": doc_id,
         "run_id": run_id,
-        "process_finished_at": datetime.now(timezone.utc).isoformat(),
+        "process_finished_at": datetime.now(UTC).isoformat(),
     })
     purge_doc_artifacts(duplicate_doc_id, include_chunks=False)
     update_doc_fields(doc_id, {
         "status": "indexed",
         "last_error": None,
         "run_id": run_id,
-        "process_finished_at": datetime.now(timezone.utc).isoformat(),
+        "process_finished_at": datetime.now(UTC).isoformat(),
     })
     logger.info("title_changed: incoming newer incoming=%s existing=%s", doc_id, duplicate_doc_id)
 
@@ -132,7 +132,7 @@ def handle_similar(doc_id: str, result: DedupResult, run_id: str = "") -> None:
             "status": "outdated",
             "duplicate_of": doc_id,
             "run_id": run_id,
-            "process_finished_at": datetime.now(timezone.utc).isoformat(),
+            "process_finished_at": datetime.now(UTC).isoformat(),
         })
         result.needs_indexing = True
         logger.info("similar: incoming newer, existing chunks deleted incoming=%s existing=%s", doc_id, duplicate_doc_id)

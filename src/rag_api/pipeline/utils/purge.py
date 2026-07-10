@@ -42,6 +42,7 @@ def purge_doc_artifacts(
 
     if storage_key:
         from botocore.exceptions import ClientError
+
         from rag_api.infra.s3 import delete_by_key
         try:
             delete_by_key(storage_key)

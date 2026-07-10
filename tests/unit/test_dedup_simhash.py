@@ -14,7 +14,6 @@ from rag_api.pipeline.ops.dedup.simhash import (
     u64_to_i64,
 )
 
-
 # ──────────────────────────────────────────────
 # compute_title_hash
 # ──────────────────────────────────────────────
@@ -190,7 +189,6 @@ def test_run_simhash_detection_title_changed():
 
 def test_run_simhash_detection_excludes_self():
     body = "some document body content repeated " * 10
-    simhash = compute_simhash(body, ngram=3, bits=64)
 
     with patch(_PG_FIND, return_value={"doc-self"}), \
          patch(_PG_FP, return_value={}), \

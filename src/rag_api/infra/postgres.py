@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +28,7 @@ def _to_local_iso(dt: datetime | None) -> str:
     if dt is None:
         return ""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.astimezone().isoformat()
 
 
@@ -177,7 +177,8 @@ def update_kb_meta(
     description: str | None = None,
     tags: list[str] | None = None,
 ) -> None:
-    parts, params = [], []
+    parts: list[str] = []
+    params: list[Any] = []
     if kb_name is not None:
         parts.append("kb_name = %s")
         params.append(kb_name)
@@ -261,6 +262,7 @@ def create_doc(
              storage_key, content_version, connector_id, file_size, doc_type, doc_created_at],
         ).fetchone()
         conn.commit()
+    assert row is not None, "INSERT ... RETURNING always yields exactly one row on success"
     return _row_to_doc(row)
 
 
@@ -401,9 +403,10 @@ def list_docs_paginated(
 
     offset = (page - 1) * page_size
     with get_pool().connection() as conn:
-        total: int = conn.execute(
+        count_row = conn.execute(
             f"SELECT COUNT(*) FROM documents WHERE {where}", params
-        ).fetchone()[0]
+        ).fetchone()
+        total = int(count_row[0]) if count_row else 0
         rows = conn.execute(
             f"{_DOC_SELECT} WHERE {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
             params + [page_size, offset],
@@ -441,9 +444,10 @@ def list_all_docs_paginated(
 
     offset = (page - 1) * page_size
     with get_pool().connection() as conn:
-        total: int = conn.execute(
+        count_row = conn.execute(
             f"SELECT COUNT(*) FROM documents {where}", params
-        ).fetchone()[0]
+        ).fetchone()
+        total = int(count_row[0]) if count_row else 0
         rows = conn.execute(
             f"{_DOC_SELECT} {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
             params + [page_size, offset],
@@ -499,9 +503,10 @@ def list_docs_by_connector_paginated(
 
     offset = (page - 1) * page_size
     with get_pool().connection() as conn:
-        total: int = conn.execute(
+        count_row = conn.execute(
             f"SELECT COUNT(*) FROM documents WHERE {where}", params
-        ).fetchone()[0]
+        ).fetchone()
+        total = int(count_row[0]) if count_row else 0
         rows = conn.execute(
             f"{_DOC_SELECT} WHERE {where} ORDER BY {order_clause} LIMIT %s OFFSET %s",
             params + [page_size, offset],
@@ -557,6 +562,7 @@ def create_connector(
             [connector_id, kb_id, name, source_type, Jsonb(config), sync_schedule, schedule_enabled],
         ).fetchone()
         conn.commit()
+    assert row is not None, "INSERT ... RETURNING always yields exactly one row on success"
     return _row_to_connector(row)
 
 

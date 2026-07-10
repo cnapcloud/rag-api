@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from llama_index.core import Document, SimpleDirectoryReader
@@ -79,8 +79,8 @@ def _extract_doc_created_at(file_path: Path, suffix: str, storage_key: str) -> s
 
     if dt is not None:
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc).isoformat()
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat()
 
     try:
         from rag_api.infra.s3 import get_object_last_modified_by_key
@@ -89,10 +89,6 @@ def _extract_doc_created_at(file_path: Path, suffix: str, storage_key: str) -> s
     except Exception as e:
         logger.debug("S3 LastModified fallback failed: storage_key=%s err=%s", storage_key, e)
         return ""
-
-
-from llama_index.core.readers.base import BaseReader
-from llama_index.core.schema import Document
 
 
 class HTMLCleanReader(BaseReader):

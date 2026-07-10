@@ -26,7 +26,7 @@ def _make_doc(storage_key: str) -> dict:
     }
 
 
-def _mock_s3_response(body: bytes) -> MagicMock:
+def _mock_s3_response(body: bytes) -> dict[str, MagicMock]:
     resp = {"Body": MagicMock()}
     resp["Body"].iter_chunks.return_value = iter([body])
     return resp

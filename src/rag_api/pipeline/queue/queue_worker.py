@@ -18,7 +18,12 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from rag_api.pipeline.queue.enqueue import DELETE_DELAY_KEY, DELETE_QUEUE_KEY, UPLOAD_DELAY_KEY, UPLOAD_QUEUE_KEY
+from rag_api.pipeline.queue.enqueue import (
+    DELETE_DELAY_KEY,
+    DELETE_QUEUE_KEY,
+    UPLOAD_DELAY_KEY,
+    UPLOAD_QUEUE_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +99,8 @@ class QueueWorker:
                 if raw is not None:
                     logger.warning("Unexpected type from upload queue: %s", type(raw).__name__)
                 break
+            if isinstance(raw, bytes):
+                raw = raw.decode()
             
             try:
                 event = json.loads(raw)
@@ -102,7 +109,6 @@ class QueueWorker:
                 continue
 
             doc_id = event.get("doc_id", "")
-            force = event.get("force", False)
             if not doc_id:
                 logger.warning("Upload event missing doc_id (skipped): %s", raw)
                 continue
@@ -134,6 +140,8 @@ class QueueWorker:
                 if raw is not None:
                     logger.warning("Unexpected type from delete queue: %s", type(raw).__name__)
                 break
+            if isinstance(raw, bytes):
+                raw = raw.decode()
             
             try:
                 event = json.loads(raw)
