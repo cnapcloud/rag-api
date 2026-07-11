@@ -42,6 +42,7 @@ docker-build:
 # tag in the registry, so it survives the CI builder pod being ephemeral.
 docker-push:
 	docker buildx build --platform linux/arm64 \
+		--provenance=false --sbom=false \
 		--cache-from type=registry,ref=$(CACHE_IMAGE) \
 		--cache-to type=registry,ref=$(CACHE_IMAGE),mode=max \
 		-t $(IMAGE) -t $(IMAGE_LATEST) --push .
