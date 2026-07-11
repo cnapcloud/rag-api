@@ -1,5 +1,7 @@
 # 문서 중복·갱신 감지 파이프라인 디자인
 
+> 요건: [prd.md §10](../prd.md#10-중복-문서-감지-dedup)
+
 ## 1. 개요
 
 신규 문서 유입 시 기존 문서와의 관계를 분석하여 중복 문서 감지, 문서 갱신 여부 판별, 관련 문서 연결을 수행하는 파이프라인이다.
@@ -571,17 +573,17 @@ D-01과 D-02는 구현 완료. 각 항목은 독립적으로 구현 가능하며
 
 **D-05(4단계)는 pending — 현재 도입 계획 없음.** D-04(3단계)가 3.3.3의 임계값 판정으로 body(동일/유사/무관)까지 확정하므로, D-06(`유사` 후속 처리)은 D-05 없이 D-04만으로 진행 가능. D-07(`관련` 후속 처리)은 "관련" 카테고리 자체가 4단계 전용이라 D-05 활성화 전까지는 함께 보류.
 
-| ID | Title | Status | Depends on |
-|---|---|---|---|
-| D-01 | 1단계: SHA-256 title hash + SimHash 본문 비교, Postgres simhash_bands 인덱스, `동일`/`제목변경`/`similar` 5단계 직행 | done | — |
-| D-02 | 5단계: `동일`/`제목변경` 후속 처리 — `doc_created_at` 기준 신구 판단, Qdrant payload 갱신, `outdated`/`duplicate_of` 기록, simhash_bands 삭제 | done | D-01 |
-| D-03 | 2단계: MinHash Jaccard(본문) + pg_trgm(제목) 경량 필터링 — Kiwi 형태소, 밴드 인덱스 조회, 임계값 config 분리, 3분기 판정, `similar` verdict | done | D-01 |
-| D-04 | 3단계: 청크 단위 임베딩 코사인 유사도 비교(청크쌍 threshold 0.50 필터 + Top-1 매칭) → 문서 레벨 집계 점수 산출 + 3.3.3 집계 점수 임계값 기반 body(동일/유사/무관) 최종 확정 | done | D-02 |
-| D-05 | 4단계: 비율 기반 1차 판정 (동일/유사/관련/무관) + `유사` 구간 LLM 최종 확정, 다중 후보 C 반복 처리 | **pending** | D-04 |
-| D-06 | 5단계 `유사`: A 신규 색인 + C `status=deprecated`, `superseded_by`/`supersedes` 필드, `status=active` 검색 필터 | todo | D-04 |
-| D-07 | 5단계 `관련`: A 신규 색인 + 관련 링크 메타데이터 추가 | pending (D-05와 함께 보류) | D-05 |
-| D-08 | 5단계 다중 후보 배선: `동일` 판정 최우선 적용, 나머지 C 배선 재조정 규칙 | todo | D-06 |
-| D-09 | Cleanup job: 그레이스 기간 경과 `deprecated` 문서 삭제 (주기/기간 미정) | todo | D-06 |
-| D-10 | MinIO 구버전 파일 삭제: `outdated` 문서 원본 파일 정리 (grace period 방식) | todo | D-02 |
+| ID | Title | Status | Depends on | US |
+|---|---|---|---|---|
+| D-01 | 1단계: SHA-256 title hash + SimHash 본문 비교, Postgres simhash_bands 인덱스, `동일`/`제목변경`/`similar` 5단계 직행 | done | — | [US-23](../../../.claude/backlogs/US-23-dedup-stage1.md) |
+| D-02 | 5단계: `동일`/`제목변경` 후속 처리 — `doc_created_at` 기준 신구 판단, Qdrant payload 갱신, `outdated`/`duplicate_of` 기록, simhash_bands 삭제 | done | D-01 | [US-23](../../../.claude/backlogs/US-23-dedup-stage1.md) |
+| D-03 | 2단계: MinHash Jaccard(본문) + pg_trgm(제목) 경량 필터링 — Kiwi 형태소, 밴드 인덱스 조회, 임계값 config 분리, 3분기 판정, `similar` verdict | done | D-01 | [US-24](../../../.claude/backlogs/US-24-dedup-stage2.md) |
+| D-04 | 3단계: 청크 단위 임베딩 코사인 유사도 비교(청크쌍 threshold 0.50 필터 + Top-1 매칭) → 문서 레벨 집계 점수 산출 + 3.3.3 집계 점수 임계값 기반 body(동일/유사/무관) 최종 확정 | done | D-02 | [US-35](../../../.claude/backlogs/US-35-dedup-stage3-chunk-compare.md) |
+| D-05 | 4단계: 비율 기반 1차 판정 (동일/유사/관련/무관) + `유사` 구간 LLM 최종 확정, 다중 후보 C 반복 처리 | **pending** | D-04 | — |
+| D-06 | 5단계 `유사`: A 신규 색인 + C `status=deprecated`, `superseded_by`/`supersedes` 필드, `status=active` 검색 필터 | todo | D-04 | — |
+| D-07 | 5단계 `관련`: A 신규 색인 + 관련 링크 메타데이터 추가 | pending (D-05와 함께 보류) | D-05 | — |
+| D-08 | 5단계 다중 후보 배선: `동일` 판정 최우선 적용, 나머지 C 배선 재조정 규칙 | todo | D-06 | — |
+| D-09 | Cleanup job: 그레이스 기간 경과 `deprecated` 문서 삭제 (주기/기간 미정) | todo | D-06 | — |
+| D-10 | MinIO 구버전 파일 삭제: `outdated` 문서 원본 파일 정리 (grace period 방식) | todo | D-02 | — |
 
 Recommended implementation order (4단계 pending 반영): D-01 (done) → D-02 (done) → D-03 → D-04 → D-06 → D-08 → D-09 + D-10 (병렬) → *(D-05 활성화 시)* D-07

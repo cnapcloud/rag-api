@@ -1,5 +1,9 @@
 # US-24: Dedup Stage 2 — MinHash Jaccard + pg_trgm 제목 퍼지 필터링
 
+**상태**: done
+
+> 설계: [dedup.md](../../docs/internal/design/dedup.md) (D-03)
+
 ## 목적
 
 1단계(SimHash)에서 후보를 찾지 못한 신규 문서 A에 대해, 형태소 기반 MinHash로 본문 Jaccard 유사도를 추정하고
@@ -54,10 +58,14 @@ pg_trgm으로 제목 퍼지 유사도를 확인하여 후보를 선별한다.
 
 ## 완료 기준
 
-- 명백히 무관한 문서가 후보로 올라오지 않음
-- 제목만 우연히 비슷하고 본문이 무관한 문서(Jaccard < title_only_min_jaccard_floor)가 proceed 처리됨
-- 전수 조사 없이 밴드 인덱스 조회만으로 후보 추출됨을 확인
-- `test_dedup_minhash.py` 전체 통과
+- [x] 명백히 무관한 문서가 후보로 올라오지 않음
+- [x] 제목만 우연히 비슷하고 본문이 무관한 문서(Jaccard < title_only_min_jaccard_floor)가 proceed 처리됨
+- [x] 전수 조사 없이 밴드 인덱스 조회만으로 후보 추출됨을 확인
+- [x] `test_dedup_minhash.py` 전체 통과
+
+## 의존성
+
+- US-23 — SimHash 1단계에서 후보를 못 찾은 문서만 2단계로 넘어옴 (dedup.md D-03이 D-01에 의존)
 
 ## 오픈 이슈
 

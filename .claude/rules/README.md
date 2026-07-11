@@ -32,6 +32,10 @@
 모듈별 `logging.getLogger(__name__)` 사용. `setup_logging()`이 `main.py`에서 먼저 호출됨.
 레벨은 settings에서. 영어, `%s` 포맷, 컨텍스트 포함 필수.
 
+### 8. 추적성 (`conventions/07-traceability.md`)
+prd.md ↔ design 문서 ↔ backlog ↔ plan을 파일 상단 고정 링크와 파일명 키워드로 연결.
+새 backlog/plan/design 작성 시 반드시 적용.
+
 ---
 
 ## 워크플로우: 새 기능 추가

@@ -1,5 +1,9 @@
 # US-35: Dedup Stage 3 — 청크 단위 임베딩 비교 (chunk_compare) + 임계값 기반 body 확정
 
+**상태**: done
+
+> 설계: [dedup.md](../../docs/internal/design/dedup.md) (D-04)
+
 ## 목적
 
 simhash/minhash 단계에서 `similar`(근접 후보)로 라우팅된 문서 A-C 쌍에 대해, 청크 단위 임베딩 코사인
@@ -58,10 +62,14 @@ dedup:
 
 ## 완료 기준
 
-- simhash/minhash `similar` 판정이 chunk_compare를 거쳐 최종 body(identical/similar/none)로 확정됨을 확인
-- 집계 점수가 각 임계값 구간에 따라 올바른 body로 매핑됨 (경계값 포함 테스트)
-- `compare_all_candidates=true`로 설정한 경우 후보 C가 여러 개면 각각 독립적으로 판정되고, 5단계 다중 후보 우선순위 규칙(2.1절 참고)이 그대로 적용됨 (기본값 `false`는 best match 1건만 판정)
-- `test_dedup_chunk_compare.py` 신규 테스트 전체 통과, 기존 `test_dedup_simhash.py`/`test_dedup_minhash.py`/`test_dedup_verdict.py` 회귀 없음
+- [x] simhash/minhash `similar` 판정이 chunk_compare를 거쳐 최종 body(identical/similar/none)로 확정됨을 확인
+- [x] 집계 점수가 각 임계값 구간에 따라 올바른 body로 매핑됨 (경계값 포함 테스트)
+- [x] `compare_all_candidates=true`로 설정한 경우 후보 C가 여러 개면 각각 독립적으로 판정되고, 5단계 다중 후보 우선순위 규칙(2.1절 참고)이 그대로 적용됨 (기본값 `false`는 best match 1건만 판정)
+- [x] `test_dedup_chunk_compare.py` 신규 테스트 전체 통과, 기존 `test_dedup_simhash.py`/`test_dedup_minhash.py`/`test_dedup_verdict.py` 회귀 없음
+
+## 의존성
+
+- US-23 — chunk_compare는 simhash 단계의 `similar` 라우팅 결과를 입력으로 받음 (dedup.md D-04가 D-02에 의존)
 
 ## 오픈 이슈
 

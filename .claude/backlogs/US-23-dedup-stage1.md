@@ -1,5 +1,9 @@
 # US-23: Dedup Stage 1 — 해시 기반 중복 감지
 
+**상태**: done
+
+> 설계: [dedup.md](../../docs/internal/design/dedup.md) (D-01, D-02)
+
 ## 목적
 
 신규 문서 유입 시 제목 SHA-256 + 본문 SimHash를 이용해 완전 동일 문서와 제목 변경 문서를
@@ -116,12 +120,16 @@ dedup:
 
 ## 완료 기준
 
-- "동일" 문서 유입 시 chunk/embed/upsert 실행 없이 dedup_skipped 상태로 종료
-- "제목변경" 문서 유입 시:
+- [x] "동일" 문서 유입 시 chunk/embed/upsert 실행 없이 dedup_skipped 상태로 종료
+- [x] "제목변경" 문서 유입 시:
   - A가 최신: C outdated 전환 + Qdrant payload 갱신 + simhash_bands 삭제 + A indexed
   - A가 구버전: A outdated 기록, C 변경 없음
-- 후보 없음 문서는 기존 파이프라인 정상 실행
-- `test_dedup_simhash.py`, `test_dedup_verdict.py` 전체 통과
+- [x] 후보 없음 문서는 기존 파이프라인 정상 실행
+- [x] `test_dedup_simhash.py`, `test_dedup_verdict.py` 전체 통과
+
+## 의존성
+
+- 없음
 
 ## 오픈 이슈
 

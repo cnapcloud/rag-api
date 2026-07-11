@@ -13,8 +13,8 @@ Before creating a new backlog item or implementation plan, read the following do
 
 | File | Purpose |
 |------|---------|
-| `docs/dev/architecture.md` | System architecture — component layout, data flow, technology choices |
-| `docs/dev/data-schema.md` | Data schema — Qdrant PointStruct payload, Redis document hash fields |
+| `docs/internal/architecture.md` | System architecture — component layout, data flow, technology choices |
+| `docs/internal/design/data-schema.md` | Data schema — Qdrant PointStruct payload, Postgres/Redis fields |
 
 These documents describe the current state of the system. Backlog items and plans must not propose changes that contradict or duplicate what is already documented here. If a new feature changes the schema, update these documents as part of the implementation.
 
@@ -56,6 +56,16 @@ When marking an item `done`:
 Plan numbers MUST match the backlog US number they implement:
 - US-08 → `08-<slug>.md` (not `06-`, not a sequential counter)
 - If a plan covers multiple US items, use the primary US number.
+- The slug MUST match the backlog file's slug exactly (e.g. `US-08-min-score-filter.md` →
+  `08-min-score-filter.md`, not a reworded title).
+- Exception: if the backlog file already contains sufficient implementation detail that a
+  separate plan would be redundant, skip the plan file and mark it `통합(backlog 참고)` in
+  `plans/plan.md` instead of leaving the row missing.
 
 After creating a plan file, always add a row to `plans/plan.md` in the same session.
 Skipping this step is a common omission — treat it as mandatory, not optional.
+
+## Traceability
+
+See `.claude/rules/conventions/07-traceability.md` for how prd.md, design docs, backlog,
+and plan files must link to each other (fixed-position links + filename keyword alignment).

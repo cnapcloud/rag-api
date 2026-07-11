@@ -19,6 +19,7 @@
 | [20](20-confluence-connector.md) | ConfluenceConnector implementation (R-10) | US-20 | done |
 | [21](21-github-connector.md) | GitHubConnector implementation (R-11) | US-21 | done |
 | [22](22-discard-ingest-on-deleting.md) | deleting 상태 이벤트 즉시 버림 | US-22 | done |
+| 23 | Dedup Stage 1 — 해시 기반 중복 감지 | US-23 | 통합(backlog 참고) — done |
 | [24](24-dedup-stage2.md) | Dedup Stage 2 — MinHash + pg_trgm | US-24 | done |
 | [25](25-kiwi-user-words.md) | Kiwi 사용자 사전 파일 지원 | US-25 | done |
 | [26](26-delete-pipeline-refactor.md) | Delete Pipeline Refactor — soft/hard delete 분기 + status guard | US-26 | done |
@@ -26,3 +27,4 @@
 | [30](30-api-status-guard.md) | API Status Guard — 활성 상태 문서 upload/delete/reindex 차단 | US-30 | done |
 | [31](31-admin-ui-status-guard.md) | Admin UI Status Guard — proactive 체크 + 409 에러 토스트 | US-31 | done |
 | [32](32-connector-schedule-hot-reload.md) | Connector Schedule Hot Reload | US-32 | done |
+| 35 | Dedup Stage 3 — 청크 단위 임베딩 비교 (chunk_compare) | US-35 | 통합(backlog 참고) — done |
