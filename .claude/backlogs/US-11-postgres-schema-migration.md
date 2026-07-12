@@ -107,7 +107,7 @@ CREATE INDEX idx_simhash_bands ON simhash_bands (kb_id, band_index, band_value);
 - [ ] `src/api/app.py` — 헬스체크 `redis.RedisError` 핸들러 정리, Postgres 핸들러 추가
 - [ ] `tests/conftest.py` — `mock_redis` 픽스처를 mock postgres로 교체
 - [ ] 운영 데이터 백필 스크립트 작성 (`scripts/migrate_redis_to_postgres.py`)
-- [ ] `docs/dev/data-schema.md` 업데이트
+- [ ] `docs/internal/design/data-schema.md` 업데이트
 
 ---
 

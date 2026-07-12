@@ -34,7 +34,13 @@
 
 ### 8. 추적성 (`conventions/07-traceability.md`)
 prd.md ↔ design 문서 ↔ backlog ↔ plan을 파일 상단 고정 링크와 파일명 키워드로 연결.
-새 backlog/plan/design 작성 시 반드시 적용.
+새 backlog/plan/design 작성 시, 또는 backlog를 `done`으로 전환할 때 반드시 적용. 세션마다 읽는
+0과 달리 실제로 이 문서들을 쓸 때만 열어보면 된다.
+
+### 9. 스펙 기반 개발 절차 (루트 `spec-driven-ai-development.md`)
+0과 8의 상세 규칙을 실제 워크플로우 순서(세션 시작 → backlog 작성 → design 작성 → done 전환)로
+정리한 사람/AI 공통 진입 문서. 새 작업을 시작할 때 가장 먼저 읽는다. `.claude/rules/` 밖(루트)에
+있는 이유: 사람 기여자도 같은 절차를 보게 하기 위함 — 내용을 복제하지 않고 이 한 곳만 유지한다.
 
 ---
 

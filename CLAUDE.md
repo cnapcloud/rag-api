@@ -43,11 +43,9 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 
 ## 코드 컨벤션
 
-- **import 경로**: `from rag_api.config.settings import get_settings` (`rag_api` 최상위 패키지 기준, editable install되어 있어 `PYTHONPATH` 불필요). `from src...` 형태는 금지.
 - **타입 힌트**: 모든 함수에 필수. Pydantic 모델 우선 사용.
 - **라인 길이**: 100자 (ruff 설정)
 - **포맷터**: ruff (E, F, I, UP 규칙)
-- **테스트 스타일**: 외부 인프라는 conftest.py 픽스처로 Mock. 실제 Redis/Qdrant/Postgres 연결 금지. (`.claude/rules/conventions/02-testing.md`)
 - **예외 처리**: `RAGError` 계층(`ConfigError`/`IngestValidationError`/`NotFoundError`/`ConflictError`) 사용, `from e` chaining 필수. (`.claude/rules/conventions/05-exception-handling.md`)
 - **로거**: 모듈별 `logger = logging.getLogger(__name__)` 사용. (`.claude/rules/conventions/06-logging.md`)
 
@@ -57,7 +55,7 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 
 - `get_settings()`를 우회하여 설정값 하드코딩 금지
 - `from src.config...` 형태의 import 금지 (`rag_api`는 editable install되어 있어 `PYTHONPATH` 불필요)
-- 인프라 클라이언트를 테스트에서 실제 연결로 사용 금지 (항상 conftest.py 픽스처 사용)
+- 인프라 클라이언트를 테스트에서 실제 연결로 사용 금지 (항상 conftest.py 픽스처 사용, `.claude/rules/conventions/02-testing.md`)
 - `infra/` 파일 역할 혼동 금지: `s3.py`(스토리지) / `redis.py`(큐) / `postgres.py`(메타데이터) / `qdrant.py`(벡터)
 - 파이프라인 Op 함수는 부작용 없는 순수 함수로 유지 (Dagster와 runner.py 양쪽에서 재사용)
 - 이모지 사용 금지 — 코드, 로그, 문서 어디서도 이모지 불가
@@ -72,14 +70,28 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 
 각 파일의 Full History/개별 상세 파일은 해당 항목을 실제로 조사·작업할 때만 연다.
 MEMORY.md 인덱스가 가리키는 개별 상세 파일은 이번 작업과 직접 관련될 때만 연다.
-작업 시작/완료 시 backlog/plan의 status를 즉시 업데이트한다.
+
+새 기능/버그 수정을 시작하기 전에 [`spec-driven-ai-development.md`](spec-driven-ai-development.md)의 스펙 기반 개발 절차
+(backlog 작성, design 링크, done 전환 시 확인 항목)를 따른다. 상세 규칙은
+`.claude/rules/conventions/00-progress-tracking.md`(세션 북키핑), `07-traceability.md`(링크
+포맷, backlog/design 작성 시) 참고.
 
 ## Memory (`.claude/memory/`)
 
 기록 대상: 설계-구현 불일치 / 재발 가능한 함정 / 재구성 불가능한 피드백·결정 이유
 (진행상황은 backlog/plan에 있으므로 제외)
 
-`.claude/memory/`에 파일 작성 + `MEMORY.md`에 한 줄 인덱스 (전역 메모리 대신, 충돌 시 이쪽 우선)
-인덱스 15개 초과 시 오래된 항목은 `archive.md`로 이동, 최근 5~10개만 유지
+원칙: 작고 정확하게. 원본(코드/문서)이 있으면 복제 대신 링크로 참조한다.
+
+**기록 금지** (아래 각각의 원본):
+- 코드에서 바로 파생되는 내용 — 코드 자체
+- `.claude/rules/`에 이미 있는 컨벤션 — 해당 rules 파일
+- 해결된 버그의 수정 레시피 — 커밋 + 코드 (재발 방지 교훈만 한 문단으로 압축해 남기는 건 허용)
+- `docs/internal/known-issues.md`에 이미 있는 이슈 — 그 문서
+
+**재검토** (해결/반영됐으면 삭제, 바뀌었으면 갱신):
+- 작업 마무리 응답 시 — 이번 대화에서 언급/사용한 항목
+- backlog `done` 전환 시 — 관련 항목
 
 `.claude/memory/`에 파일 작성 + `MEMORY.md`에 한 줄 인덱스 (전역 메모리 대신, 충돌 시 이쪽 우선)
+인덱스 15개 초과 시 오래된 항목은 `archive.md`로 이동, 최근 5~10개만 유지

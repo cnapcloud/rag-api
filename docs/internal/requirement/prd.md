@@ -1,7 +1,7 @@
 # RAG API 요구사항
 
 > 문서 인제스트 및 하이브리드 검색 파이프라인의 기능 요구사항 정의.
-> 구현 방식은 [architecture.md](architecture.md), API 명세는 [api-spec.md](api-spec.md) 참고.
+> 구현 방식은 [architecture/README.md](../architecture/README.md), API 명세는 [api-spec.md](api-spec.md) 참고.
 
 ---
 
@@ -20,7 +20,12 @@
 
 ### 지원 파일 형식
 
-- PDF, Markdown, DOCX, TXT, HWP
+- PDF, Markdown, DOCX, TXT, HWP, HTML, RST
+
+### 본문 정제
+
+- HTML로 수집한 문서는 nav/footer 등 boilerplate를 제거하고 밀도 기반으로 본문만 추출해 인제스트한다.
+  정제 품질은 후속 중복 감지(§10)와 검색 결과 품질에 직접 영향을 준다.
 
 ### 업로드
 

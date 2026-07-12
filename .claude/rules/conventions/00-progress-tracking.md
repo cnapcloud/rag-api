@@ -1,28 +1,33 @@
 # Progress Tracking
 
-## Index Files
+목적: `.claude/backlogs/backlog.md` / `.claude/plans/plan.md` 인덱스로 현재 진행 상황을 파악하고
+최신 상태로 유지하기 위한 규칙. 세션마다 참고하는 짧은 북키핑 규칙만 담는다 — 문서 간 링크
+포맷 등 실제로 backlog/design 문서를 작성할 때만 필요한 상세 규칙은
+`07-traceability.md`에 있다.
+
+## 1. Index Files
 
 | File | Purpose |
 |------|---------|
 | `.claude/backlogs/backlog.md` | All user stories — ID, title, status |
 | `.claude/plans/plan.md` | All implementation plans — plan number, title, covered US, status |
 
-## Reference Documents
+## 2. Reference Documents
 
 Before creating a new backlog item or implementation plan, read the following documents to ensure consistency with the existing architecture and data model:
 
 | File | Purpose |
 |------|---------|
-| `docs/internal/architecture.md` | System architecture — component layout, data flow, technology choices |
+| `docs/internal/architecture/README.md` | System architecture index — see also `application.md`, `technical.md`, `runtime.md` in the same folder |
 | `docs/internal/design/data-schema.md` | Data schema — Qdrant PointStruct payload, Postgres/Redis fields |
 
 These documents describe the current state of the system. Backlog items and plans must not propose changes that contradict or duplicate what is already documented here. If a new feature changes the schema, update these documents as part of the implementation.
 
-## When to Read
+## 3. When to Read
 
 Read both index files at the **start of any session** that involves implementing a feature, fixing a bug, or planning new work. This gives an immediate picture of what is done and what is pending without opening individual detail files.
 
-## Status Values
+## 4. Status Values
 
 | Value | Meaning |
 |-------|---------|
@@ -31,14 +36,18 @@ Read both index files at the **start of any session** that involves implementing
 | `done` | Implemented and tested |
 | `blocked` | Cannot proceed — dependency or decision needed |
 
-## When to Update
+## 5. When to Update
 
 - Change status to `in-progress` when work on an item begins.
-- Change status to `done` when implementation is complete and tests pass.
-- Add a new row whenever a new backlog item (US-XX) or plan file is created.
+- Change status to `done` when implementation is complete and tests pass. Before doing so, run
+  the done-transition checklist in `07-traceability.md` — it applies even when there is no
+  separate plan file (`통합(backlog 참고)` case).
+- Add a new row whenever a new backlog item (US-XX) or plan file is created. New backlog items
+  MUST use `.claude/backlogs/_TEMPLATE.md` — creating one in the old ad-hoc format is not
+  allowed. Plan file naming rules are in `07-traceability.md`.
 - Never leave status stale — if the row says `todo` but work is done, fix the row before ending the session.
 
-## Backlog File Location
+## 6. Backlog File Location
 
 Backlog detail files are organized by status:
 
@@ -50,22 +59,3 @@ Backlog detail files are organized by status:
 When marking an item `done`:
 1. Move the detail file from `backlogs/todo/` to `backlogs/`.
 2. Update the link in `backlog.md` (remove the `todo/` prefix).
-
-## Plan File Naming
-
-Plan numbers MUST match the backlog US number they implement:
-- US-08 → `08-<slug>.md` (not `06-`, not a sequential counter)
-- If a plan covers multiple US items, use the primary US number.
-- The slug MUST match the backlog file's slug exactly (e.g. `US-08-min-score-filter.md` →
-  `08-min-score-filter.md`, not a reworded title).
-- Exception: if the backlog file already contains sufficient implementation detail that a
-  separate plan would be redundant, skip the plan file and mark it `통합(backlog 참고)` in
-  `plans/plan.md` instead of leaving the row missing.
-
-After creating a plan file, always add a row to `plans/plan.md` in the same session.
-Skipping this step is a common omission — treat it as mandatory, not optional.
-
-## Traceability
-
-See `.claude/rules/conventions/07-traceability.md` for how prd.md, design docs, backlog,
-and plan files must link to each other (fixed-position links + filename keyword alignment).

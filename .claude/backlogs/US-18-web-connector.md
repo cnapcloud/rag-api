@@ -1,8 +1,8 @@
 ---
 id: US-18
 title: WebConnector implementation (R-09)
-status: in-progress
-requirement: docs/dev/requirement-multi-source-ingest.md — R-09
+status: done
+requirement: docs/internal/design/multi-source-ingest.md — R-09
 ---
 
 ## User Story

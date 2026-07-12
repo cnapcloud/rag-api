@@ -24,7 +24,12 @@
 | [25](25-kiwi-user-words.md) | Kiwi 사용자 사전 파일 지원 | US-25 | done |
 | [26](26-delete-pipeline-refactor.md) | Delete Pipeline Refactor — soft/hard delete 분기 + status guard | US-26 | done |
 | [27](27-force-fail-api.md) | Force Fail API — 진행 중 문서 강제 실패 처리 + Dagster job terminate | US-27 | done |
+| 28 | Force Delete — indexed 문서 hard delete + outdated 자동 force 처리 | US-28 | 통합(backlog 참고) — done |
+| 29 | purge_doc_artifacts 공통 함수 추출 + pipeline/ops/utils/ 패키지 정리 | US-29 | 통합(backlog 참고) — done |
 | [30](30-api-status-guard.md) | API Status Guard — 활성 상태 문서 upload/delete/reindex 차단 | US-30 | done |
 | [31](31-admin-ui-status-guard.md) | Admin UI Status Guard — proactive 체크 + 409 에러 토스트 | US-31 | done |
 | [32](32-connector-schedule-hot-reload.md) | Connector Schedule Hot Reload | US-32 | done |
+| 33 | Connector Config Numeric Field Validation | US-33 | 통합(backlog 참고) — done |
+| 34 | Connector Abort/Delete Guard가 QUEUED/STARTING Dagster Run을 놓치는 버그 | US-34 | 통합(backlog 참고) — done |
 | 35 | Dedup Stage 3 — 청크 단위 임베딩 비교 (chunk_compare) | US-35 | 통합(backlog 참고) — done |
+| 36 | HTMLCleanReader를 trafilatura 밀도 기반 추출로 교체 | US-36 | 통합(backlog 참고) — done |

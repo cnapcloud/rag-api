@@ -1,8 +1,8 @@
 ---
 id: US-15
 title: Multi-source ingest schema initialization (R-01)
-status: todo
-requirement: docs/dev/requirement-multi-source-ingest.md — R-01
+status: done
+requirement: docs/internal/design/multi-source-ingest.md — R-01
 ---
 
 ## User Story
@@ -15,7 +15,7 @@ so that all subsequent R items (R-02 through R-11) can build on a correct founda
 
 - Drop and recreate `documents`, `connectors`, `simhash_bands` tables with new schema
 - Replace `infra/postgres.py` document CRUD to be doc_id-based
-- Update `docs/dev/data-schema.md` to reflect new schema
+- Update `docs/internal/design/data-schema.md` to reflect new schema
 
 ## Out of Scope
 
@@ -33,4 +33,4 @@ so that all subsequent R items (R-02 through R-11) can build on a correct founda
 - [ ] `infra/postgres.py` exposes: `upsert_doc`, `get_doc_by_id`, `get_doc_by_source_uri`, `update_doc_fields`, `soft_delete_doc`, `list_docs` with soft-delete filter, `list_docs_paginated` updated
 - [ ] Deprecated functions removed: `set_doc_status`, `get_doc_etag`, `set_doc_etag`, `delete_doc_etag`, `delete_doc_meta` (hard delete)
 - [ ] Unit tests pass for all new CRUD functions
-- [ ] `docs/dev/data-schema.md` reflects new schema
+- [ ] `docs/internal/design/data-schema.md` reflects new schema

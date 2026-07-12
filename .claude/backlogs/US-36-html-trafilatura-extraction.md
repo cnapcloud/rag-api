@@ -6,14 +6,14 @@ status: done
 
 # US-36: HTMLCleanReader를 trafilatura 밀도 기반 추출로 교체
 
+> 설계: [html-extraction.md](../../docs/internal/design/html-extraction.md) 3절
+
 ## 목적
 
 `HTMLCleanReader`(`pipeline/ops/parse.py`)의 태그 이름 deny-list(`nav`/`footer`/`header`/
 `script`/`style`/`aside` 제거) 방식을 trafilatura의 텍스트/링크 밀도 기반 추출로 교체한다.
 사이트마다 마크업 구조가 달라 태그 이름만으로는 boilerplate를 안정적으로 걸러낼 수 없고, 이
 품질이 SimHash(dedup stage 1) 입력에 직접 영향을 준다.
-
-설계 근거: `docs/internal/design/html-extraction.md` 3절.
 
 ## 범위
 
@@ -30,7 +30,7 @@ status: done
 ## 비범위
 
 - 사이트 단위 반복 boilerplate 탐지 — 검토 후 폐기 (스트리밍 ingestion과 cold-start 비호환,
-  `.claude/memory/html_extraction_corpus_boilerplate_rejected.md` 참고)
+  `docs/internal/design/html-extraction.md` 2절 "검토 후 폐기한 대안" 참고)
 - JS 렌더링 SPA 예외 처리(Playwright fallback) — pending, 백로그 없음
   (`docs/internal/design/html-extraction.md` 4절 참고)
 - 마크다운 인식 청킹(`MarkdownNodeParser` 등) — chunk_op은 기존 `SentenceSplitter`(recursive)
