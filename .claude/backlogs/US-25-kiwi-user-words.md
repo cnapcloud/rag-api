@@ -1,7 +1,7 @@
 ---
 id: US-25
 title: Kiwi 형태소 분석기 사용자 사전 파일 지원
-status: todo
+status: done
 ---
 
 # US-25 — Kiwi 형태소 분석기 사용자 사전 파일 지원

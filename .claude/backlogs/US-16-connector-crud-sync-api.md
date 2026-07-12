@@ -1,8 +1,8 @@
 # US-16 — Connector CRUD + Sync API (R-06 + R-07)
 
-**Status**: todo
+**Status**: done
 **Depends on**: US-15 (R-01 — documents/connectors 스키마 완료)
-**Requirements**: R-06, R-07 in `docs/dev/requirement-multi-source-ingest.md`
+**Requirements**: R-06, R-07 in `docs/internal/design/multi-source-ingest.md`
 
 ---
 

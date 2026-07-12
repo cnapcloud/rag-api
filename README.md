@@ -163,3 +163,10 @@ Claude Desktop `claude_desktop_config.json`:
 | MinIO Console | http://localhost:9001 | 업로드된 문서 파일 확인 |
 | Qdrant Dashboard | http://localhost:6333/dashboard | 컬렉션 및 임베딩 벡터 현황 확인 |
 | Dagster UI | http://localhost:3000 | 인제스트 파이프라인 실행 현황 (`queue_worker.enabled: false` 인 경우) |
+
+---
+
+## 개발 참여
+
+기능/버그 수정을 진행하려면 [spec-driven-ai-development.md](spec-driven-ai-development.md)의 스펙 기반 개발 절차
+(요건 → 설계 → 작업 단위 → 구현 계획)를 따른다.

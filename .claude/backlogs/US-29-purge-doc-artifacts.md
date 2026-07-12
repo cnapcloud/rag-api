@@ -1,7 +1,7 @@
 ---
 id: US-29
 title: purge_doc_artifacts 공통 함수 추출 + pipeline/ops/utils/ 패키지 정리
-status: todo
+status: done
 ---
 
 # US-29 purge_doc_artifacts 공통 함수 추출

@@ -186,9 +186,15 @@ Extension:
 Redis is used exclusively for the ingest and delete event queues.
 
 ```
-rag:upload:queue   List   -- ingest event queue; payload: {doc_id, force} (lpush/rpop)
-rag:delete:queue   List   -- delete event queue (lpush/rpop)
+rag:upload:queue   List        -- ingest event queue; payload: {doc_id, force} (lpush/rpop)
+rag:delete:queue   List        -- delete event queue (lpush/rpop)
+rag:upload:delay   Sorted Set  -- ingest retry queue; member=payload JSON, score=ready_at (unix ts)
+rag:delete:delay   Sorted Set  -- delete retry queue; member=payload JSON, score=ready_at (unix ts)
 ```
+
+A doc blocked by an active `running`/`deleting` state is pushed to the matching delay queue
+instead of being processed immediately. Delay/dedup mechanics are covered in
+[duplicate-request-handling.md](duplicate-request-handling.md).
 
 ---
 

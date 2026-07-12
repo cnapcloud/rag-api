@@ -222,25 +222,25 @@ class Settings(BaseModel):
 
         if api_key := os.environ.get("OPENAI_API_KEY"):
             data.setdefault("embedding", {})["openai_api_key"] = api_key
-        if access_key := os.environ.get("S3__ACCESS_KEY"):
+        if access_key := os.environ.get("S3_ACCESS_KEY"):
             data.setdefault("s3", {})["access_key"] = access_key
-        if secret_key := os.environ.get("S3__SECRET_KEY"):
+        if secret_key := os.environ.get("S3_SECRET_KEY"):
             data.setdefault("s3", {})["secret_key"] = secret_key
-        if redis_password := os.environ.get("REDIS__PASSWORD"):
+        if redis_password := os.environ.get("REDIS_PASSWORD"):
             data.setdefault("redis", {})["password"] = redis_password
-        if postgres_user := os.environ.get("POSTGRES__USER"):
+        if postgres_user := os.environ.get("POSTGRES_USER"):
             data.setdefault("postgres", {})["user"] = postgres_user
-        if postgres_password := os.environ.get("POSTGRES__PASSWORD"):
+        if postgres_password := os.environ.get("POSTGRES_PASSWORD"):
             data.setdefault("postgres", {})["password"] = postgres_password
-        if reranker_api_key := os.environ.get("RERANKER__API_KEY"):
+        if reranker_api_key := os.environ.get("RERANKER_API_KEY"):
             data.setdefault("retrieval", {}).setdefault("rerank", {})["api_key"] = reranker_api_key
-        if langfuse_public_key := os.environ.get("TRACING__LANGFUSE_PUBLIC_KEY"):
+        if langfuse_public_key := os.environ.get("TRACING_LANGFUSE_PUBLIC_KEY"):
             data.setdefault("tracing", {})["langfuse_public_key"] = langfuse_public_key
-        if langfuse_secret_key := os.environ.get("TRACING__LANGFUSE_SECRET_KEY"):
+        if langfuse_secret_key := os.environ.get("TRACING_LANGFUSE_SECRET_KEY"):
             data.setdefault("tracing", {})["langfuse_secret_key"] = langfuse_secret_key
-        if production := os.environ.get("SERVER__PRODUCTION"):
+        if production := os.environ.get("SERVER_PRODUCTION"):
             data.setdefault("server", {})["production"] = production.lower() in ("1", "true", "yes")
-        if workers := os.environ.get("SERVER__WORKERS"):
+        if workers := os.environ.get("SERVER_WORKERS"):
             data.setdefault("server", {})["workers"] = int(workers)
 
         return cls.model_validate(data)

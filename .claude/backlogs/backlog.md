@@ -1,5 +1,9 @@
 # Backlog
 
+> 포맷 마이그레이션(`.claude/rules/conventions/07-traceability.md`, 2026-07-12 도입): `_TEMPLATE.md`
+> 형식(`> 설계:` 링크 포함)으로 전환 완료된 항목은 US-23/24/35뿐. 나머지는 구 형식 유지 —
+> 해당 항목을 실제로 다시 열어 작업할 때 opportunistic하게 전환한다. 일괄 전환 작업은 계획하지 않음.
+
 | ID | Title | Status |
 |----|-------|--------|
 | [US-01](US-01-mcp-server.md) | MCP 서버 | done |

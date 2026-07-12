@@ -1,7 +1,7 @@
 ---
 id: US-26
 title: Delete Pipeline Refactor — soft/hard delete 분기 + status guard
-status: todo
+status: done
 ---
 
 ## 배경

@@ -142,13 +142,13 @@ services:
     <<: *env-file
     image: redis:7-alpine
     container_name: redis
-    command: redis-server --requirepass ${REDIS__PASSWORD:-redis}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis}
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS__PASSWORD:-redis}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5

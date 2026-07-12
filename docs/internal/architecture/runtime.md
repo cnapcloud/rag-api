@@ -1,8 +1,9 @@
-# 시스템 처리 흐름
+# 런타임 뷰 (Runtime View)
 
-인제스트·삭제·검색·이벤트·커넥터 각 기능의 런타임 처리 흐름.
-컴포넌트 구조와 설계 원칙은 [architecture.md](../dev/architecture.md) 참조.
-내부 상태·스키마·키 구조는 [internals.md](internals.md) 참조.
+application.md/technical.md가 정적 구조·인프라를 다루는 것과 달리, 이 문서는 인제스트·삭제·검색·
+이벤트·커넥터 각 기능이 실행 시점에 컴포넌트를 어떤 순서로 거치는지(동적 흐름)를 다룬다.
+컴포넌트 구조는 [application.md](application.md), 설계 원칙은 [README.md](README.md) 참조.
+내부 상태·스키마·키 구조는 [design/data-schema.md](../design/data-schema.md) 참조.
 
 ---
 
@@ -213,6 +214,21 @@ POST /api/connectors/{id}/sync
 ## 5. MCP 서버
 
 FastMCP 기반 LLM 툴 인터페이스. `search`, `list_knowledge_bases`, `get_document_status` 3개 툴을 노출한다.
-FastAPI 프로세스에 embedded(`/mcp` 엔드포인트)되거나 `python -m main serve-mcp`로 독립 실행된다.
+FastAPI 프로세스에 embedded(`/mcp` 엔드포인트)되거나 `rag-api serve-mcp`로 독립 실행된다.
 
-자세한 설계는 [mcp.md](mcp.md) 참조.
+자세한 설계는 [design/mcp.md](../design/mcp.md) 참조.
+
+---
+
+## 6. KB 삭제 흐름
+
+```
+DELETE /api/kb/{kb_id}
+    │
+    ├─ 1. Postgres: knowledge_bases.status = "deleting"  (진행 중 표시)
+    ├─ 2. Qdrant: Collection {kb_id} drop
+    ├─ 3. S3: {bucket}/{kb_id}/ prefix 전체 삭제
+    └─ 4. Postgres: knowledge_bases 행 삭제 (ON DELETE CASCADE → documents 자동 삭제)
+```
+
+문서 단건 삭제(soft/hard delete)는 [design/doc-state-flow.md](../design/doc-state-flow.md) 참조.

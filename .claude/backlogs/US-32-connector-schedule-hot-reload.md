@@ -1,7 +1,7 @@
 ---
 id: US-32
 title: Connector Schedule Hot Reload via Dagster Code Location Reload
-status: in-progress
+status: done
 ---
 
 ## User Story

@@ -1,6 +1,6 @@
 server:
-  production: false   # true: disables --reload, enables `workers` (env: SERVER__PRODUCTION)
-  workers: 1           # only used when production=true (env: SERVER__WORKERS)
+  production: false   # true: disables --reload, enables `workers` (env: SERVER_PRODUCTION)
+  workers: 1           # only used when production=true (env: SERVER_WORKERS)
 
 dagster:
   endpoint: "http://localhost:3000"

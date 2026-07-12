@@ -1,5 +1,7 @@
 # HTML 본문 추출 재설계
 
+> 요건: [prd.md §2](../requirement/prd.md#2-문서-인제스트) "본문 정제"
+
 ## 1. 개요
 
 `parse_op`의 `HTMLCleanReader`(`src/rag_api/pipeline/ops/parse.py`)는 현재 태그 이름 기반
@@ -263,8 +265,8 @@ JS 렌더링은 WebConnector sync 중 SPA 페이지에서만 드물게 발동하
   검토 결과 현재는 도입하지 않는 쪽으로 결정: `MarkdownNodeParser`는 `chunk_size` 상한 개념이
   없어 헤딩 사이 긴 섹션을 그대로 하나의 노드로 만들기 때문에 `SentenceSplitter` 보조 분할기를
   별도로 결합해야 하고, 문서마다 청크 크기 편차가 커지면 dedup stage 3(`chunk_compare`)의
-  청크 수 비율 스케일링 로직(`.claude/memory/dedup_chunk_compare_containment_fix.md`)에 다시
-  영향을 줄 수 있다. 현재도 markdown 구문이 텍스트에 남아있는 것만으로 `SentenceSplitter`의
+  청크 수 비율 스케일링 로직(`docs/internal/design/dedup.md` "청크 수 비율 스케일링 도입" 항목)에
+  다시 영향을 줄 수 있다. 현재도 markdown 구문이 텍스트에 남아있는 것만으로 `SentenceSplitter`의
   문장/줄 경계가 더 뚜렷해지는 효과는 이미 얻고 있으므로(3.3), 운영 중 HTML 문서의 검색 품질이
   실제로 떨어진다는 신호가 쌓이기 전까지는 도입하지 않는다.
 - 2절 "남는 격차": 본문 블록 안에 섞인 짧은 사이트 반복 문구는 이 설계로 해결되지 않음 — 필요해지면

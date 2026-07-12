@@ -1,7 +1,7 @@
 ---
 id: US-22
 title: deleting 상태 문서의 ingest/delete 이벤트 즉시 버림
-status: in-progress
+status: done
 ---
 
 ## 배경

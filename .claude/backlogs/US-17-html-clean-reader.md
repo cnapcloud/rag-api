@@ -2,7 +2,7 @@
 id: US-17
 title: parse_op HTML clean reader — strip nav/footer/script (R-08)
 status: done
-requirement: docs/dev/requirement-multi-source-ingest.md — R-08
+requirement: docs/internal/design/multi-source-ingest.md — R-08
 ---
 
 ## User Story
