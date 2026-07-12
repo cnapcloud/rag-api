@@ -1,0 +1,11 @@
+apiVersion: builtin
+kind: HelmChartInflationGenerator
+metadata:
+  name: reloader
+name: reloader
+chartHome: ../../base/helm
+chart: reloader
+releaseName: reloader
+valuesFile: ./helm/values-dev.yaml
+includeCRDs: true
+namespace: infra

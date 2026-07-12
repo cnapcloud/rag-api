@@ -1,0 +1,100 @@
+fullnameOverride: ""
+nameOverride: redis-ha
+
+image:
+  # -- Redis image repository
+  repository: public.ecr.aws/docker/library/redis
+  tag: 8.2.2-alpine
+
+replicas: 3
+
+hardAntiAffinity: false
+
+affinity: |
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - redis-ha
+          topologyKey: kubernetes.io/hostname
+
+haproxy:
+  enabled: true
+  replicas: 1
+  image:
+    repository: public.ecr.aws/docker/library/haproxy
+    tag: 3.0.8-alpine
+  servicePort: 6379
+  readOnly:
+    port: 6380
+  resources:
+    limits:
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+  # Metrics 설정
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      disableAPICheck: true
+      labels:
+        prometheus: main
+    
+# Redis 리소스 설정
+auth: true
+existingSecret: redis-auth
+authKey: REDIS_PASSWORD
+
+redis:
+  port: 6379
+  masterGroupName: "mymaster"
+  disableCommands:
+    - FLUSHDB
+    - FLUSHALL
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+
+## Sentinel specific configuration options
+sentinel:
+  # -- Port to access the sentinel service
+  port: 26379
+  quorum: 2
+  resources:
+    limits:
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+exporter:
+  # -- If `true`, the prometheus exporter sidecar is enabled
+  enabled: true
+  image: oliver006/redis_exporter
+  # -- Exporter image tag
+  tag: v1.86.0
+  serviceMonitor:
+    enabled: true
+    # API 체크 비활성화 추가
+    disableAPICheck: true
+    labels:
+      prometheus: main
+
+persistentVolume:
+  enabled: true
+  storageClass: ~
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi

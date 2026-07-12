@@ -1,0 +1,11 @@
+apiVersion: builtin
+kind: HelmChartInflationGenerator
+metadata:
+  name: dagster
+name: dagster
+chartHome: ../../base/helm
+chart: dagster
+releaseName: dagster
+valuesFile: ./helm/values-dev.yaml
+includeCRDs: true
+namespace: llm

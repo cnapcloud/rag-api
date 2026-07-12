@@ -1,0 +1,11 @@
+apiVersion: builtin
+kind: HelmChartInflationGenerator
+metadata:
+  name: mailpit
+name: mailpit
+chartHome: ../../base/helm
+chart: mailpit
+releaseName: mailpit
+valuesFile: ./helm/values-dev.yaml
+includeCRDs: true
+namespace: infra

@@ -1,0 +1,195 @@
+global:
+  dagsterHome: "/opt/dagster/dagster_home"
+  dagsterInstanceConfigMap: "dagster-instance"
+  postgresqlSecretName: "dagster-postgresql-secret"
+
+dagsterWebserver:
+  nameOverride: "webserver"
+  replicaCount: 1
+  annotations:
+    secret.reloader.stakater.com/reload: "dagster-postgresql-secret"
+  env:
+    - name: TZ
+      value: Asia/Seoul
+    - name: DAGSTER_POSTGRES_URL
+      value: postgresql://dagster:$(DAGSTER_PG_PASSWORD)@cnpg-postgres-rw.infra.svc:5432/dagster
+  image:
+    repository: "cnapcloud/dagster"
+    tag: "1.13.8"
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 3000
+  readinessProbe:
+    httpGet:
+      path: "/server_info"
+      port: 3000
+    periodSeconds: 20
+    timeoutSeconds: 10
+    successThreshold: 1
+    failureThreshold: 3
+
+dagsterDaemon:
+  enabled: true
+  annotations:
+    secret.reloader.stakater.com/reload: "dagster-postgresql-secret"
+  env:
+    - name: TZ
+      value: Asia/Seoul
+    - name: DAGSTER_POSTGRES_URL
+      value: postgresql://dagster:$(DAGSTER_PG_PASSWORD)@cnpg-postgres-rw.infra.svc:5432/dagster
+  image:
+    repository: "cnapcloud/dagster"
+    tag: "1.13.8"
+    pullPolicy: Always
+  runCoordinator:
+    enabled: true
+    type: QueuedRunCoordinator
+    config:
+      queuedRunCoordinator:
+        maxConcurrentRuns: 3
+  runMonitoring:
+    enabled: true
+    pollIntervalSeconds: 30 # 실행 중인 run 상태를 30초마다 확인
+    maxResumeRunAttempts: 0 # run worker 크래시 시 재개 시도 안 함(바로 실패 처리)
+    maxRuntimeSeconds: 1800 # RUNNING 상태 30분 초과 시 실패 처리
+
+# top-level: dagster-instance ConfigMap의 run_launcher 설정
+#
+# [옵션 1] 내부 프로세스 실행 (docker-compose와 동일한 동작, dev 단순 테스트용)
+#   K8s Job을 생성하지 않고 dagster-daemon Pod 안에서 실행 (1.13.8: DefaultRunLauncher)
+# runLauncher:
+#   type: CustomRunLauncher
+#   config:
+#     customRunLauncher:
+#       module: dagster._core.launcher.default_run_launcher
+#       class: DefaultRunLauncher
+#       config: {}
+
+# [옵션 2] K8s Job 생성 (운영 권장)
+#   run마다 별도 K8s Job Pod를 생성해서 실행
+runLauncher:
+  type: K8sRunLauncher
+  config:
+    k8sRunLauncher:
+      jobNamespace: llm
+      envConfigMaps:
+        - name: dagster-pipeline-env
+      envSecrets:
+        - name: dagster-postgresql-secret
+        - name: dagster-rag-api-credentials
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+      runK8sConfig:
+        jobSpecConfig:
+          ttlSecondsAfterFinished: 1800 # Job 종료 후 30분 뒤 Pod 정리
+          activeDeadlineSeconds: 1800 # Pod Running 30분 초과 시 강제 종료
+        containerConfig:
+          env:
+            - name: TZ
+              value: Asia/Seoul
+        podSpecConfig:
+          # Optional: prefer scheduling run Jobs onto a dedicated node pool
+          # (e.g. GPU or high-memory nodes for heavy ingest workloads).
+          # Replace the matchExpressions key below with the node label used
+          # in your own cluster, or remove this affinity block entirely if
+          # you don't have a dedicated pool.
+          # affinity:
+          #   nodeAffinity:
+          #     preferredDuringSchedulingIgnoredDuringExecution:
+          #       - weight: 100
+          #         preference:
+          #           matchExpressions:
+          #             - key: <your-node-pool-label>
+          #               operator: Exists
+
+ingress:
+  enabled: true
+  apiVersion: "networking.k8s.io/v1/Ingress"
+  ingressClassName: nginx
+  dagsterWebserver:
+    host: "dagster.cnapcloud.com"
+    path: "/"
+    pathType: Prefix
+    tls:
+      enabled: false
+
+postgresql:
+  enabled: false
+  postgresqlHost: "cnpg-postgres-rw.infra.svc"
+  postgresqlUsername: dagster
+  postgresqlDatabase: dagster
+  service:
+    port: 5432
+
+generatePostgresqlPasswordSecret: false
+
+pythonLogs:
+  pythonLogLevel: INFO
+  managedPythonLoggers:
+    - ""
+
+dagster-user-deployments:
+  deployments:
+    - name: dag-rag-api
+      annotations:
+        configmap.reloader.stakater.com/reload: "dagster-rag-api-config"
+        secret.reloader.stakater.com/reload: "dagster-rag-api-credentials,dagster-postgresql-secret"
+      image:
+        repository: cnapcloud/rag-api
+        tag: "latest"
+        pullPolicy: Always
+      codeServerArgs:
+        - "-f"
+        - "src/rag_api/defs/definitions.py"
+      port: 4000
+      env:
+        - name: TZ
+          value: Asia/Seoul
+        - name: PYTHONPATH
+          value: /app/src
+        - name: DAGSTER_HOME
+          value: /opt/dagster/dagster_home
+        - name: DAGSTER_POSTGRES_URL
+          value: postgresql://dagster:$(DAGSTER_PG_PASSWORD)@cnpg-postgres-rw.infra.svc:5432/dagster
+        - name: OMP_NUM_THREADS
+          value: "1"
+        - name: OPENBLAS_NUM_THREADS
+          value: "1"
+      envFrom:
+        - secretRef:
+            name: dagster-rag-api-credentials   
+      volumes:
+        - name: dagster-storage
+          emptyDir: {}
+        - name: dagster-rag-api-config
+          configMap:
+            name: dagster-rag-api-config
+        - name: kiwi-user-words-config
+          configMap:
+            name: kiwi-user-words
+      volumeMounts:
+        - name: dagster-storage
+          mountPath: /opt/dagster/dagster_home/storage
+        - name: dagster-rag-api-config
+          mountPath: /app/settings.yaml
+          subPath: settings.yaml
+        - name: kiwi-user-words-config
+          mountPath: /app/data/kiwi_user_words.tsv
+          subPath: kiwi_user_words.tsv
+      # Optional: prefer scheduling this code server onto a dedicated node
+      # pool. Replace the matchExpressions key below with the node label
+      # used in your own cluster, or remove this affinity block entirely.
+      # affinity:
+      #   nodeAffinity:
+      #     preferredDuringSchedulingIgnoredDuringExecution:
+      #       - weight: 100
+      #         preference:
+      #           matchExpressions:
+      #             - key: <your-node-pool-label>
+      #               operator: Exists

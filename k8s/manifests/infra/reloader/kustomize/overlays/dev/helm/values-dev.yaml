@@ -1,0 +1,25 @@
+reloader:
+  watchGlobally: true  # true: 전체 네임스페이스, false: annotation 달린 리소스만
+  ignoreConfigMaps: false
+  ignoreSecrets: false
+
+  # annotation 기반 자동 감지 활성화
+  # Deployment/StatefulSet에 아래 annotation 추가 시 자동 재시작:
+  #   reloader.stakater.com/auto: "true"
+  # 특정 ConfigMap/Secret만 감지할 경우:
+  #   configmap.reloader.stakater.com/reload: "my-configmap"
+  #   secret.reloader.stakater.com/reload: "my-secret"
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+  serviceAccount:
+    create: true
+
+  serviceMonitor:
+    enabled: false

@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: minio-rag-api-mirror
+spec:
+  schedule: "30 3 * * *"  # Daily at 03:30 — cluster evaluates schedule in local time (KST), not UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mirror
+              image: minio/mc:latest
+              env:
+                - name: MINIO_ENDPOINT
+                  value: http://minio.infra.svc:9000
+                - name: MINIO_ROOT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-root-secret
+                      key: rootUser
+                - name: MINIO_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-root-secret
+                      key: rootPassword
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  mc alias set local "${MINIO_ENDPOINT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
+                  mc mirror --overwrite local/rag-api local/rag-api-backup
+                  echo "Mirror done, verifying..."
+
+                  DIFF_OUTPUT=$(mc diff local/rag-api local/rag-api-backup)
+                  if [ -n "$DIFF_OUTPUT" ]; then
+                    echo "RESULT: MISMATCH FOUND"
+                    echo "$DIFF_OUTPUT"
+                    exit 1
+                  fi
+                  echo "RESULT: SOURCE AND BACKUP MATCH"

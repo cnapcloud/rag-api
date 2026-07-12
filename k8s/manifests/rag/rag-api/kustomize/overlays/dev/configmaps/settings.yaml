@@ -1,0 +1,123 @@
+server:
+  production: true
+  workers: 1 
+
+dagster:
+  endpoint: "http://dagster-webserver.llm.svc.cluster.local:3000"
+
+s3:
+  endpoint: "http://minio.infra.svc.cluster.local:9000"
+  rag_bucket: "rag-api"
+  dagster_bucket: "dagster"
+  region: "us-east-1"
+  poll_interval_sec: 10
+  insecure: true
+
+postgres:
+  host: "cnpg-postgres-rw.infra.svc.cluster.local"
+  port: 5432
+  dbname: "rag-api"
+  user: "rag-api"
+  password: "password"
+  pool_size: 5
+  connect_timeout: 30
+
+qdrant:
+  host: "qdrant.llm.svc.cluster.local"
+  port: 6333
+  insecure: true
+
+redis:
+  host: "redis-ha-haproxy.infra.svc.cluster.local"
+  port: 6379
+  db: 0
+
+queue_worker:
+  enabled: false # true이면 dagster가 비활성화됨
+  max_workers: 4
+
+queue_poll:
+  poll_interval_sec: 5
+  max_per_poll: 5
+  retry_interval_sec: 10  # 동일 문서 재시도 간격
+
+ingestion:
+  max_file_size_mb: 10
+  min_content_chars: 200
+  html_favor_precision: true
+
+dedup:
+  enabled: true
+
+  simhash:
+    ngram: 3
+    num_bands: 4
+    simhash_bits: 64
+    hamming_identical_threshold: 2
+    hamming_similar_threshold: 5
+
+  minhash:
+    jaccard_threshold: 0.65
+    title_fuzzy_threshold: 0.85
+    title_only_min_jaccard_floor: 0.25
+    user_words_path: "data/kiwi_user_words.tsv"
+
+  chunk_compare:
+    chunk_match_threshold: 0.50
+    body_identical_threshold: 0.95
+    body_similar_threshold: 0.75
+    compare_all_candidates: false
+
+chunking:
+  strategy: "recursive"  # recursive| semantic
+  chunk_size: 1024
+  chunk_overlap: 128
+  semantic_threshold: 0.8
+
+embedding:
+  provider: "ollama"            # ollama / openai
+  model: "bge-m3"
+  vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
+  ollama_url: "http://ollama.llm.svc.cluster.local:11434"
+  openai_api_key: ""
+  openai_model: "text-embedding-3-small"
+
+retrieval:
+  mode: "hybrid"
+  top_k: 10
+  hybrid:
+    alpha: 0.5                  # alpha=1.0 -> dense only, alpha=0.0 -> sparse only
+    rrf_k: 60
+  similarity:
+    min_score: 0.0              # 0.0 = no filter; set e.g. 0.4 to discard low-similarity results
+  rerank:
+    enabled: true
+    provider: "jina"
+    model: "jina-reranker-v2-base-multilingual"
+    top_n: 3
+    timeout_sec: 5
+    fallback_on_error: true
+    
+knowledge_bases:
+  - id: "kb-01"
+    name: "지식베이스 01"
+    tags: ["general", "default"]
+    description: "첫 번째 지식베이스입니다."
+  - id: "kb-02"
+    name: "지식베이스 02"
+    description: "두 번째 지식베이스입니다."
+
+mcp:
+  enabled: true
+  transport: streamable-http
+  host: "0.0.0.0"
+  port: 8001
+
+tracing:
+  enabled: false
+  langfuse_baseurl: "http://langfuse-web.llm.svc.cluster.local:3000"
+  service_name: "rag-api"
+
+logging:
+  level: INFO                   # DEBUG / INFO / WARNING / ERROR
+  names: [rag_api, rag_ent]
