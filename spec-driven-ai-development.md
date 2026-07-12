@@ -79,5 +79,6 @@ docs/internal/design/*.md          설계
 import 경로, 예외 처리, 로깅, 테스트 스타일 등은 `CLAUDE.md`와 `.claude/rules/`를 참고한다.
 스펙 추적성 상세 규칙(인덱스 파일 관리, 고정 링크 형식)은
 `.claude/rules/conventions/00-progress-tracking.md`, `07-traceability.md`에 있다 — 이 문서는
-그 규칙을 워크플로우 순서로 정리한 요약이며, AI(Claude Code)도 `CLAUDE.md`를 통해 세션 시작 시
-이 문서를 그대로 참고한다.
+그 규칙을 워크플로우 순서로 정리한 요약이다. 사람이 새 작업을 시작하기 전에 직접 읽고 그 절차에
+따라 AI에게 backlog/plan/구현을 단계별로 요청하는 진입 문서이며, AI 세션에 자동으로 로드되지
+않는다.

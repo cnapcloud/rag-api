@@ -71,10 +71,8 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 각 파일의 Full History/개별 상세 파일은 해당 항목을 실제로 조사·작업할 때만 연다.
 MEMORY.md 인덱스가 가리키는 개별 상세 파일은 이번 작업과 직접 관련될 때만 연다.
 
-새 기능/버그 수정을 시작하기 전에 [`spec-driven-ai-development.md`](spec-driven-ai-development.md)의 스펙 기반 개발 절차
-(backlog 작성, design 링크, done 전환 시 확인 항목)를 따른다. 상세 규칙은
-`.claude/rules/conventions/00-progress-tracking.md`(세션 북키핑), `07-traceability.md`(링크
-포맷, backlog/design 작성 시) 참고.
+backlog/plan 진행 상황 갱신 규칙은 `.claude/rules/conventions/00-progress-tracking.md`(세션
+북키핑)에, design 문서·backlog 작성 시 링크 포맷은 `07-traceability.md`에 있다.
 
 ## Memory (`.claude/memory/`)
 
