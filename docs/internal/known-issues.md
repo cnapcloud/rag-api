@@ -21,10 +21,10 @@
   - [11. dagster-rag-api 코드서버가 잘못된 command로 기동 즉시 종료](#11-dagster-rag-api-코드서버가-잘못된-command로-기동-즉시-종료)
   - [12. /ready의 동기 블로킹 ping이 단일 이벤트 루프를 점유해 /health 등 무관한 요청까지 지연](#12-ready의-동기-블로킹-ping이-단일-이벤트-루프를-점유해-health-등-무관한-요청까지-지연)
   - [13. SimHash stage1 'similar' 판정이 stage2(MinHash) 확인 없이 바로 커밋됨](#13-simhash-stage1-similar-판정이-stage2minhash-확인-없이-바로-커밋됨)
-  - [14. chunk_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
+  - [14. chunk\_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
   - [15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가](#15-reindex-시-simhashminhash-후보-조회가-statusindexed만-대상으로-하여-outdated-문서-방향-탐지-불가)
   - [16. Dagster 컨테이너 강제 중단 시 STARTING 상태 run이 재시작 후에도 영구히 STARTING에 남음](#16-dagster-컨테이너-강제-중단-시-starting-상태-run이-재시작-후에도-영구히-starting에-남음)
-  - [17. 위키형 페이지에서 trafilatura favor_precision이 본문 90%+ 손실](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)
+  - [17. 위키형 페이지에서 trafilatura favor\_precision이 본문 90%+ 손실](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)
 
 ---
 
