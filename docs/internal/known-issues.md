@@ -125,23 +125,32 @@ Dagster가 `owners` 파라미터를 정식 릴리스하면 경고는 자동으�
 
 **현재 대안**
 
-`POST /api/connectors/{id}/sync/abort`로 수집 루프를 중단할 수 있다. 커넥터가 파일/URL을 처리할 때마다 abort 플래그를 확인하고 감지 시 즉시 루프를 종료한다. `abort_sync()`는 Redis 큐/딜레이 큐에 남아있는 문서(`status=pending`)는 `dequeue_upload_events()`로 제거하고, 실행 중(`status=running`) 문서는 `run_id`가 기록되어 있으면 `terminate_dagster_run(run_id)`로 바로 종료하며, `run_id`가 아직 기록되지 않은(QUEUED/STARTING 구간) 문서는 `find_active_run_ids_by_doc_ids(doc_id)`로 Dagster GraphQL에서 `doc_id` 태그로 활성 run을 조회해 종료 대상에 포함한다(2026-06-28 `c770ddb` 최초 추가, 2026-07-04 US-34로 QUEUED/STARTING 구간 gap 해소 — 관련 부작용은 [이슈 6](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그) 참조).
+`POST /api/connectors/{id}/sync/abort`로 수집 루프를 중단할 수 있다. `abort_sync()`는 Redis
+큐/딜레이 큐에 남은 문서(`status=pending`)는 `dequeue_upload_events()`로 제거하고, 실행 중
+(`status=running`) 문서는 `run_id`가 있으면 `terminate_dagster_run(run_id)`로, 없으면(QUEUED/
+STARTING 구간) `find_active_run_ids_by_doc_ids(doc_id)`로 Dagster GraphQL에서 `doc_id` 태그로
+찾아 종료한다. 관련 부작용은 [이슈
+6](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그) 참조.
 
-**진행 상황 (2026-07-04 업데이트 — US-34 구현 완료)**
+센서가 Redis 이벤트를 pop한 시점과 `RunRequest`를 yield하는 시점 사이의 서브초 레이스는 여전히
+남아있다([이슈 9](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락)
+참조).
 
-- 항목 1, 2, 4는 기존 방식으로 구현되어 있음을 코드로 확인.
-- 항목 3(QUEUED/STARTING run 제거)은 `infra/dagster_utils.py`의 `find_active_run_ids_by_doc_ids()`(GraphQL `runsOrError(filter: {statuses: [QUEUED, STARTING, STARTED, CANCELING]})` 조회 후 `doc_id` 태그로 client-side 필터링)와 `abort_sync()`의 호출로 해결됨. `run_id`가 없는 `status=running` 문서의 `doc_id`를 모아 조회하고, 반환된 run_id를 기존 종료 대상 집합에 합쳐 `terminate_dagster_run()`으로 종료한다.
-  - 이와 별개로 센서 한 틱 안에서 "Redis 이벤트 pop"과 "RunRequest yield" 사이의 아주 짧은 순간에 abort가 끼어드는 서브초 단위 레이스가 있다. 상세 내용은 [이슈 9](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락) 참조.
-  - 근본 원인과 관련 메커니즘(메인 큐 dedup 부재, `_is_blocked_by_active_run()`의 `run_id` 의존성)은 [duplicate-request-handling.md](design/duplicate-request-handling.md) 참조.
-- **queue_worker 모드(`queue_worker.enabled=true`, Dagster 미사용)에서는 abort/force-fail로 실행 중인 백그라운드 작업을 아예 종료할 수 없는 별도 gap이 남아있다.** 이 모드에서는 `QueueWorker`(`pipeline/queue/queue_worker.py`)가 Redis 큐를 직접 `r.rpop()`으로 꺼내 `asyncio.create_task()` -> `ThreadPoolExecutor`로 ingest/delete를 실행하는데, 이 태스크가 어디에도 등록되지 않아 취소할 방법이 없다. `dagster_utils.terminate_dagster_run()`은 `queue_worker.enabled=true`일 때 무조건 no-op(`infra/dagster_utils.py:75-77`)이라 애초에 대상이 되지 않는다.
-  - `POST /{connector_id}/sync/abort`(`connectors.py` `abort_sync()`)는 `dequeue_upload_events()`로 아직 Redis에 남은 항목만 제거하고, 이미 `r.rpop()`으로 꺼내져 실행 중인 문서는 `set_failed(doc_id, "Aborted")`로 상태만 바뀔 뿐 실제 스레드는 계속 실행되어 완료 시 상태를 덮어쓸 수 있다. **경고 없이 202로 성공 응답한다.**
-  - `POST /kb/{kb_id}/docs/{doc_id}/fail`(`docs.py` `force_fail_doc()`)은 동일한 한계를 이미 코드에서 인지하고 있으며(`worker_mode_active` 체크, L385-404), 응답에 `"queue_worker mode has no terminate support"` 경고 필드를 포함한다. `abort_sync()`에는 이 경고가 없다.
-  - **정정 (2026-07-03)**: 처음엔 "doc_id -> Task 레지스트리 + `task.cancel()`"을 근본 해결책으로 적었으나 부정확함. `run_in_executor(executor, func)`는 `concurrent.futures.Future`를 asyncio Future로 래핑하는데, 워커 스레드가 이미 `func`(=`run_ingest_pipeline`) 실행을 시작한 뒤에는 `concurrent.futures.Future.cancel()`이 무조건 `False`를 반환한다 — Python 스레드는 외부에서 안전하게 강제 종료할 수 없기 때문이다. 이 상태에서 바깥 asyncio Task에 `.cancel()`을 호출하면 asyncio 쪽 장부만 CANCELLED로 마킹되고 `await` 지점에서 `CancelledError`가 올라올 뿐, 실제 워커 스레드는 아무도 기다리지 않는 채로 끝까지 실행되어 여전히 자기 결과로 상태를 덮어쓴다. `task.cancel()`이 실제로 막을 수 있는 건 아직 세마포어(`self._semaphore`)를 획득하지 못해 실행이 시작조차 안 된 대기 중인 태스크뿐이다.
-    진짜 해결하려면 둘 중 하나가 필요하다: (a) `run_ingest_pipeline`/각 op(parse/chunk/embed/upsert) 내부에 협조적 취소 체크포인트를 op 경계마다 심기(파이프라인 전체를 건드려야 함), 또는 (b) 스레드 대신 별도 OS 프로세스(`ProcessPoolExecutor`/subprocess)로 실행해 SIGTERM으로 강제 종료 — Dagster 모드의 `terminateRun()`이 실제로 작동하는 이유가 바로 이것(job이 별도 프로세스로 실행됨)이다. 아직 백로그 미등록.
+**queue_worker 모드(Dagster 미사용) 제약**
+
+abort/force-fail로 실행 중인 백그라운드 작업을 종료할 방법이 없다. `ThreadPoolExecutor`로 실행된
+태스크는 시작된 뒤에는 외부에서 안전하게 취소할 수 없고(Python 스레드의 근본적 한계),
+`terminate_dagster_run()`도 이 모드에서는 no-op이라 대상이 되지 않는다.
+
+- `abort_sync()`는 실행 중인 문서를 `set_failed()`로 상태만 바꾸고 경고 없이 202를 반환한다 —
+  실제 스레드는 계속 실행되어 완료 시 상태를 덮어쓸 수 있다.
+- `force_fail_doc()`은 동일한 한계를 응답 경고 필드로 명시한다.
+- 근본 해결은 op 경계마다 협조적 취소 체크포인트를 두거나, 스레드 대신 별도 프로세스로 실행해
+  SIGTERM으로 종료하는 방식뿐이며 아직 미구현.
 
 **미해결**
 
-서브초 단위 레이스(known limitation), queue_worker 모드 태스크 취소(백로그 미등록)는 미구현 상태. Dagster 모드의 QUEUED/STARTING run 제거(US-34)는 해결됨.
+Dagster 모드의 서브초 단위 레이스, queue_worker 모드의 실행 중 태스크 취소.
 
 ---
 
@@ -240,7 +249,9 @@ dagster._core.errors.DagsterExecutionInterruptedError
 
 **현재 동작**
 
-로그 노이즈. 이후 동일 doc에 대한 새 run이 `validate_op`에서 `status == "failed"` 감지 후 조기 종료됨.
+로그 노이즈. 이후 동일 doc에 대한 새 run은 `validate_op`의 상태 체크 없이 정상 처리된다(과거에는
+`status == "failed"` 감지 후 조기 종료됐으나 해당 체크는 제거됨 — 방어선 상세는 [이슈
+3](#3-커넥터-동기화-중단-불가) 참조).
 
 **해결 방안**
 
