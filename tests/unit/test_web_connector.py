@@ -161,6 +161,54 @@ class TestProcessPage:
         assert "pending" in statuses
         mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
 
+    def test_missing_http_etag_falls_back_to_content_hash_skips_when_unchanged(self):
+        from rag_api.connectors.web import WebConnector
+
+        content_hash = "03f86bf34c529b077ec86074a5f79b75"
+        existing_doc = {**_BASE_DOC, "content_version": content_hash, "title": "Same Title"}
+        resp = _make_response(etag="")
+        client = _make_client(resp)
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Same Title"),
+        ):
+            connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
+            result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
+
+        assert result == _HTML_SIMPLE
+        mock_upload.assert_not_called()
+        mock_enqueue.assert_not_called()
+        mock_update.assert_not_called()
+
+    def test_missing_http_etag_falls_back_to_content_hash_restages_when_changed(self):
+        from rag_api.connectors.web import WebConnector
+
+        existing_doc = {**_BASE_DOC, "content_version": "some-other-hash"}
+        resp = _make_response(etag="")
+        client = _make_client(resp)
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields") as mock_update,
+            patch("rag_api.infra.s3.upload_object", return_value="s3-etag") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+            patch("rag_api.connectors.web._extract_title", return_value="Test Page"),
+        ):
+            connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
+            result = connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
+
+        assert result == _HTML_SIMPLE
+        mock_upload.assert_called_once()
+        mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
+        pending_call = next(
+            c for c in mock_update.call_args_list if c.args[1].get("status") == "pending"
+        )
+        assert pending_call.args[1]["content_version"] == "03f86bf34c529b077ec86074a5f79b75"
+
     def test_deleted_doc_is_refetched(self):
         from rag_api.connectors.web import WebConnector
 

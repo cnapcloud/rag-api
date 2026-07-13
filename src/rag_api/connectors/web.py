@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import time
@@ -304,6 +305,10 @@ class WebConnector:
 
         html = resp.text
         etag = resp.headers.get("etag", "").strip('"')
+        if not etag:
+            # Server sent no ETag header — fall back to a content hash so unchanged
+            # pages are still detected as unchanged (matches S3's ETag for a plain PUT).
+            etag = hashlib.md5(html.encode("utf-8")).hexdigest()
 
         # Depth-0 pages are seed/index pages — crawl their links but don't stage.
         if self.skip_seed_pages and depth == 0:
