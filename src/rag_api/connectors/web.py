@@ -127,6 +127,10 @@ class WebConnector:
       min_content_chars   int        Pages where trafilatura extracts fewer than this many
                                      characters are skipped from staging (default 200).
                                      Set to 0 to disable.
+      unrestricted        bool       Disable the seed-path scope check — any URL on the same
+                                     domain as a seed URL is crawled, not just paths under the
+                                     seed's own path (default False). Crawl size is still
+                                     bounded by depth/max_pages.
     """
 
     def __init__(self, config: dict) -> None:
@@ -140,6 +144,7 @@ class WebConnector:
         self.timeout: int = int(config.get("request_timeout_sec", 30))
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.skip_seed_pages: bool = bool(config.get("skip_seed_pages", True))
+        self.unrestricted: bool = bool(config.get("unrestricted", False))
         from rag_api.config.settings import get_settings
         self.min_content_chars: int = int(
             config.get("min_content_chars", get_settings().ingestion.min_content_chars)
@@ -156,6 +161,9 @@ class WebConnector:
         # https://example.com     → full domain is allowed.
         self._seed_prefixes: frozenset[str] = frozenset(
             _seed_prefix(url) for url in self.seed_urls if url
+        )
+        self._seed_netlocs: frozenset[str] = frozenset(
+            urlparse(url).netloc for url in self.seed_urls if url
         )
 
     def sync(self, kb_id: str, connector_id: str) -> None:
@@ -228,11 +236,18 @@ class WebConnector:
             if fnmatch(url, pat):
                 return False
 
-        # Must fall under at least one seed URL's path scope.
         p = urlparse(url)
-        base = urlunparse((p.scheme, p.netloc, p.path, "", "", ""))
-        if not any(base == prefix or base.startswith(prefix + "/") for prefix in self._seed_prefixes):
-            return False
+        if self.unrestricted:
+            # Same domain as a seed URL, but path scope is not enforced.
+            if p.netloc not in self._seed_netlocs:
+                return False
+        else:
+            # Must fall under at least one seed URL's path scope.
+            base = urlunparse((p.scheme, p.netloc, p.path, "", "", ""))
+            if not any(
+                base == prefix or base.startswith(prefix + "/") for prefix in self._seed_prefixes
+            ):
+                return False
 
         # include_patterns is an additional filter within scope.
         if self.include_patterns:

@@ -33,3 +33,5 @@
 | 34 | Connector Abort/Delete Guard가 QUEUED/STARTING Dagster Run을 놓치는 버그 | US-34 | 통합(backlog 참고) — done |
 | 35 | Dedup Stage 3 — 청크 단위 임베딩 비교 (chunk_compare) | US-35 | 통합(backlog 참고) — done |
 | 36 | HTMLCleanReader를 trafilatura 밀도 기반 추출로 교체 | US-36 | 통합(backlog 참고) — done |
+| 37 | WebConnector — unrestricted 도메인 스코프 옵션 (백엔드) | US-37 | 통합(backlog 참고) — done |
+| 38 | WebConnector Admin UI — seed page 포함 / unrestricted 체크박스 노출 | US-38 | 통합(backlog 참고) — done |
