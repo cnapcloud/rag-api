@@ -825,6 +825,14 @@ trafilatura 소스(`trafilatura/settings.py:143`)를 확인한 결과 `favor_pre
 정상 포함됨을 확인. 상세 설계는
 `docs/internal/design/html-extraction.md` §3.2 참고.
 
+**`html_extraction_mode` 값별 동작**
+
+| 값 | 판단 기준 | 트레이드오프 |
+|----|-----------|--------------|
+| `"precision"` | 애매하면 제외 | 본문 일부가 boilerplate로 오판되어 손실될 수 있음 — 위키형 페이지(namu.wiki 등)에서 본문 90%+ 손실 실측됨 |
+| `"balanced"` | 표준 임계치, 모드 전용 로직 미적용 | precision/recall 중간값. 검증된 운영 데이터는 아직 없음 |
+| `"recall"` (기본값) | 애매하면 포함 | 라이선스 푸터 등 짧은 boilerplate가 본문에 섞여 들어올 수 있음(실측 확인) — 그러나 본문 손실보다는 검색 가능성을 우선한 선택 |
+
 **잔여 이슈**
 
 - US-39 이전에 `precision` 모드로 이미 인제스트된 기존 HTML 문서는 자동으로 재추출되지
