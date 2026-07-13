@@ -14,6 +14,7 @@
 ## 주의사항
 
 - `redis.py`와 `s3.py`는 과거에 내용이 뒤바뀌는 버그가 있었음 (minio.py 시절). 파일을 새로 작성할 때 내용 확인 필수.
+- `upload_object`의 `metadata` 값은 `x-amz-meta-*` HTTP 헤더로 전송되므로 ASCII만 허용됨 — 한글 등 non-ASCII 값(예: source_uri)을 그대로 넣으면 boto3 `ParamValidationError`. `upload_object` 내부에서 자동으로 percent-encode하므로 커넥터 코드에서 별도 처리 불필요, 새 metadata 키 추가 시에도 이 인코딩을 우회하지 말 것.
 - `dagster_utils.py`의 함수는 `queue_worker.enabled = true`일 때 no-op. Dagster 없이 동작하는 배포 모드를 고려할 것.
 
 ## Redis 키 컨벤션

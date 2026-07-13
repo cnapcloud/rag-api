@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from rag_api.config.settings import get_settings
 
@@ -148,6 +149,8 @@ def upload_object(
     """Upload a file to S3 and return the ETag.
 
     metadata values are stored as x-amz-meta-* headers (boto3 adds the prefix automatically).
+    Header values must be ASCII, so non-ASCII characters (e.g. Korean source URLs) are
+    percent-encoded before being sent — boto3 raises ParamValidationError otherwise.
     """
     cfg = get_settings().s3
     client = get_s3_client()
@@ -160,7 +163,7 @@ def upload_object(
         ContentType=content_type,
     )
     if metadata:
-        kwargs["Metadata"] = metadata
+        kwargs["Metadata"] = {k: quote(v) for k, v in metadata.items()}
 
     response = client.put_object(**kwargs)
     etag = response.get("ETag", "").strip('"')
