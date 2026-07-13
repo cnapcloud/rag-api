@@ -59,7 +59,7 @@ def _is_blocked_by_active_run(
     doc_id: str,
 ) -> bool:
     """Return True and enqueue delay if an active Dagster run is blocking this event."""
-    from rag_api.pipeline.ops.meta import set_failed
+    from rag_api.pipeline.utils.doc_state import set_failed
 
     s = doc.get("status", "")
     if s != "running":
@@ -138,7 +138,7 @@ def event_queue_sensor(context: SensorEvaluationContext):
             continue
 
         from rag_api.infra.postgres import get_doc_by_id
-        from rag_api.pipeline.ops.meta import set_processing
+        from rag_api.pipeline.utils.doc_state import set_processing
 
         doc = get_doc_by_id(doc_id)
         if doc and doc.get("status") == "deleting":

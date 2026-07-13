@@ -47,7 +47,7 @@ class TestRecoverDocEndpoint:
                 {"doc_id": DOC_ID, "kb_id": "kb-test", "status": "failed"},
             ]),
             patch("rag_api.infra.postgres.update_doc_fields"),
-            patch("rag_api.pipeline.ops.meta.set_failed", side_effect=fake_set_failed),
+            patch("rag_api.pipeline.utils.doc_state.set_failed", side_effect=fake_set_failed),
             patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
         ):
             resp = client.post(f"/api/kb/kb-test/docs/{DOC_ID}/recover")

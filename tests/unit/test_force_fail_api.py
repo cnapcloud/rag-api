@@ -42,7 +42,7 @@ class TestForceFail:
             patch("rag_api.infra.postgres.get_doc_by_id", return_value=_doc("running", "run-1")),
             patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
             patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail")
         assert resp.status_code == 200
@@ -56,7 +56,7 @@ class TestForceFail:
             patch("rag_api.infra.postgres.get_doc_by_id", return_value=_doc("deleting", "run-2")),
             patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
             patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail")
         assert resp.status_code == 200
@@ -69,7 +69,7 @@ class TestForceFail:
             patch("rag_api.infra.postgres.get_doc_by_id", return_value=_doc("pending")),
             patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
             patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail")
         assert resp.status_code == 200
@@ -82,7 +82,7 @@ class TestForceFail:
             patch("rag_api.infra.postgres.get_doc_by_id", return_value=_doc("pending", "run-3")),
             patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
             patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail")
         assert resp.status_code == 200
@@ -95,7 +95,7 @@ class TestForceFail:
             patch("rag_api.infra.postgres.get_doc_by_id", return_value=_doc("uploading")),
             patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
             patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail")
         assert resp.status_code == 200
@@ -108,7 +108,7 @@ class TestForceFail:
             patch("rag_api.infra.postgres.get_doc_by_id", return_value=_doc("running", "run-1")),
             patch("rag_api.infra.dagster_utils.terminate_dagster_run"),
             patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events"),
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail?reason=stuck+in+prod")
         assert resp.status_code == 200
@@ -143,7 +143,7 @@ class TestForceFail:
                 "rag_api.infra.dagster_utils.terminate_dagster_run",
                 side_effect=RuntimeError("Dagster force-terminate failed"),
             ),
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail")
         assert resp.status_code == 500
@@ -158,7 +158,7 @@ class TestForceFail:
             patch("rag_api.config.settings.get_settings", return_value=fake_cfg),
             patch("rag_api.infra.dagster_utils.terminate_dagster_run"),
             patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
-            patch("rag_api.pipeline.ops.meta.set_failed") as mock_fail,
+            patch("rag_api.pipeline.utils.doc_state.set_failed") as mock_fail,
         ):
             resp = client.post(f"/api/kb/{KB_ID}/docs/{DOC_ID}/fail")
         assert resp.status_code == 200

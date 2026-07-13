@@ -5,6 +5,10 @@
 각 Op은 **순수 함수**여야 한다. Dagster `@op` 래퍼와 `runner.py` 양쪽에서 재사용되기 때문.
 외부 상태 변경(Redis, Qdrant, MinIO 쓰기)은 `meta.py`, `upsert.py`에만 허용.
 
+`meta.py`는 인제스트 파이프라인 마지막 단계(`set_indexed`)만 담당하며, 나머지 상태 전이
+(`set_pending`/`set_processing`/`set_failed`/`set_deleting` 등)는 파이프라인 안팎에서
+공용으로 쓰이므로 `pipeline/utils/doc_state.py`에서 직접 import한다.
+
 ## 파이프라인 계약
 
 ```
@@ -13,7 +17,7 @@ parse(kb_id, doc_source)                     → list[Document]
 chunk(documents, strategy, chunk_size, ...)  → list[BaseNode]
 embed(nodes)                                 → list[BaseNode]  # embedding 주입됨
 upsert(kb_id, doc_key, nodes)               → UpsertResult
-meta(kb_id, doc_key, status, ...)           → None
+set_indexed(doc_id, upsert_result, ...)     → None
 ```
 
 ## 청킹 전략

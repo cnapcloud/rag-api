@@ -6,6 +6,7 @@ import logging
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from rag_api.config.settings import get_settings
 from rag_api.exceptions import ConfigError
@@ -77,8 +78,9 @@ def ensure_collection(
         return
     except ConfigError:
         raise
-    except Exception:
-        pass
+    except UnexpectedResponse as e:
+        if e.status_code != 404:
+            raise
     c.create_collection(
         collection_name=kb_id,
         vectors_config={

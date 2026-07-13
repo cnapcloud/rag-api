@@ -12,7 +12,7 @@ def delete_failure_hook(context: HookContext) -> None:
         doc_id: str = run_tags.get("doc_id", "")
         if not doc_id:
             return
-        from rag_api.pipeline.ops.meta import set_failed
+        from rag_api.pipeline.utils.doc_state import set_failed
         set_failed(doc_id, f"delete_job op failed: {context.op.name}", run_id=context.run_id)
         context.log.info("delete_failure_hook: set_failed doc_id=%s op=%s", doc_id, context.op.name)
     except Exception as e:

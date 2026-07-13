@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import rag_api.infra.postgres as _pg
 
 if TYPE_CHECKING:
-    from rag_api.pipeline.utils.upsert import UpsertResult
+    from rag_api.pipeline.ops.upsert import UpsertResult
 
 logger = logging.getLogger(__name__)
 

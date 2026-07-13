@@ -89,7 +89,7 @@ def _run_sensor(
         if set_failed_calls is not None:
             stack.enter_context(
                 patch(
-                    "rag_api.pipeline.ops.meta.set_failed",
+                    "rag_api.pipeline.utils.doc_state.set_failed",
                     side_effect=lambda doc_id, err, run_id="": set_failed_calls.append((doc_id, run_id)),
                 )
             )
