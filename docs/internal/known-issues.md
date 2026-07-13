@@ -25,6 +25,7 @@
   - [15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가](#15-reindex-시-simhashminhash-후보-조회가-statusindexed만-대상으로-하여-outdated-문서-방향-탐지-불가)
   - [16. Dagster 컨테이너 강제 중단 시 STARTING 상태 run이 재시작 후에도 영구히 STARTING에 남음](#16-dagster-컨테이너-강제-중단-시-starting-상태-run이-재시작-후에도-영구히-starting에-남음)
   - [17. 위키형 페이지에서 trafilatura favor\_precision이 본문 90%+ 손실](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)
+  - [18. 웹 커넥터 ETag 미존재 시 raw HTML 해시가 페이지 내 랜덤 블롭 때문에 매 sync마다 달라짐](#18-웹-커넥터-etag-미존재-시-raw-html-해시가-페이지-내-랜덤-블롭-때문에-매-sync마다-달라짐)
 
 ---
 
@@ -853,3 +854,39 @@ trafilatura 소스(`trafilatura/settings.py:143`)를 확인한 결과 `favor_pre
 - `connectors/web.py`의 `_has_sufficient_content()`는 여전히 중립(`balanced`) 정책으로
   trafilatura를 호출해 스테이징 여부를 판단한다 — 파싱 단계(`lenient`)와 게이팅 단계
   (`balanced`)의 기준이 다른 비일관성은 이번 수정 범위 밖.
+
+---
+
+## 18. 웹 커넥터 ETag 미존재 시 raw HTML 해시가 페이지 내 랜덤 블롭 때문에 매 sync마다 달라짐
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved |
+| 발견일 | 2026-07-13 |
+| 해결일 | 2026-07-13 |
+| 심각도 | MED |
+
+**증상**
+
+web 커넥터로 HTTP `ETag` 헤더를 보내지 않는 사이트(namu.wiki 등)를 sync할 때마다, 실제 내용이
+바뀌지 않은 문서도 계속 재인덱싱됐다.
+
+**원인**
+
+HTTP `ETag`가 없으면 raw HTML 전체를 MD5 해싱해 `content_version`으로 쓰도록 되어 있었는데
+(`web.py` `_process_page()`), namu.wiki 같은 사이트는 `window.INITIAL_STATE="..."` 형태로 매
+요청마다 내용이 랜덤하게 바뀌는 인코딩 블롭을 HTML에 직접 삽입한다(스크래핑 방지 목적으로
+추정 — 길이는 고정, 바이트는 매번 다름). 동일 URL을 연속으로 두 번 fetch해 비교한 결과, raw
+HTML MD5는 매번 달랐지만 `trafilatura.extract()`로 뽑은 본문 텍스트의 MD5는 동일했다.
+
+**해결**
+
+`_fallback_content_hash()`(`web.py`)를 추가해, ETag가 없을 때 raw HTML 대신 trafilatura로
+추출한 본문 텍스트를 해싱하도록 변경(추출 실패 시에만 raw HTML 해시로 폴백). [이슈
+17](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)과 같은 namu.wiki "고양이"
+문서로 재검증 완료.
+
+**잔여 이슈**
+
+이전(raw HTML 해시) 방식으로 이미 저장된 `content_version`은 이번 수정 이후 첫 sync에서 한 번은
+다시 불일치로 재인덱싱된다 — 그 이후부터는 안정적으로 스킵된다.
