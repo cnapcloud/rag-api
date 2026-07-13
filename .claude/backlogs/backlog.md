@@ -42,3 +42,4 @@
 | [US-36](US-36-html-trafilatura-extraction.md) | HTMLCleanReader를 trafilatura 밀도 기반 추출로 교체 | done |
 | [US-37](US-37-web-connector-unrestricted-scope.md) | WebConnector — unrestricted 도메인 스코프 옵션 (백엔드) | done |
 | [US-38](US-38-web-connector-admin-ui-unrestricted.md) | WebConnector Admin UI — seed page 포함 / unrestricted 체크박스 노출 | done |
+| [US-39](US-39-html-extraction-mode-recall-default.md) | HTML 추출 모드(precision/recall/balanced) 설정화 + 기본값 recall 전환 | done |

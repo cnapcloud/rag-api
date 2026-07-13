@@ -84,17 +84,38 @@ trafilatura는 DOM 블록별 텍스트 길이 대비 링크 밀도, 태그 밀�
 `_has_sufficient_content()`가 콘텐츠 충분성 체크용으로 이미 사용 중), 실제 추출 결과를
 `Document.text`로 쓰는 것은 이번이 처음이다.
 
-### 3.2 `favor_precision=True`
+### 3.2 추출 모드 — `precision` / `recall` / `balanced` (US-39, 2026-07-13 갱신)
 
-trafilatura는 재현율(favor_recall)과 정밀도(favor_precision) 중 하나로 편향을 조정할 수 있다.
-애매한 블록(본문인지 사이드바인지 경계에 있는 블록)을 본문에서 제외하는 `favor_precision=True`를
-사용한다.
+trafilatura는 `favor_precision`/`favor_recall` 두 boolean을 받지만, 내부적으로는
+(`trafilatura/settings.py`) `"recall" if recall else "precision" if precision else "balanced"`
+순서로 평가되는 3단계 tri-state다 — `favor_recall=True`를 주면 `favor_precision` 값은 아예
+무시된다. 이 tri-state를 `settings.ingestion.html_extraction_mode`
+(`Literal["precision","recall","balanced"]`)로 그대로 노출한다.
 
-- 근거: dedup SimHash는 "본문이 거의 동일한가"를 character 3-gram으로 비교하므로, 애매한
-  블록이 문서마다 다르게 들쭉날쭉 포함/제외되면 실제로는 동일한 본문인 두 문서의 SimHash가
-  벌어져 오탐(무관 판정)이 늘어난다. 정밀도 우선이 재현율 우선보다 dedup 안정성에 유리하다.
-- 트레이드오프: 실제 본문 일부가 드물게 잘려나갈 수 있음 — trafilatura 자체의 알려진
-  트레이드오프이므로 별도 대응 없음 (오픈 이슈 참고).
+**모드별 실제 동작 차이** (`trafilatura==2.1.0` 소스 확인, `htmlprocessing.py`/`main_extractor.py`)
+— 세 모드는 "본문인지 애매한 블록을 얼마나 적극적으로 포함시키는가"라는 하나의 축 위에 있다:
+
+| 모드 | 판단 기준 | 구체적 처리 |
+|---|---|---|
+| `precision` | 애매하면 제외 | `PRECISION_DISCARD_XPATH` 추가 삭제, heading/quote 요소도 링크 밀도 기준으로 추가 삭제, 문서 끝 trailing title 삭제, teaser(요약/미리보기) 블록 삭제 |
+| `balanced` (기본, 미설정) | 표준 임계치 | teaser 블록만 표준 강도로 삭제, precision/recall 전용 강화·완화 로직 미적용 — 필요시 외부 알고리즘(readability)과 비교해 더 나은 결과 채택 |
+| `recall` | 애매하면 포함 | teaser 블록 삭제 생략, 본문 후보 태그에 `div`/`lb`/`list` 추가 포함, 정리 후 `<p>` 요소가 하나도 안 남으면 정리 자체를 롤백, 추출 텍스트가 이미 충분히 길면(`min_extracted_size`의 10배 이상) 외부 알고리즘 비교 생략하고 그대로 확정 |
+
+**기본값은 `recall`** (최초 설계 당시엔 `precision=True`였으나 US-39에서 전환).
+
+- 애초 `precision` 선택 근거: dedup SimHash는 "본문이 거의 동일한가"를 character 3-gram으로
+  비교하므로, 애매한 블록이 문서마다 들쭉날쭉 포함/제외되면 동일 본문의 SimHash가 벌어져
+  오탐이 늘어난다는 우려였다.
+- 전환 계기: kb-02 doc_id=`b950892c61d1463c`(namu.wiki "고양이" 문서)에서 `precision` 모드가
+  실제 본문의 90%+ (105KB 중 7.8KB만 남음)를 "애매한 블록"으로 오판해 통째로 버렸다 — 위키형
+  페이지의 각주/목차/접기박스 밀집 구조가 이 모드의 "애매하면 지운다" 판정을 과도하게
+  트리거한 사례. 본문 손실이 "드물게 일부"가 아니라 문서 대부분을 삼킬 수 있음이 실측으로
+  확인되어, 3.2 하단에 있던 "운영 데이터로 재검증 필요" 오픈 이슈가 실제로 재검증된 결과다.
+- `recall`의 트레이드오프: 라이선스 푸터 같은 짧은 boilerplate가 본문에 섞여 들어올 수 있음
+  (실측 확인됨). dedup SimHash 안정성에 대한 최초 우려는 이론적으로는 여전히 유효하지만,
+  namu.wiki류 위키 페이지의 본문 손실 규모가 훨씬 크고 명확한 회귀였기 때문에 우선순위를
+  바꿨다. `precision`/`balanced`가 필요한 배포는 `html_extraction_mode`만 바꾸면 된다
+  (코드 변경 불필요).
 
 ### 3.3 출력 포맷을 markdown으로 변경
 
@@ -123,10 +144,11 @@ class HTMLCleanReader(BaseReader):
         with open(file, encoding="utf-8") as f:
             html = f.read()
 
-        favor_precision = get_settings().ingestion.html_favor_precision
+        mode = get_settings().ingestion.html_extraction_mode
         text = trafilatura.extract(
             html,
-            favor_precision=favor_precision,
+            favor_precision=(mode == "precision"),
+            favor_recall=(mode == "recall"),
             output_format="markdown",
             include_tables=True,
         ) or ""
@@ -142,9 +164,8 @@ class HTMLCleanReader(BaseReader):
 - `trafilatura.extract()`가 `None`을 반환하는 경우(본문 판별 실패) 빈 문자열로 폴백한다. 이 경우
   `validate_op`의 `min_content_chars` 체크(`ingestion.min_content_chars`, 기본 200자)에서 자연히
   걸러진다 — 별도 예외 처리 불필요.
-- `favor_precision`은 `settings.yaml`의 `ingestion.html_favor_precision`(기본 `true`)에서 읽는다.
-  하드코딩 금지 원칙(hard rule 1)에 따른 것이며, 6절 오픈 이슈에서 언급한 대로 운영 데이터로
-  손실 허용 범위를 재검증할 때 코드 변경 없이 값만 바꿔볼 수 있게 한다.
+- 추출 모드는 `settings.yaml`의 `ingestion.html_extraction_mode`(기본 `recall`, US-39)에서 읽는다.
+  하드코딩 금지 원칙(hard rule 1)에 따른 것이며, 배포별로 코드 변경 없이 값만 바꿔볼 수 있다.
 
 ---
 
@@ -260,7 +281,15 @@ JS 렌더링은 WebConnector sync 중 SPA 페이지에서만 드물게 발동하
 
 ## 6. 오픈 이슈 (종합)
 
-- 3.2 `favor_precision=True`로 인한 본문 일부 손실 허용 범위 — 운영 데이터로 재검증 필요
+- ~~3.2 `favor_precision=True`로 인한 본문 일부 손실 허용 범위 — 운영 데이터로 재검증 필요~~ →
+  US-39에서 재검증 완료, 기본값을 `recall`로 전환 (3.2 참고). 남은 잔여 이슈:
+  - `recall` 모드에서 짧은 boilerplate(라이선스 푸터 등)가 본문에 섞여 들어올 수 있음 — 2절
+    "남는 격차"와 동일한 성격의 열린 문제.
+  - `connectors/web.py`의 `_has_sufficient_content()`는 여전히 옵션 없이(중립 `balanced` 모드)
+    trafilatura를 호출해 스테이징 여부를 판단한다 — 파싱 단계(`recall`)와 게이팅 단계
+    (`balanced`)가 다른 기준을 쓰는 비일관성이 있음. 이번 범위에서 다루지 않음.
+  - US-39 이전에 `precision` 모드로 이미 인제스트된 기존 HTML 문서는 자동으로 재추출되지
+    않는다 — 재인제스트 필요 여부는 운영 판단.
 - 3.3 마크다운 인식 청킹(`MarkdownNodeParser` 등 헤딩 단위 분할)은 범위 밖 — 별도 US 검토 대상.
   검토 결과 현재는 도입하지 않는 쪽으로 결정: `MarkdownNodeParser`는 `chunk_size` 상한 개념이
   없어 헤딩 사이 긴 섹션을 그대로 하나의 노드로 만들기 때문에 `SentenceSplitter` 보조 분할기를
@@ -281,6 +310,7 @@ JS 렌더링은 WebConnector sync 중 SPA 페이지에서만 드물게 발동하
 | ID | Title | Depends on |
 |---|---|---|
 | US-36 | HTMLCleanReader를 trafilatura 밀도 기반 추출(favor_precision, markdown 출력)로 교체 | — |
+| US-39 | 추출 모드(precision/recall/balanced) 설정화 + 기본값 recall 전환 | US-36 |
 
 4절(JS 렌더링, Playwright fallback)은 pending이라 백로그 항목 없음 — 재검토 시 4절 설계를
 근거로 신규 US를 생성한다.

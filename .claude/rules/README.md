@@ -43,12 +43,14 @@ prd.md ↔ design 문서 ↔ backlog ↔ plan을 파일 상단 고정 링크로 
 
 ```
 0. backlogs/backlog.md + plans/plan.md 읽어 진행 상황 파악
-1. 해당 backlog 행 status → in-progress로 변경
-2. conventions/ 관련 문서 읽기
-3. 기존 Op 패턴 참조 (pipeline/ops/ 기존 파일)
-4. 테스트 먼저 작성 → 구현 → 테스트 통과 확인
-5. backlog/plan 인덱스 status → done으로 업데이트
-6. 학습 내용 memory/MEMORY.md에 저장
+1. (신규 backlog인 경우) todo/에 생성 → 사용자 리뷰 요청 → 승인 — 상세 순서는
+   conventions/00-progress-tracking.md §5
+2. 승인 후 해당 backlog 행 status → in-progress로 변경, plans/plan.md에 계획 반영
+3. conventions/ 관련 문서 읽기
+4. 기존 Op 패턴 참조 (pipeline/ops/ 기존 파일)
+5. 테스트 먼저 작성 → 구현 → 테스트 통과 확인
+6. backlog/plan 인덱스 status → done으로 업데이트 (todo/ → 루트 이동 포함)
+7. 학습 내용 memory/MEMORY.md에 저장
 ```
 
 ---
