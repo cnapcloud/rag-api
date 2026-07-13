@@ -35,4 +35,4 @@
 | 36 | HTMLCleanReader를 trafilatura 밀도 기반 추출로 교체 | US-36 | 통합(backlog 참고) — done |
 | 37 | WebConnector — unrestricted 도메인 스코프 옵션 (백엔드) | US-37 | 통합(backlog 참고) — done |
 | 38 | WebConnector Admin UI — seed page 포함 / unrestricted 체크박스 노출 | US-38 | 통합(backlog 참고) — done |
-| 39 | HTML 추출 모드(precision/recall/balanced) 설정화 + 기본값 recall 전환 | US-39 | 통합(backlog 참고) — done |
+| 39 | HTML 추출 정책(strict/lenient/balanced) 설정화 + 기본값 lenient 전환 | US-39 | 통합(backlog 참고) — done |

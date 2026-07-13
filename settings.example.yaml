@@ -38,7 +38,7 @@ redis:
 ingestion:
   max_file_size_mb: 200
   min_content_chars: 200
-  html_extraction_mode: "recall"   # precision | recall | balanced — HTMLCleanReader trafilatura bias
+  html_extraction_policy: "lenient"   # strict | lenient | balanced — HTMLCleanReader trafilatura bias
 
 queue_worker:
   enabled: true   # true: FastAPI QueueWorker, false: Dagster sensor

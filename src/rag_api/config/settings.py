@@ -61,9 +61,9 @@ class IngestionSettings(BaseModel):
     max_file_size_mb: int = 200
     min_content_chars: int = 200
     # trafilatura extraction bias — see HTMLCleanReader (pipeline/ops/parse.py).
-    # precision: 애매한 블록 제외 (짧고 확실한 본문만) / recall: 애매한 블록 포함 (본문 손실 최소화,
+    # strict: 애매한 블록 제외 (짧고 확실한 본문만) / lenient: 애매한 블록 포함 (본문 손실 최소화,
     # 짧은 boilerplate 잔존 가능) / balanced: 중립.
-    html_extraction_mode: Literal["precision", "recall", "balanced"] = "recall"
+    html_extraction_policy: Literal["strict", "lenient", "balanced"] = "lenient"
 
 
 class QueueWorkerSettings(BaseModel):

@@ -96,11 +96,11 @@ class HTMLCleanReader(BaseReader):
     algorithm instead of a tag-name deny-list, since markup conventions vary
     too much across sites for deny-listing to reliably strip boilerplate.
 
-    html_extraction_mode (settings.ingestion.html_extraction_mode) picks how
+    html_extraction_policy (settings.ingestion.html_extraction_policy) picks how
     trafilatura treats ambiguous blocks (sidebar-or-content boundary cases):
-    "precision" excludes them (favors dedup stage 1 SimHash consistency over
-    completeness), "recall" includes them (favors completeness — default,
-    since precision was found to drop 90%+ of the body on wiki-style pages
+    "strict" excludes them (favors dedup stage 1 SimHash consistency over
+    completeness), "lenient" includes them (favors completeness — default,
+    since strict was found to drop 90%+ of the body on wiki-style pages
     with heavy footnote/TOC/collapsible markup), "balanced" is neutral.
     output_format="markdown" preserves heading/list structure for downstream
     chunking, instead of flattening everything with get_text().
@@ -114,12 +114,12 @@ class HTMLCleanReader(BaseReader):
         with open(file, encoding="utf-8") as f:
             html = f.read()
 
-        mode = get_settings().ingestion.html_extraction_mode
+        policy = get_settings().ingestion.html_extraction_policy
         text = (
             trafilatura.extract(
                 html,
-                favor_precision=(mode == "precision"),
-                favor_recall=(mode == "recall"),
+                favor_precision=(policy == "strict"),
+                favor_recall=(policy == "lenient"),
                 output_format="markdown",
                 include_tables=True,
             )
