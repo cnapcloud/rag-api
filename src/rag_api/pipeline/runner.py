@@ -23,10 +23,11 @@ def run_ingest_pipeline(
     from rag_api.infra.postgres import get_doc_by_id
     from rag_api.pipeline.ops.chunk import chunk
     from rag_api.pipeline.ops.embed import embed
-    from rag_api.pipeline.ops.meta import set_failed, set_indexed, set_processing
+    from rag_api.pipeline.ops.meta import set_indexed
     from rag_api.pipeline.ops.parse import parse
     from rag_api.pipeline.ops.validate import validate
-    from rag_api.pipeline.utils.upsert import upsert
+    from rag_api.pipeline.ops.upsert import upsert
+    from rag_api.pipeline.utils.doc_state import set_failed, set_processing
 
     doc = get_doc_by_id(doc_id)
     if doc is None:
@@ -96,7 +97,7 @@ def run_ingest_pipeline(
 def run_delete_pipeline(doc_id: str, force: bool = False) -> None:
     """Delete a document. Delegates to delete_doc() for status-based soft/hard delete logic."""
     from rag_api.pipeline.ops.delete import delete_doc
-    from rag_api.pipeline.ops.meta import set_failed
+    from rag_api.pipeline.utils.doc_state import set_failed
 
     try:
         delete_doc(doc_id, run_id="direct", force=force)

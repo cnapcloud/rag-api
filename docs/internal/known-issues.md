@@ -21,10 +21,10 @@
   - [11. dagster-rag-api 코드서버가 잘못된 command로 기동 즉시 종료](#11-dagster-rag-api-코드서버가-잘못된-command로-기동-즉시-종료)
   - [12. /ready의 동기 블로킹 ping이 단일 이벤트 루프를 점유해 /health 등 무관한 요청까지 지연](#12-ready의-동기-블로킹-ping이-단일-이벤트-루프를-점유해-health-등-무관한-요청까지-지연)
   - [13. SimHash stage1 'similar' 판정이 stage2(MinHash) 확인 없이 바로 커밋됨](#13-simhash-stage1-similar-판정이-stage2minhash-확인-없이-바로-커밋됨)
-  - [14. chunk_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
+  - [14. chunk\_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
   - [15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가](#15-reindex-시-simhashminhash-후보-조회가-statusindexed만-대상으로-하여-outdated-문서-방향-탐지-불가)
   - [16. Dagster 컨테이너 강제 중단 시 STARTING 상태 run이 재시작 후에도 영구히 STARTING에 남음](#16-dagster-컨테이너-강제-중단-시-starting-상태-run이-재시작-후에도-영구히-starting에-남음)
-  - [17. 위키형 페이지에서 trafilatura favor_precision이 본문 90%+ 손실](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)
+  - [17. 위키형 페이지에서 trafilatura favor\_precision이 본문 90%+ 손실](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)
 
 ---
 
@@ -819,26 +819,26 @@ kb-02 doc_id=`b950892c61d1463c`(namu.wiki "고양이" 문서)를 "최고령 고�
 
 trafilatura 소스(`trafilatura/settings.py:143`)를 확인한 결과 `favor_precision`/`favor_recall`은
 실제로는 `"recall" if recall else "precision" if precision else "balanced"` 순서로 평가되는
-3단계 tri-state였다. US-39에서 이를 `settings.ingestion.html_extraction_mode`
-(`precision`/`recall`/`balanced`)로 노출하고 기본값을 `recall`로 전환했다 — 동일 문서에서
+3단계 tri-state였다. US-39에서 이를 `settings.ingestion.html_extraction_policy`
+(`strict`/`lenient`/`balanced`)로 노출하고 기본값을 `lenient`로 전환했다 — 동일 문서에서
 `favor_recall=True`로 재추출 시 "최고령 고양이" 관련 실제 문장(코듀로이/밍키/프짱/스쿠터 기록)이
 정상 포함됨을 확인. 상세 설계는
 `docs/internal/design/html-extraction.md` §3.2 참고.
 
-**`html_extraction_mode` 값별 동작**
+**`html_extraction_policy` 값별 동작**
 
 | 값 | 판단 기준 | 트레이드오프 |
 |----|-----------|--------------|
-| `"precision"` | 애매하면 제외 | 본문 일부가 boilerplate로 오판되어 손실될 수 있음 — 위키형 페이지(namu.wiki 등)에서 본문 90%+ 손실 실측됨 |
-| `"balanced"` | 표준 임계치, 모드 전용 로직 미적용 | precision/recall 중간값. 검증된 운영 데이터는 아직 없음 |
-| `"recall"` (기본값) | 애매하면 포함 | 라이선스 푸터 등 짧은 boilerplate가 본문에 섞여 들어올 수 있음(실측 확인) — 그러나 본문 손실보다는 검색 가능성을 우선한 선택 |
+| `"strict"` | 애매하면 제외 | 본문 일부가 boilerplate로 오판되어 손실될 수 있음 — 위키형 페이지(namu.wiki 등)에서 본문 90%+ 손실 실측됨 |
+| `"balanced"` | 표준 임계치, 정책 전용 로직 미적용 | strict/lenient 중간값. 검증된 운영 데이터는 아직 없음 |
+| `"lenient"` (기본값) | 애매하면 포함 | 라이선스 푸터 등 짧은 boilerplate가 본문에 섞여 들어올 수 있음(실측 확인) — 그러나 본문 손실보다는 검색 가능성을 우선한 선택 |
 
 **잔여 이슈**
 
-- US-39 이전에 `precision` 모드로 이미 인제스트된 기존 HTML 문서는 자동으로 재추출되지
+- US-39 이전에 `strict` 정책으로 이미 인제스트된 기존 HTML 문서는 자동으로 재추출되지
   않는다 — 재인제스트 필요 여부는 운영 판단 대상.
-- `recall` 모드는 라이선스 푸터 같은 짧은 boilerplate가 본문에 섞여 들어올 수 있다는
+- `lenient` 정책은 라이선스 푸터 같은 짧은 boilerplate가 본문에 섞여 들어올 수 있다는
   트레이드오프가 실측으로 확인됨(`docs/internal/design/html-extraction.md` §6 참고).
-- `connectors/web.py`의 `_has_sufficient_content()`는 여전히 중립(`balanced`) 모드로
-  trafilatura를 호출해 스테이징 여부를 판단한다 — 파싱 단계(`recall`)와 게이팅 단계
+- `connectors/web.py`의 `_has_sufficient_content()`는 여전히 중립(`balanced`) 정책으로
+  trafilatura를 호출해 스테이징 여부를 판단한다 — 파싱 단계(`lenient`)와 게이팅 단계
   (`balanced`)의 기준이 다른 비일관성은 이번 수정 범위 밖.

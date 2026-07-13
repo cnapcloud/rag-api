@@ -49,7 +49,7 @@ def delete_doc(doc_id: str, run_id: str = "direct", force: bool = False) -> None
     all else              → hard delete: Qdrant chunks attempted, S3 deleted, DB row removed.
     """
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.ops.meta import set_deleting
+    from rag_api.pipeline.utils.doc_state import set_deleting
 
     doc = get_doc_by_id(doc_id)
     if doc is None:

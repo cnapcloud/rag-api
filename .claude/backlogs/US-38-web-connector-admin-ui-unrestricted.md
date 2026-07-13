@@ -29,7 +29,6 @@ Seed URLs * (one per line)
 ┌───────────────────────────────────────────────────────────────┐
 │ https://namu.wiki/w/고양이                                       │
 └───────────────────────────────────────────────────────────────┘
-<-- 여기 줄간격 제거
 ☐ Include seed page as a document ⓘ
 ☐ Unrestricted ⓘ
   (ⓘ = hover tooltip, full sentence not shown inline)

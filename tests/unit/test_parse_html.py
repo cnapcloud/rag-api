@@ -43,10 +43,10 @@ HTML_WITH_BOILERPLATE = """\
 """
 
 # No visible text anywhere in the document (empty anchor, empty div) -> trafilatura.extract()
-# returns None regardless of extraction mode. A nav-with-real-link-text fixture is NOT used here
-# because under html_extraction_mode="recall" trafilatura's "keep at least something" fallback
+# returns None regardless of extraction policy. A nav-with-real-link-text fixture is NOT used here
+# because under html_extraction_policy="lenient" trafilatura's "keep at least something" fallback
 # can surface short nav link text instead of returning None (see US-39) — this fixture has no
-# text at all so the None-result contract holds in every mode.
+# text at all so the None-result contract holds in every policy.
 HTML_ONLY_BOILERPLATE = """\
 <html><body>
 <nav><ul><li><a href="/"></a></li></ul></nav>
@@ -136,15 +136,15 @@ def test_html_clean_reader_extra_info_merged(html_file):
 
 
 @pytest.mark.parametrize(
-    ("mode", "expected_precision", "expected_recall"),
+    ("policy", "expected_precision", "expected_recall"),
     [
-        ("precision", True, False),
-        ("recall", False, True),
+        ("strict", True, False),
+        ("lenient", False, True),
         ("balanced", False, False),
     ],
 )
-def test_html_clean_reader_maps_extraction_mode_to_trafilatura_kwargs(
-    html_file, mode, expected_precision, expected_recall
+def test_html_clean_reader_maps_extraction_policy_to_trafilatura_kwargs(
+    html_file, policy, expected_precision, expected_recall
 ):
     from rag_api.pipeline.ops.parse import HTMLCleanReader
 
@@ -152,7 +152,7 @@ def test_html_clean_reader_maps_extraction_mode_to_trafilatura_kwargs(
         patch("rag_api.config.settings.get_settings") as mock_get_settings,
         patch("trafilatura.extract") as mock_extract,
     ):
-        mock_get_settings.return_value.ingestion.html_extraction_mode = mode
+        mock_get_settings.return_value.ingestion.html_extraction_policy = policy
         mock_extract.return_value = "stub"
 
         HTMLCleanReader().load_data(html_file)

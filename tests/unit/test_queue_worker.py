@@ -74,7 +74,7 @@ def test_poll_upload_not_processing_dispatches():
     with (
         patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
         patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
-        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.pipeline.utils.doc_state.set_processing", side_effect=_fake_set_processing),
         patch("asyncio.create_task", side_effect=fake_create_task),
         patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
@@ -124,7 +124,7 @@ def test_poll_delete_not_processing_dispatches():
     with (
         patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
         patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
-        patch("rag_api.pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
+        patch("rag_api.pipeline.utils.doc_state.set_deleting", side_effect=_fake_set_deleting),
         patch("asyncio.create_task", side_effect=fake_create_task),
         patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
@@ -261,8 +261,8 @@ def test_poll_upload_fills_limit_delete_still_runs():
     with (
         patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
         patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
-        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
-        patch("rag_api.pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
+        patch("rag_api.pipeline.utils.doc_state.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.pipeline.utils.doc_state.set_deleting", side_effect=_fake_set_deleting),
         patch("asyncio.create_task", side_effect=fake_create_task),
         patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
@@ -291,7 +291,7 @@ def test_poll_returns_true_when_upload_hits_limit():
     with (
         patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
         patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
-        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.pipeline.utils.doc_state.set_processing", side_effect=_fake_set_processing),
         patch("asyncio.create_task", side_effect=fake_create_task),
         patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):
@@ -319,8 +319,8 @@ def test_poll_returns_false_when_queues_drained():
     with (
         patch("rag_api.infra.redis.get_redis_client", return_value=fake_redis),
         patch("rag_api.infra.postgres.get_doc_by_id", return_value=None),
-        patch("rag_api.pipeline.ops.meta.set_processing", side_effect=_fake_set_processing),
-        patch("rag_api.pipeline.ops.meta.set_deleting", side_effect=_fake_set_deleting),
+        patch("rag_api.pipeline.utils.doc_state.set_processing", side_effect=_fake_set_processing),
+        patch("rag_api.pipeline.utils.doc_state.set_deleting", side_effect=_fake_set_deleting),
         patch("asyncio.create_task", side_effect=fake_create_task),
         patch("rag_api.config.settings.get_settings") as mock_cfg,
     ):

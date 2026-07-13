@@ -370,7 +370,7 @@ async def force_fail_doc(
     """
     from rag_api.infra.dagster_utils import terminate_dagster_run
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.ops.meta import set_failed
+    from rag_api.pipeline.utils.doc_state import set_failed
     from rag_api.pipeline.queue.enqueue import dequeue_upload_events
 
     doc = get_doc_by_id(doc_id)
@@ -415,7 +415,7 @@ async def force_fail_doc(
 async def recover_doc(kb_id: str, doc_id: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.ops.meta import set_failed
+    from rag_api.pipeline.utils.doc_state import set_failed
     from rag_api.pipeline.queue.enqueue import enqueue_upload_event
 
     doc = get_doc_by_id(doc_id)

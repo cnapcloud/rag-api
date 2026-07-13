@@ -114,7 +114,7 @@ class QueueWorker:
                 continue
 
             from rag_api.infra.postgres import get_doc_by_id
-            from rag_api.pipeline.ops.meta import set_processing
+            from rag_api.pipeline.utils.doc_state import set_processing
 
             doc = get_doc_by_id(doc_id)
             if doc:

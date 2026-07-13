@@ -13,7 +13,7 @@ def ingest_failure_hook(context: HookContext) -> None:
         if not doc_id:
             context.log.info("ingest_failure_hook: doc_id not found in run tags, skip set_failed")
             return
-        from rag_api.pipeline.ops.meta import set_failed
+        from rag_api.pipeline.utils.doc_state import set_failed
         set_failed(doc_id, f"ingest_job op failed: {context.step_key}", run_id=context.run_id)
         context.log.info("ingest_failure_hook: set_failed doc_id=%s op=%s", doc_id, context.step_key)
     except Exception as e:
@@ -37,8 +37,8 @@ class IngestConfig(Config):
 def validate_op(context: OpExecutionContext, config: IngestConfig):
     """File size validation. Emits valid_config dict on success."""
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.ops.meta import set_failed, set_processing
     from rag_api.pipeline.ops.validate import validate
+    from rag_api.pipeline.utils.doc_state import set_failed, set_processing
 
     doc = get_doc_by_id(config.doc_id)
     if doc and doc.get("status") == "failed":
@@ -146,7 +146,7 @@ def embed_op(context: OpExecutionContext, nodes):
 @op
 def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
     """Delete existing Qdrant chunks then insert new ones."""
-    from rag_api.pipeline.utils.upsert import upsert
+    from rag_api.pipeline.ops.upsert import upsert
 
     result = upsert(
         kb_id=valid_config["kb_id"],

@@ -69,10 +69,10 @@ def test_ingest_job_validate_passes(ingest_run_config):
         patch("rag_api.pipeline.ops.dedup.run_verdict"),
         patch("rag_api.pipeline.ops.chunk.chunk", return_value=[MagicMock()]),
         patch("rag_api.pipeline.ops.embed.embed", return_value=[]),
-        patch("rag_api.pipeline.utils.upsert.upsert") as mock_upsert,
+        patch("rag_api.pipeline.ops.upsert.upsert") as mock_upsert,
         patch("rag_api.pipeline.ops.meta.set_indexed"),
     ):
-        from rag_api.pipeline.utils.upsert import UpsertResult
+        from rag_api.pipeline.ops.upsert import UpsertResult
         mock_upsert.return_value = UpsertResult(kb_id="kb-test", doc_id=DOC_ID, chunk_count=1, doc_created_at="")
         result = ingest_job.execute_in_process(run_config=ingest_run_config)
         assert result.success
