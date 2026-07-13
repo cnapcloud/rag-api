@@ -1,0 +1,147 @@
+# Qdrant Helm Values
+# chart version: 1.18.2
+# domain: qdrant.cnapcloud.com
+
+# ─────────────────────────────────────────
+# Replica (HA 클러스터)
+# ─────────────────────────────────────────
+replicaCount: 3
+
+# ─────────────────────────────────────────
+# API Key 인증
+# 기존 Secret을 사용할 경우 valueFrom으로 참조
+# Secret 생성 예시:
+#   kubectl create secret generic qdrant-apikey \
+#     --from-literal=api-key=<your-api-key> \
+#     --from-literal=read-only-api-key=<your-readonly-key> \
+#     -n <namespace>
+# ─────────────────────────────────────────
+# apiKey:
+#   valueFrom:
+#     secretKeyRef:
+#       name: qdrant-apikey
+#       key: api-key
+
+readOnlyApiKey:
+  valueFrom:
+    secretKeyRef:
+      name: qdrant-apikey
+      key: read-only-api-key
+
+# ─────────────────────────────────────────
+# 분산 클러스터 설정
+# ─────────────────────────────────────────
+config:
+  cluster:
+    enabled: true
+    p2p:
+      port: 6335
+    consensus:
+      tick_period_ms: 100
+
+# ─────────────────────────────────────────
+# 스토리지
+# ─────────────────────────────────────────
+persistence:
+  accessModes:
+    - ReadWriteOnce
+  size: 3Gi
+
+# 스냅샷 PVC (선택, 운영 권장)
+snapshotPersistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
+# ─────────────────────────────────────────
+# 리소스
+# ─────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+# ─────────────────────────────────────────
+# Service
+# ─────────────────────────────────────────
+service:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 6333
+      targetPort: 6333
+      protocol: TCP
+      checksEnabled: true
+    - name: grpc
+      port: 6334
+      targetPort: 6334
+      protocol: TCP
+      checksEnabled: false
+    - name: p2p
+      port: 6335
+      targetPort: 6335
+      protocol: TCP
+      checksEnabled: false
+
+# ─────────────────────────────────────────
+# Ingress
+# ─────────────────────────────────────────
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  hosts:
+    - host: qdrant.cnapcloud.com
+      paths:
+        - path: /
+          pathType: Prefix
+          servicePort: 6333
+  tls:
+    - secretName: cnapcloud-com-tls  # 기존 TLS Secret
+      hosts:
+        - qdrant.cnapcloud.com
+
+# ─────────────────────────────────────────
+# 환경변수
+# ─────────────────────────────────────────
+env:
+  - name: QDRANT__TELEMETRY_DISABLED
+    value: "true"
+
+# ─────────────────────────────────────────
+# Metrics (Prometheus)
+# ─────────────────────────────────────────
+metrics:
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus
+
+    # authorization:
+    #   credentials:
+    #     key: api-key
+    #     name: qdrant-apikey
+
+# ─────────────────────────────────────────
+# Pod 설정
+# ─────────────────────────────────────────
+podManagementPolicy: Parallel
+
+topologySpreadConstraints:
+  - maxSkew: 2 # 한노드에 최대 2개의 Pod까지 스케줄링 허용
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values: ["qdrant"]
+        - key: statefulset.kubernetes.io/pod-name
+          operator: Exists

@@ -44,9 +44,6 @@ docker/data/mailpit/
 # macOS
 .DS_Store
 
-# Docker
-*.env
-.env*
 
 # Logs
 *.log

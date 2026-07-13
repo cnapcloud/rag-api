@@ -1,0 +1,46 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cnpg-postgres
+spec:
+  instances: 1
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+
+  bootstrap:
+    initdb:
+      postInitSQL:
+        - CREATE ROLE "rag-api" LOGIN
+        - CREATE DATABASE "rag-api" OWNER "rag-api"
+        - CREATE ROLE dagster LOGIN
+        - CREATE DATABASE dagster OWNER dagster
+        - CREATE ROLE langfuse LOGIN
+        - CREATE DATABASE langfuse OWNER langfuse
+
+  managed:
+    roles:
+      - name: rag-api
+        login: true
+        passwordSecret:
+          name: rag-api-credentials
+      - name: dagster
+        login: true
+        passwordSecret:
+          name: dagster-credentials
+      - name: langfuse
+        login: true
+        passwordSecret:
+          name: langfuse-credentials
+  storage:
+    size: 2Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+

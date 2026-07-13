@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: llm
+
+generators:
+  - ./helm/helm-chart.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: dagster-rag-api-config
+    files:
+      - settings.yaml=./configmaps/settings.yaml
+  - name: kiwi-user-words
+    files:
+      - kiwi_user_words.tsv=./configmaps/kiwi_user_words.tsv
+
+secretGenerator:
+  - name: dagster-rag-api-credentials
+    envs:
+      - ./secrets/rag-api-credentials.env
+  - name: dagster-postgresql-secret
+    envs:
+      - ./secrets/postgres-secret.env

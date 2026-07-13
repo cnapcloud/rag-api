@@ -1,0 +1,11 @@
+apiVersion: builtin
+kind: HelmChartInflationGenerator
+metadata:
+  name: redis-ha
+name: redis-ha
+chartHome: ../../base/helm
+chart: redis-ha
+releaseName: redis-ha
+valuesFile: ./helm/values.yaml
+includeCRDs: true
+namespace: database

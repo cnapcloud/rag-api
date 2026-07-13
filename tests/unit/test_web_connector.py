@@ -310,6 +310,8 @@ class TestShouldProcess:
         c.include_patterns = []
         c.exclude_patterns = []
         c._seed_prefixes = frozenset()
+        c._seed_netlocs = frozenset()
+        c.unrestricted = False
         assert c._should_process("https://example.com/anything") is False
 
     def test_include_pattern_filters_within_seed_scope(self):
@@ -391,6 +393,51 @@ class TestShouldProcess:
         assert c._should_process("https://example.com/blog?page=2") is True
         assert c._should_process("https://example.com/blog?p=3") is True
         assert c._should_process("https://example.com/blog?category=tech") is True
+
+    def test_unrestricted_default_false_keeps_existing_scope(self):
+        """Default (unrestricted=False) behaves exactly like before — path scope enforced."""
+        from rag_api.connectors.web import WebConnector
+
+        c = WebConnector({"seed_urls": ["https://namu.wiki/w/고양이"]})
+        assert c.unrestricted is False
+        assert c._should_process("https://namu.wiki/w/개") is False
+
+    def test_unrestricted_true_allows_same_domain_different_path(self):
+        """unrestricted=True drops the path-prefix check but keeps the same-domain check."""
+        from rag_api.connectors.web import WebConnector
+
+        c = WebConnector({"seed_urls": ["https://namu.wiki/w/고양이"], "unrestricted": True})
+        assert c._should_process("https://namu.wiki/w/개") is True
+        assert c._should_process("https://namu.wiki/w/고양이") is True  # still allowed
+
+    def test_unrestricted_true_still_blocks_other_domains(self):
+        """unrestricted=True must not open the crawl up to arbitrary external domains."""
+        from rag_api.connectors.web import WebConnector
+
+        c = WebConnector({"seed_urls": ["https://namu.wiki/w/고양이"], "unrestricted": True})
+        assert c._should_process("https://external.com/w/고양이") is False
+
+    def test_unrestricted_true_exclude_patterns_still_win(self):
+        from rag_api.connectors.web import WebConnector
+
+        c = WebConnector({
+            "seed_urls": ["https://example.com/docs"],
+            "unrestricted": True,
+            "exclude_patterns": ["https://example.com/admin/*"],
+        })
+        assert c._should_process("https://example.com/admin/settings") is False
+        assert c._should_process("https://example.com/blog/post") is True
+
+    def test_unrestricted_true_include_patterns_still_filter(self):
+        from rag_api.connectors.web import WebConnector
+
+        c = WebConnector({
+            "seed_urls": ["https://example.com/docs"],
+            "unrestricted": True,
+            "include_patterns": ["*/guide/*"],
+        })
+        assert c._should_process("https://example.com/blog/guide/intro") is True
+        assert c._should_process("https://example.com/blog/reference") is False
 
 
 class TestIsPaginationUrl:

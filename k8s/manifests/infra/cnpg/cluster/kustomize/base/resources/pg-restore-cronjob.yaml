@@ -1,0 +1,130 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cnpg-postgres-restore
+spec:
+  schedule: "0 0 1 1 *"  # Not scheduled to run — manual trigger only (suspend: true)
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          initContainers:
+            - name: fetch-dump
+              image: minio/mc:latest
+              env:
+                - name: MINIO_ENDPOINT
+                  value: http://minio.infra.svc:9000
+                - name: MINIO_ROOT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-root-secret
+                      key: rootUser
+                - name: MINIO_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-root-secret
+                      key: rootPassword
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  mc alias set local "${MINIO_ENDPOINT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
+                  LATEST=$(mc find local/pg-backup --name "*.dump" | sort | tail -1)
+                  echo "Latest dump: ${LATEST}"
+                  mc cp "${LATEST}" /work/dump.dump
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+          containers:
+            - name: restore
+              image: ghcr.io/cloudnative-pg/postgresql:18.1-system-trixie
+              env:
+                - name: PGHOST
+                  value: cnpg-postgres-rw.infra.svc.cluster.local
+                - name: PGDATABASE
+                  value: rag-api
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: rag-api-credentials
+                      key: username
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: rag-api-credentials
+                      key: password
+                # Schema to restore the dump into. Never restores over the source schema
+                # (public) — this is always a side-by-side restore for verification or
+                # recovery-before-promotion, not an in-place overwrite.
+                - name: RESTORE_SCHEMA
+                  value: restore_test
+                # Set to "false" to keep RESTORE_SCHEMA after the row-count check instead of
+                # dropping it — use this when actually recovering data (e.g. copying rows back
+                # out of the restored schema), not just verifying that a backup is valid.
+                - name: CLEANUP_SCHEMA_AFTER
+                  value: "true"
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  echo "=== Converting dump to plain SQL ==="
+                  pg_restore --no-owner --no-privileges --no-comments -f /work/dump.sql /work/dump.dump
+
+                  echo "=== Remapping only table/sequence objects public.X -> ${RESTORE_SCHEMA}.X ==="
+                  echo "(extension-owned objects like operator classes are left alone)"
+                  TABLE_NAMES=$(grep -oE '^CREATE TABLE public\.[A-Za-z0-9_]+' /work/dump.sql | sed -E 's/^CREATE TABLE public\.//')
+                  SEQ_NAMES=$(grep -oE '^CREATE SEQUENCE public\.[A-Za-z0-9_]+' /work/dump.sql | sed -E 's/^CREATE SEQUENCE public\.//')
+                  echo "Tables: ${TABLE_NAMES}"
+                  echo "Sequences: ${SEQ_NAMES}"
+                  cp /work/dump.sql /work/dump.remapped.sql
+                  for name in ${TABLE_NAMES} ${SEQ_NAMES}; do
+                    sed -i "s/\bpublic\.${name}\b/${RESTORE_SCHEMA}.${name}/g" /work/dump.remapped.sql
+                  done
+                  grep -v -E '^(COMMENT ON SCHEMA public|CREATE EXTENSION)' /work/dump.remapped.sql > /work/dump.final.sql
+
+                  echo "=== Creating schema ${RESTORE_SCHEMA} ==="
+                  psql -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS ${RESTORE_SCHEMA} CASCADE; CREATE SCHEMA ${RESTORE_SCHEMA};"
+
+                  echo "=== Restoring into schema ${RESTORE_SCHEMA} ==="
+                  psql -v ON_ERROR_STOP=1 -q -f /work/dump.final.sql
+
+                  echo "=== Row count comparison (public vs ${RESTORE_SCHEMA}) ==="
+                  TABLES=$(psql -tAc "SELECT tablename FROM pg_tables WHERE schemaname='${RESTORE_SCHEMA}' ORDER BY tablename")
+                  MISMATCH=0
+                  for t in $TABLES; do
+                    pub_count=$(psql -tAc "SELECT count(*) FROM public.\"$t\"")
+                    rt_count=$(psql -tAc "SELECT count(*) FROM ${RESTORE_SCHEMA}.\"$t\"")
+                    if [ "$pub_count" != "$rt_count" ]; then
+                      echo "MISMATCH: $t public=$pub_count ${RESTORE_SCHEMA}=$rt_count"
+                      MISMATCH=1
+                    else
+                      echo "OK: $t public=$pub_count ${RESTORE_SCHEMA}=$rt_count"
+                    fi
+                  done
+
+                  if [ "$CLEANUP_SCHEMA_AFTER" = "true" ]; then
+                    echo "=== Cleaning up schema ${RESTORE_SCHEMA} ==="
+                    psql -v ON_ERROR_STOP=1 -c "DROP SCHEMA ${RESTORE_SCHEMA} CASCADE;"
+                  else
+                    echo "=== Keeping schema ${RESTORE_SCHEMA} (CLEANUP_SCHEMA_AFTER=false) ==="
+                  fi
+
+                  if [ "$MISMATCH" = "1" ]; then
+                    echo "RESULT: MISMATCH FOUND"
+                    exit 1
+                  else
+                    echo "RESULT: ALL TABLES MATCH"
+                  fi
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+          volumes:
+            - name: work
+              emptyDir: {}
