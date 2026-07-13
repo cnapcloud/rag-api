@@ -24,6 +24,7 @@
   - [14. chunk_compare(dedup 3단계) 도입 시 신규 문서 A의 청크·임베딩 이중 계산](#14-chunk_comparededup-3단계-도입-시-신규-문서-a의-청크임베딩-이중-계산)
   - [15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가](#15-reindex-시-simhashminhash-후보-조회가-statusindexed만-대상으로-하여-outdated-문서-방향-탐지-불가)
   - [16. Dagster 컨테이너 강제 중단 시 STARTING 상태 run이 재시작 후에도 영구히 STARTING에 남음](#16-dagster-컨테이너-강제-중단-시-starting-상태-run이-재시작-후에도-영구히-starting에-남음)
+  - [17. 위키형 페이지에서 trafilatura favor_precision이 본문 90%+ 손실](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)
 
 ---
 
@@ -788,3 +789,48 @@ run_monitoring:
     `DefaultRunLauncher`(code-server 프로세스의 subprocess로 실행)는 애초에 헬스체크 자체를
     지원하지 않아 이 설정만으로는 해결 불가능.
   - 둘 다 아직 백로그 미등록, 별도 논의 필요.
+
+---
+
+## 17. 위키형 페이지에서 trafilatura favor_precision이 본문 90%+ 손실
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved |
+| 발견일 | 2026-07-13 |
+| 해결일 | 2026-07-13 |
+| 심각도 | MED |
+
+**증상**
+
+kb-02 doc_id=`b950892c61d1463c`(namu.wiki "고양이" 문서)를 "최고령 고양이"로 검색해도 결과가
+나오지 않았다. 실제로 인제스트된 9개 청크(총 7,813자)를 전부 확인해도 해당 텍스트가 없었다 —
+임베딩 문제가 아니라 파싱 단계에서 이미 누락된 것이었다.
+
+**원인**
+
+`HTMLCleanReader`(`pipeline/ops/parse.py`)가 쓰는 trafilatura의 `favor_precision=True`(당시
+기본값)는 "본문인지 애매한 블록"을 공격적으로 제외하는데, namu.wiki 특유의 각주/목차/접기박스
+밀집 구조에서 실제 본문의 93% 이상을 "애매한 블록"으로 오판해 통째로 버렸다. 원문을
+`favor_recall=True`로 재추출하면 104,952자가 나오는데, 실제 인제스트분은 7,813자뿐이었다.
+"최고령 고양이" 섹션이 그 버려진 부분에 있어 청킹·임베딩 대상에 아예 포함되지 않았다.
+
+**해결**
+
+trafilatura 소스(`trafilatura/settings.py:143`)를 확인한 결과 `favor_precision`/`favor_recall`은
+실제로는 `"recall" if recall else "precision" if precision else "balanced"` 순서로 평가되는
+3단계 tri-state였다. US-39에서 이를 `settings.ingestion.html_extraction_mode`
+(`precision`/`recall`/`balanced`)로 노출하고 기본값을 `recall`로 전환했다 — 동일 문서에서
+`favor_recall=True`로 재추출 시 "최고령 고양이" 관련 실제 문장(코듀로이/밍키/프짱/스쿠터 기록)이
+정상 포함됨을 확인. 상세 설계는
+`docs/internal/design/html-extraction.md` §3.2 참고.
+
+**잔여 이슈**
+
+- US-39 이전에 `precision` 모드로 이미 인제스트된 기존 HTML 문서는 자동으로 재추출되지
+  않는다 — 재인제스트 필요 여부는 운영 판단 대상.
+- `recall` 모드는 라이선스 푸터 같은 짧은 boilerplate가 본문에 섞여 들어올 수 있다는
+  트레이드오프가 실측으로 확인됨(`docs/internal/design/html-extraction.md` §6 참고).
+- `connectors/web.py`의 `_has_sufficient_content()`는 여전히 중립(`balanced`) 모드로
+  trafilatura를 호출해 스테이징 여부를 판단한다 — 파싱 단계(`recall`)와 게이팅 단계
+  (`balanced`)의 기준이 다른 비일관성은 이번 수정 범위 밖.

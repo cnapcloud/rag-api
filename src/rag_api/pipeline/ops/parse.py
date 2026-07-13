@@ -96,11 +96,14 @@ class HTMLCleanReader(BaseReader):
     algorithm instead of a tag-name deny-list, since markup conventions vary
     too much across sites for deny-listing to reliably strip boilerplate.
 
-    favor_precision (settings.ingestion.html_favor_precision) excludes ambiguous
-    blocks (sidebar-or-content boundary cases) so near-duplicate pages hash
-    consistently in dedup stage 1 (SimHash). output_format="markdown" preserves
-    heading/list structure for downstream chunking, instead of flattening
-    everything with get_text().
+    html_extraction_mode (settings.ingestion.html_extraction_mode) picks how
+    trafilatura treats ambiguous blocks (sidebar-or-content boundary cases):
+    "precision" excludes them (favors dedup stage 1 SimHash consistency over
+    completeness), "recall" includes them (favors completeness — default,
+    since precision was found to drop 90%+ of the body on wiki-style pages
+    with heavy footnote/TOC/collapsible markup), "balanced" is neutral.
+    output_format="markdown" preserves heading/list structure for downstream
+    chunking, instead of flattening everything with get_text().
     """
 
     def load_data(self, file: Path, extra_info: dict | None = None) -> list[Document]:
@@ -111,11 +114,12 @@ class HTMLCleanReader(BaseReader):
         with open(file, encoding="utf-8") as f:
             html = f.read()
 
-        favor_precision = get_settings().ingestion.html_favor_precision
+        mode = get_settings().ingestion.html_extraction_mode
         text = (
             trafilatura.extract(
                 html,
-                favor_precision=favor_precision,
+                favor_precision=(mode == "precision"),
+                favor_recall=(mode == "recall"),
                 output_format="markdown",
                 include_tables=True,
             )

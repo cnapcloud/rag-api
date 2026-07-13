@@ -42,13 +42,15 @@ HTML_WITH_BOILERPLATE = """\
 </html>
 """
 
-# nav + footer only, no main content block -> trafilatura.extract() returns None
+# No visible text anywhere in the document (empty anchor, empty div) -> trafilatura.extract()
+# returns None regardless of extraction mode. A nav-with-real-link-text fixture is NOT used here
+# because under html_extraction_mode="recall" trafilatura's "keep at least something" fallback
+# can surface short nav link text instead of returning None (see US-39) — this fixture has no
+# text at all so the None-result contract holds in every mode.
 HTML_ONLY_BOILERPLATE = """\
 <html><body>
-<nav><ul><li><a href="/">Home</a></li><li><a href="/about">About</a></li>
-<li><a href="/contact">Contact</a></li></ul></nav>
-<footer><p>Copyright 2025 Example Corp. All rights reserved. Contact us for
-more information.</p></footer>
+<nav><ul><li><a href="/"></a></li></ul></nav>
+<div id="root"></div>
 </body></html>
 """
 
@@ -133,19 +135,30 @@ def test_html_clean_reader_extra_info_merged(html_file):
     assert docs[0].metadata["file_path"] == str(html_file)
 
 
-def test_html_clean_reader_reads_favor_precision_from_settings(html_file):
+@pytest.mark.parametrize(
+    ("mode", "expected_precision", "expected_recall"),
+    [
+        ("precision", True, False),
+        ("recall", False, True),
+        ("balanced", False, False),
+    ],
+)
+def test_html_clean_reader_maps_extraction_mode_to_trafilatura_kwargs(
+    html_file, mode, expected_precision, expected_recall
+):
     from rag_api.pipeline.ops.parse import HTMLCleanReader
 
     with (
         patch("rag_api.config.settings.get_settings") as mock_get_settings,
         patch("trafilatura.extract") as mock_extract,
     ):
-        mock_get_settings.return_value.ingestion.html_favor_precision = False
+        mock_get_settings.return_value.ingestion.html_extraction_mode = mode
         mock_extract.return_value = "stub"
 
         HTMLCleanReader().load_data(html_file)
 
-        assert mock_extract.call_args.kwargs["favor_precision"] is False
+        assert mock_extract.call_args.kwargs["favor_precision"] is expected_precision
+        assert mock_extract.call_args.kwargs["favor_recall"] is expected_recall
 
 
 def test_html_clean_reader_no_extractable_content_returns_empty_text(
