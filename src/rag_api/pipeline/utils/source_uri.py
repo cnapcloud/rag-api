@@ -6,7 +6,8 @@ regardless of how it is referenced, enabling reliable dedup via UNIQUE(kb_id, so
 
 from __future__ import annotations
 
-from urllib.parse import ParseResult, parse_qs, urlencode, urlparse, urlunparse
+import unicodedata
+from urllib.parse import ParseResult, parse_qs, unquote, urlencode, urlparse, urlunparse
 
 _TRACKING_PARAMS = frozenset({
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
@@ -18,9 +19,19 @@ def _normalize_web_url(url: str) -> str:
     p: ParseResult = urlparse(url)
     scheme = "https"
     netloc = p.netloc.lower()
-    path = p.path.rstrip("/") or "/"
-    params = {k: v for k, v in parse_qs(p.query, keep_blank_values=True).items()
-              if k not in _TRACKING_PARAMS}
+    # urlparse leaves the path exactly as it appeared in the source string, so
+    # a raw-Hangul link (admin-typed seed URL) and a percent-encoded link
+    # (BFS-discovered <a href>, common on MediaWiki-style sites) normalize to
+    # two different strings for the same page unless decoded first. NFC also
+    # collapses composed vs. decomposed Hangul, which is otherwise invisible
+    # in a browser address bar but differs byte-for-byte.
+    path = unicodedata.normalize("NFC", unquote(p.path, encoding="utf-8", errors="replace"))
+    path = path.rstrip("/") or "/"
+    params = {
+        unicodedata.normalize("NFC", k): [unicodedata.normalize("NFC", v) for v in vs]
+        for k, vs in parse_qs(p.query, keep_blank_values=True).items()
+        if k not in _TRACKING_PARAMS
+    }
     query = urlencode(sorted(params.items()), doseq=True)
     return urlunparse((scheme, netloc, path, "", query, ""))
 

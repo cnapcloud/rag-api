@@ -482,7 +482,7 @@ Postgres 트랜잭션 격리로 band 조회와 INSERT가 직렬화된다.
 | 판정 | 처리 |
 |---|---|
 | 동일 | A: dedup_skipped. C 변경 없음 |
-| 제목변경 (A 최신) | Qdrant payload(title/source) 갱신 + C: outdated + simhash_bands 삭제 + A: indexed. 재임베딩 없음 |
+| 제목변경 (A 최신) | Qdrant payload(title/source/doc_id) 갱신으로 청크 소유권을 C→A로 이전 + C: outdated + simhash_bands 삭제 + A: indexed(chunk_count는 C에서 이관받은 값). 재임베딩 없음 |
 | 제목변경 (A 구버전) | A: outdated. C 변경 없음 |
 | 유사 | A 신규 색인 + C를 outdated 전환 (상태 필드 갱신) |
 | 관련 | A 신규 색인 + 관련 링크 메타데이터 추가 |
@@ -526,17 +526,38 @@ A가 여러 후보와 동시에 매칭되어 후보별로 다른 판정을 받�
 A, C의 `doc_created_at` 비교:
 - C의 `doc_created_at`이 NULL이면 A를 최신으로 간주
 
-A가 최신인 경우:
-1. Qdrant: C의 모든 청크 payload `title`, `source` → A 값으로 갱신
-2. Postgres C: `status` → `outdated`
-3. Postgres `simhash_bands`: C 행 삭제
-4. Postgres A: `status` → `indexed`, `process_finished_at` 갱신
+A가 최신인 경우 — 본문이 동일해 재임베딩하지 않으므로, C가 물리적으로 보유한 청크의
+**소유권 자체**(Qdrant payload `doc_id`)를 A로 이전해야 한다. `title`/`source`만 갱신하고
+`doc_id`를 C로 남겨두면 Qdrant 청크는 계속 outdated 문서(C)에 귀속된 채로 검색되고, A는
+`status=indexed`이지만 실제 청크가 0개인 빈 문서로 남는다(실제로 관측된 증상 — 아래
+"결정 사항" 참고):
+
+1. Qdrant: C의 모든 청크 payload `title`, `source`, **`doc_id`** → A 값으로 갱신 (단일
+   `set_payload` 호출로 세 필드를 함께 덮어써 청크 소유권을 C→A로 이전)
+2. Postgres A: `chunk_count` ← C의 기존 `chunk_count` 값을 그대로 복사, `status` →
+   `indexed`, `process_finished_at` 갱신 (표준 색인 경로의 `set_indexed()`를 타지 않으므로
+   `chunk_count`를 별도로 채워야 함)
+3. Postgres C: `status` → `outdated`
+4. Postgres `simhash_bands`: C 행 삭제
 
 A가 구버전인 경우:
 1. Postgres A: `status` → `outdated`, `last_error` → `dedup:title_changed duplicate_of={C.doc_id}`
 
+**결정 사항**
+- C의 `chunk_count`는 소유권 이전 후에도 지우지 않고 이력값으로 남긴다 — `similar` 판정에서
+  청크를 완전히 삭제한 뒤에도 outdated 문서의 `chunk_count`를 지우지 않는 기존 동작과
+  일관성을 맞춘 것. outdated 문서의 `chunk_count`는 "현재 보유 청크 수"가 아니라 "outdated
+  전환 시점의 참고값"으로 취급한다.
+- 위 이전 로직이 누락됐던 실제 증상: A(`status=indexed`)가 `chunk_count` NULL("—")로,
+  C(`status=outdated`)가 원래 청크 수(예: 134)를 그대로 보유한 채 문서 목록에 나란히
+  노출됨. 재현: 동일 본문 문서를 제목만 바꿔 재업로드해 `title_changed` verdict(A 최신)를
+  유발.
+
 오픈 이슈:
 - MinIO 파일 삭제 (C의 구버전 파일, grace period 방식) — 별도 US
+- `similar` 판정도 청크를 완전 삭제한 outdated 문서의 `chunk_count`가 갱신되지 않아 이력값
+  치고는 오해 소지가 있음(청크 0개인데 과거 숫자가 그대로 표시) — title_changed와 별개로
+  검토 필요
 
 **출력**
 - 색인/갱신/링크 처리 완료 상태
