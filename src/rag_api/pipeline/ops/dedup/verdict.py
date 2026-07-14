@@ -66,8 +66,9 @@ def handle_identical(doc_id: str, duplicate_doc_id: str | None) -> None:
 def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str = "") -> None:
     """Title changed but body is identical.
 
-    Incoming newer: update existing Qdrant payload, mark existing outdated,
-    remove existing dedup bands, mark incoming indexed.
+    Incoming newer: transfer existing Qdrant chunks to incoming (title/source/doc_id
+    payload update), mark existing outdated, remove existing dedup bands, mark
+    incoming indexed with the transferred chunk_count.
     Incoming older: mark incoming outdated only.
     """
     from rag_api.infra.postgres import update_doc_fields
@@ -86,9 +87,13 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
         return
 
     kb_id = existing_doc.get("kb_id", "")  # type: ignore[union-attr]
+    # Body is identical, so no re-embedding: transfer ownership of the existing
+    # chunks to the incoming doc_id instead of leaving them tagged to the
+    # about-to-be-outdated existing doc (see dedup.md 3.5, "제목변경 처리").
     update_payload_by_doc_id(kb_id, duplicate_doc_id, {
         "title": incoming_doc.get("title", ""),  # type: ignore[union-attr]
         "source": incoming_doc.get("source", ""),  # type: ignore[union-attr]
+        "doc_id": doc_id,
     })
     update_doc_fields(duplicate_doc_id, {
         "status": "outdated",
@@ -101,6 +106,7 @@ def handle_title_changed(doc_id: str, duplicate_doc_id: str | None, run_id: str 
         "status": "indexed",
         "last_error": None,
         "run_id": run_id,
+        "chunk_count": existing_doc.get("chunk_count"),  # type: ignore[union-attr]
         "process_finished_at": datetime.now(UTC).isoformat(),
     })
     logger.info("title_changed: incoming newer incoming=%s existing=%s", doc_id, duplicate_doc_id)

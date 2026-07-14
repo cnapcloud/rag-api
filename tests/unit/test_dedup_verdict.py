@@ -75,11 +75,12 @@ def test_run_verdict_unknown_body_match_logs_warning(caplog):
 # ──────────────────────────────────────────────
 
 def _make_doc(doc_id, kb_id="kb-1", title="s", source="u", storage_key="k",
-              title_hash="h", doc_created_at=None):
+              title_hash="h", doc_created_at=None, chunk_count=None):
     return {
         "doc_id": doc_id, "kb_id": kb_id, "title": title,
         "source": source, "storage_key": storage_key,
         "title_hash": title_hash, "doc_created_at": doc_created_at,
+        "chunk_count": chunk_count,
     }
 
 
@@ -94,7 +95,9 @@ def test_title_changed_a_newer_updates_c():
          patch(_DEL_MINHASH):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
-    mock_qpay.assert_called_once_with("kb-1", "doc-c", {"title": "new.md", "source": "uri-new"})
+    mock_qpay.assert_called_once_with(
+        "kb-1", "doc-c", {"title": "new.md", "source": "uri-new", "doc_id": "doc-a"}
+    )
     c_call = next(c for c in mock_udf.call_args_list if c[0][0] == "doc-c")
     assert c_call[0][1]["status"] == "outdated"
     assert c_call[0][1]["duplicate_of"] == "doc-a"
@@ -102,9 +105,24 @@ def test_title_changed_a_newer_updates_c():
     assert "process_finished_at" in c_call[0][1]
     mock_del.assert_called_once_with("doc-c")
     mock_udf.assert_any_call("doc-a", {
-        "status": "indexed", "last_error": None, "run_id": "r1",
+        "status": "indexed", "last_error": None, "run_id": "r1", "chunk_count": None,
         "process_finished_at": mock_udf.call_args_list[-1][0][1]["process_finished_at"],
     })
+
+
+def test_title_changed_a_newer_transfers_chunk_count():
+    doc_a = _make_doc("doc-a", title="new.md", source="uri-new", doc_created_at=_TS_NEW)
+    doc_c = _make_doc("doc-c", title="old.md", source="uri-old", doc_created_at=_TS_OLD, chunk_count=134)
+
+    with patch(_GET_DOC, side_effect=[doc_a, doc_c]), \
+         patch(_PG) as mock_udf, \
+         patch(_UPDATE_PAYLOAD), \
+         patch(_DEL_BANDS), \
+         patch(_DEL_MINHASH):
+        handle_title_changed("doc-a", "doc-c", run_id="r1")
+
+    a_call = next(c for c in mock_udf.call_args_list if c[0][0] == "doc-a")
+    assert a_call[0][1]["chunk_count"] == 134
 
 
 def test_title_changed_c_newer_marks_a_outdated():
