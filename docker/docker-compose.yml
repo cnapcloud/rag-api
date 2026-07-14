@@ -54,7 +54,7 @@ services:
     volumes:
       - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
       - ./settings.yaml:/app/settings.yaml:ro
-      - ./data/kiwi_user_words.tsv:/data/kiwi_user_words.tsv:ro
+      - ./data/kiwi_user_words.tsv:/app/data/kiwi_user_words.tsv:ro
       # compute_logs, io_logs will be stored here
       # io manager s3를 사용하는 경우, compute_logs만 저장
       - dagster-storage:/opt/dagster/dagster_home/storage

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import time
@@ -34,6 +35,25 @@ def _is_pagination_url(url: str) -> bool:
     if p.query and _PAGINATION_QUERY_RE.search(p.query):
         return True
     return False
+
+
+def _fallback_content_hash(html: str) -> str:
+    """Content hash used as ETag when the server sends none.
+
+    Hashes trafilatura-extracted text rather than raw HTML: many sites embed
+    per-request random data (CSRF tokens, hydration state blobs) directly in
+    the page, which would make a raw-HTML hash change on every fetch even
+    when the actual article content is unchanged. Falls back to hashing the
+    raw HTML if extraction fails or yields nothing.
+    """
+    try:
+        import trafilatura
+
+        extracted = trafilatura.extract(html)
+    except Exception:
+        extracted = None
+    basis = extracted if extracted else html
+    return hashlib.md5(basis.encode("utf-8")).hexdigest()
 
 
 def _has_sufficient_content(html: str, min_chars: int) -> bool:
@@ -323,6 +343,11 @@ class WebConnector:
                 self.min_content_chars,
             )
             return html
+
+        if not etag:
+            # Server sent no ETag header — fall back to a content hash so unchanged
+            # pages are still detected as unchanged.
+            etag = _fallback_content_hash(html)
 
         # [3-1] Compare content_version for existing non-deleted docs.
         if doc is not None and doc.get("status") != "deleted":

@@ -36,14 +36,8 @@ class IngestConfig(Config):
 @op(out={"valid_config": Out(dagster_type=dict, is_required=False)})
 def validate_op(context: OpExecutionContext, config: IngestConfig):
     """File size validation. Emits valid_config dict on success."""
-    from rag_api.infra.postgres import get_doc_by_id
     from rag_api.pipeline.ops.validate import validate
     from rag_api.pipeline.utils.doc_state import set_failed, set_processing
-
-    doc = get_doc_by_id(config.doc_id)
-    if doc and doc.get("status") == "failed":
-        context.log.warning("Job aborted: doc was force-failed before validate_op started: doc_id=%s", config.doc_id)
-        return
 
     set_processing(config.doc_id, run_id=context.run_id)
 

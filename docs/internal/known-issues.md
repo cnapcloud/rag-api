@@ -25,6 +25,10 @@
   - [15. Reindex 시 SimHash/MinHash 후보 조회가 status='indexed'만 대상으로 하여 outdated 문서 방향 탐지 불가](#15-reindex-시-simhashminhash-후보-조회가-statusindexed만-대상으로-하여-outdated-문서-방향-탐지-불가)
   - [16. Dagster 컨테이너 강제 중단 시 STARTING 상태 run이 재시작 후에도 영구히 STARTING에 남음](#16-dagster-컨테이너-강제-중단-시-starting-상태-run이-재시작-후에도-영구히-starting에-남음)
   - [17. 위키형 페이지에서 trafilatura favor\_precision이 본문 90%+ 손실](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)
+  - [18. 웹 커넥터 ETag 미존재 시 raw HTML 해시가 페이지 내 랜덤 블롭 때문에 매 sync마다 달라짐](#18-웹-커넥터-etag-미존재-시-raw-html-해시가-페이지-내-랜덤-블롭-때문에-매-sync마다-달라짐)
+  - [19. unrestricted 웹 크롤링이 사이트 유틸리티 페이지(랜덤/최근변경 등)까지 크롤링해 매 sync마다 재인덱싱](#19-unrestricted-웹-크롤링이-사이트-유틸리티-페이지랜덤최근변경-등까지-크롤링해-매-sync마다-재인덱싱)
+  - [20. 카테고리/목록형 페이지가 trafilatura 추출 후 사이트 공통 푸터만 남아 서로 다른 문서인데도 dedup에서 중복 판정](#20-카테고리목록형-페이지가-trafilatura-추출-후-사이트-공통-푸터만-남아-서로-다른-문서인데도-dedup에서-중복-판정)
+  - [21. Qdrant가 GET에도 408 Request Timeout을 반환해 ensure_collection이 409로 실패](#21-qdrant가-get에도-408-request-timeout을-반환해-ensure_collection이-409로-실패)
 
 ---
 
@@ -125,23 +129,32 @@ Dagster가 `owners` 파라미터를 정식 릴리스하면 경고는 자동으�
 
 **현재 대안**
 
-`POST /api/connectors/{id}/sync/abort`로 수집 루프를 중단할 수 있다. 커넥터가 파일/URL을 처리할 때마다 abort 플래그를 확인하고 감지 시 즉시 루프를 종료한다. `abort_sync()`는 Redis 큐/딜레이 큐에 남아있는 문서(`status=pending`)는 `dequeue_upload_events()`로 제거하고, 실행 중(`status=running`) 문서는 `run_id`가 기록되어 있으면 `terminate_dagster_run(run_id)`로 바로 종료하며, `run_id`가 아직 기록되지 않은(QUEUED/STARTING 구간) 문서는 `find_active_run_ids_by_doc_ids(doc_id)`로 Dagster GraphQL에서 `doc_id` 태그로 활성 run을 조회해 종료 대상에 포함한다(2026-06-28 `c770ddb` 최초 추가, 2026-07-04 US-34로 QUEUED/STARTING 구간 gap 해소 — 관련 부작용은 [이슈 6](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그) 참조).
+`POST /api/connectors/{id}/sync/abort`로 수집 루프를 중단할 수 있다. `abort_sync()`는 Redis
+큐/딜레이 큐에 남은 문서(`status=pending`)는 `dequeue_upload_events()`로 제거하고, 실행 중
+(`status=running`) 문서는 `run_id`가 있으면 `terminate_dagster_run(run_id)`로, 없으면(QUEUED/
+STARTING 구간) `find_active_run_ids_by_doc_ids(doc_id)`로 Dagster GraphQL에서 `doc_id` 태그로
+찾아 종료한다. 관련 부작용은 [이슈
+6](#6-connector-abort-시-dagsterexecutioninterruptederror-step_failure-로그) 참조.
 
-**진행 상황 (2026-07-04 업데이트 — US-34 구현 완료)**
+센서가 Redis 이벤트를 pop한 시점과 `RunRequest`를 yield하는 시점 사이의 서브초 레이스는 여전히
+남아있다([이슈 9](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락)
+참조).
 
-- 항목 1, 2, 4는 기존 방식으로 구현되어 있음을 코드로 확인.
-- 항목 3(QUEUED/STARTING run 제거)은 `infra/dagster_utils.py`의 `find_active_run_ids_by_doc_ids()`(GraphQL `runsOrError(filter: {statuses: [QUEUED, STARTING, STARTED, CANCELING]})` 조회 후 `doc_id` 태그로 client-side 필터링)와 `abort_sync()`의 호출로 해결됨. `run_id`가 없는 `status=running` 문서의 `doc_id`를 모아 조회하고, 반환된 run_id를 기존 종료 대상 집합에 합쳐 `terminate_dagster_run()`으로 종료한다.
-  - 이와 별개로 센서 한 틱 안에서 "Redis 이벤트 pop"과 "RunRequest yield" 사이의 아주 짧은 순간에 abort가 끼어드는 서브초 단위 레이스가 있다. 상세 내용은 [이슈 9](#9-커넥터-abort-시-센서-poprunrequest-구간의-서브초-레이스로-취소-대상-누락) 참조.
-  - 근본 원인과 관련 메커니즘(메인 큐 dedup 부재, `_is_blocked_by_active_run()`의 `run_id` 의존성)은 [duplicate-request-handling.md](design/duplicate-request-handling.md) 참조.
-- **queue_worker 모드(`queue_worker.enabled=true`, Dagster 미사용)에서는 abort/force-fail로 실행 중인 백그라운드 작업을 아예 종료할 수 없는 별도 gap이 남아있다.** 이 모드에서는 `QueueWorker`(`pipeline/queue/queue_worker.py`)가 Redis 큐를 직접 `r.rpop()`으로 꺼내 `asyncio.create_task()` -> `ThreadPoolExecutor`로 ingest/delete를 실행하는데, 이 태스크가 어디에도 등록되지 않아 취소할 방법이 없다. `dagster_utils.terminate_dagster_run()`은 `queue_worker.enabled=true`일 때 무조건 no-op(`infra/dagster_utils.py:75-77`)이라 애초에 대상이 되지 않는다.
-  - `POST /{connector_id}/sync/abort`(`connectors.py` `abort_sync()`)는 `dequeue_upload_events()`로 아직 Redis에 남은 항목만 제거하고, 이미 `r.rpop()`으로 꺼내져 실행 중인 문서는 `set_failed(doc_id, "Aborted")`로 상태만 바뀔 뿐 실제 스레드는 계속 실행되어 완료 시 상태를 덮어쓸 수 있다. **경고 없이 202로 성공 응답한다.**
-  - `POST /kb/{kb_id}/docs/{doc_id}/fail`(`docs.py` `force_fail_doc()`)은 동일한 한계를 이미 코드에서 인지하고 있으며(`worker_mode_active` 체크, L385-404), 응답에 `"queue_worker mode has no terminate support"` 경고 필드를 포함한다. `abort_sync()`에는 이 경고가 없다.
-  - **정정 (2026-07-03)**: 처음엔 "doc_id -> Task 레지스트리 + `task.cancel()`"을 근본 해결책으로 적었으나 부정확함. `run_in_executor(executor, func)`는 `concurrent.futures.Future`를 asyncio Future로 래핑하는데, 워커 스레드가 이미 `func`(=`run_ingest_pipeline`) 실행을 시작한 뒤에는 `concurrent.futures.Future.cancel()`이 무조건 `False`를 반환한다 — Python 스레드는 외부에서 안전하게 강제 종료할 수 없기 때문이다. 이 상태에서 바깥 asyncio Task에 `.cancel()`을 호출하면 asyncio 쪽 장부만 CANCELLED로 마킹되고 `await` 지점에서 `CancelledError`가 올라올 뿐, 실제 워커 스레드는 아무도 기다리지 않는 채로 끝까지 실행되어 여전히 자기 결과로 상태를 덮어쓴다. `task.cancel()`이 실제로 막을 수 있는 건 아직 세마포어(`self._semaphore`)를 획득하지 못해 실행이 시작조차 안 된 대기 중인 태스크뿐이다.
-    진짜 해결하려면 둘 중 하나가 필요하다: (a) `run_ingest_pipeline`/각 op(parse/chunk/embed/upsert) 내부에 협조적 취소 체크포인트를 op 경계마다 심기(파이프라인 전체를 건드려야 함), 또는 (b) 스레드 대신 별도 OS 프로세스(`ProcessPoolExecutor`/subprocess)로 실행해 SIGTERM으로 강제 종료 — Dagster 모드의 `terminateRun()`이 실제로 작동하는 이유가 바로 이것(job이 별도 프로세스로 실행됨)이다. 아직 백로그 미등록.
+**queue_worker 모드(Dagster 미사용) 제약**
+
+abort/force-fail로 실행 중인 백그라운드 작업을 종료할 방법이 없다. `ThreadPoolExecutor`로 실행된
+태스크는 시작된 뒤에는 외부에서 안전하게 취소할 수 없고(Python 스레드의 근본적 한계),
+`terminate_dagster_run()`도 이 모드에서는 no-op이라 대상이 되지 않는다.
+
+- `abort_sync()`는 실행 중인 문서를 `set_failed()`로 상태만 바꾸고 경고 없이 202를 반환한다 —
+  실제 스레드는 계속 실행되어 완료 시 상태를 덮어쓸 수 있다.
+- `force_fail_doc()`은 동일한 한계를 응답 경고 필드로 명시한다.
+- 근본 해결은 op 경계마다 협조적 취소 체크포인트를 두거나, 스레드 대신 별도 프로세스로 실행해
+  SIGTERM으로 종료하는 방식뿐이며 아직 미구현.
 
 **미해결**
 
-서브초 단위 레이스(known limitation), queue_worker 모드 태스크 취소(백로그 미등록)는 미구현 상태. Dagster 모드의 QUEUED/STARTING run 제거(US-34)는 해결됨.
+Dagster 모드의 서브초 단위 레이스, queue_worker 모드의 실행 중 태스크 취소.
 
 ---
 
@@ -240,7 +253,9 @@ dagster._core.errors.DagsterExecutionInterruptedError
 
 **현재 동작**
 
-로그 노이즈. 이후 동일 doc에 대한 새 run이 `validate_op`에서 `status == "failed"` 감지 후 조기 종료됨.
+로그 노이즈. 이후 동일 doc에 대한 새 run은 `validate_op`의 상태 체크 없이 정상 처리된다(과거에는
+`status == "failed"` 감지 후 조기 종료됐으나 해당 체크는 제거됨 — 방어선 상세는 [이슈
+3](#3-커넥터-동기화-중단-불가) 참조).
 
 **해결 방안**
 
@@ -842,3 +857,179 @@ trafilatura 소스(`trafilatura/settings.py:143`)를 확인한 결과 `favor_pre
 - `connectors/web.py`의 `_has_sufficient_content()`는 여전히 중립(`balanced`) 정책으로
   trafilatura를 호출해 스테이징 여부를 판단한다 — 파싱 단계(`lenient`)와 게이팅 단계
   (`balanced`)의 기준이 다른 비일관성은 이번 수정 범위 밖.
+
+---
+
+## 18. 웹 커넥터 ETag 미존재 시 raw HTML 해시가 페이지 내 랜덤 블롭 때문에 매 sync마다 달라짐
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved |
+| 발견일 | 2026-07-13 |
+| 해결일 | 2026-07-13 |
+| 심각도 | MED |
+
+**증상**
+
+web 커넥터로 HTTP `ETag` 헤더를 보내지 않는 사이트(namu.wiki 등)를 sync할 때마다, 실제 내용이
+바뀌지 않은 문서도 계속 재인덱싱됐다.
+
+**원인**
+
+HTTP `ETag`가 없으면 raw HTML 전체를 MD5 해싱해 `content_version`으로 쓰도록 되어 있었는데
+(`web.py` `_process_page()`), namu.wiki 같은 사이트는 `window.INITIAL_STATE="..."` 형태로 매
+요청마다 내용이 랜덤하게 바뀌는 인코딩 블롭을 HTML에 직접 삽입한다(스크래핑 방지 목적으로
+추정 — 길이는 고정, 바이트는 매번 다름). 동일 URL을 연속으로 두 번 fetch해 비교한 결과, raw
+HTML MD5는 매번 달랐지만 `trafilatura.extract()`로 뽑은 본문 텍스트의 MD5는 동일했다.
+
+**해결**
+
+`_fallback_content_hash()`(`web.py`)를 추가해, ETag가 없을 때 raw HTML 대신 trafilatura로
+추출한 본문 텍스트를 해싱하도록 변경(추출 실패 시에만 raw HTML 해시로 폴백). [이슈
+17](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)과 같은 namu.wiki "고양이"
+문서로 재검증 완료.
+
+**잔여 이슈**
+
+이전(raw HTML 해시) 방식으로 이미 저장된 `content_version`은 이번 수정 이후 첫 sync에서 한 번은
+다시 불일치로 재인덱싱된다 — 그 이후부터는 안정적으로 스킵된다.
+
+---
+
+## 19. unrestricted 웹 크롤링이 사이트 유틸리티 페이지(랜덤/최근변경 등)까지 크롤링해 매 sync마다 재인덱싱
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-13 |
+| 심각도 | LOW |
+
+**증상**
+
+connector_id=`70779147cfc149de`(namu.wiki "고양이", `unrestricted: true`)로 sync를 반복하면
+10개 문서 중 3개(`https://namu.wiki/random`, `/RecentChanges`, `/RecentDiscuss`)가 매번
+재인덱싱된다. [이슈 18](#18-웹-커넥터-etag-미존재-시-raw-html-해시가-페이지-내-랜덤-블롭-때문에-매-sync마다-달라짐)의
+콘텐츠 해시 수정을 적용한 뒤에도 동일하게 발생.
+
+**원인**
+
+이 3개 URL은 이름 그대로 요청마다 다른 문서를 보여주도록 설계된 페이지다 — `/random`은 무작위
+문서로 리다이렉트, `/RecentChanges`·`/RecentDiscuss`는 최근 변경/토론 목록이라 요청 시점마다
+내용이 다르다. raw HTML이든 추출 텍스트든 어떤 콘텐츠 해싱 전략을 쓰든 실제 표시 내용 자체가
+매 요청 달라지므로 "변경 없음" 판정이 원천적으로 불가능하다. `unrestricted: true` 설정 때문에
+BFS 크롤러가 시드 경로(`/w/고양이`) 바깥의, 나무위키 전 페이지 공통 헤더/푸터에 있는 사이트
+유틸리티 링크까지 따라가면서 이 페이지들이 크롤 대상에 포함됐다.
+
+**현재 대안**
+
+커넥터 `config.exclude_patterns`에 해당 URL을 추가해 크롤링 자체에서 제외한다.
+
+```json
+{
+  "config": {
+    "exclude_patterns": [
+      "https://namu.wiki/random",
+      "https://namu.wiki/RecentChanges",
+      "https://namu.wiki/RecentDiscuss"
+    ]
+  }
+}
+```
+
+`PATCH /api/connectors/{connector_id}`로 적용.
+
+**미해결**
+
+`unrestricted: true` + BFS 크롤링을 쓰는 한, 위키/CMS류 사이트의 "최근 변경", "무작위 문서",
+"인기글" 같은 네비게이션성 유틸리티 페이지가 계속 새로 발견되어 같은 문제가 재발할 수 있다. 이런
+페이지를 자동으로 걸러내는 범용적인 방법(예: URL 패턴 휴리스틱)은 아직 없음 — 사이트별로
+`exclude_patterns`를 수동으로 채워야 한다.
+
+---
+
+## 20. 카테고리/목록형 페이지가 trafilatura 추출 후 사이트 공통 푸터만 남아 서로 다른 문서인데도 dedup에서 중복 판정
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-14 |
+| 심각도 | MED |
+
+**증상**
+
+connector_id=`70779147cfc149de`(namu.wiki) sync에서 완전히 다른 두 카테고리 페이지 —
+`https://namu.wiki/w/분류:고양이`(doc_id `604b43b61b4a4771`)와 `https://namu.wiki/w/분류:생태계교란
+생물`(doc_id `a26519f8a6754aca`) — 가 dedup 파이프라인(`dedup_op`)에서 서로 중복으로 판정되어,
+후자가 `status=outdated`, `duplicate_of=604b43b61b4a4771`로 처리됐다.
+
+**원인**
+
+두 페이지 모두 [이슈
+17](#17-위키형-페이지에서-trafilatura-favor_precision이-본문-90-손실)의
+`html_extraction_policy=lenient`(`favor_recall=True`)로 재추출해도 실제 카테고리 소속 문서
+목록은 전혀 추출되지 않고, 사이트 공통 라이선스/푸터 텍스트(약 600자, 두 페이지 모두 거의
+동일)만 남는다. 카테고리 페이지의 실제 콘텐츠(문서 링크 목록)는 링크 밀집 구조라 trafilatura의
+boilerplate/navigation 판정 휴리스틱에 걸려 `favor_precision`/`favor_recall` 설정과 무관하게
+제거된다. 그 결과 서로 다른 카테고리 페이지끼리 추출 텍스트가 거의 동일해져 SimHash/MinHash
+유사도 임계치를 넘어 중복으로 오판된다.
+
+같은 이유로 [이슈
+18](#18-웹-커넥터-etag-미존재-시-raw-html-해시가-페이지-내-랜덤-블롭-때문에-매-sync마다-달라짐)의
+`_fallback_content_hash()`(추출 텍스트 해싱)도 서로 다른 카테고리 페이지에 대해 유사하거나 동일한
+해시를 낼 수 있다 — 이 경우 반대로 "변경 없음"으로 오판되어 실제로는 다른 문서인데 재인덱싱이
+스킵될 위험이 있다.
+
+**현재 대안**
+
+없음. 카테고리/목록형 페이지(`/w/분류:*` 등)를 `exclude_patterns`로 크롤링에서 아예 제외하는
+것이 가장 확실하다 — 애초에 문서 본문이 아니라 목록 페이지이므로 검색 대상으로서의 가치도 낮다.
+
+**미해결**
+
+trafilatura 기반 추출은 링크 밀집(목록형) 페이지의 본문을 구조적으로 포착하지 못한다. 근본
+해결은 카테고리/목록형 페이지를 별도 파서(예: 링크 텍스트만 모아 목록으로 취급)로 처리하거나,
+`exclude_patterns`/URL 패턴 휴리스틱으로 크롤링 단계에서 걸러내는 것.
+
+---
+
+## 21. Qdrant가 GET에도 408 Request Timeout을 반환해 ensure_collection이 409로 실패
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open — 추가 관찰 필요 |
+| 발견일 | 2026-07-14 |
+| 심각도 | LOW |
+
+**증상**
+
+`upsert_op` 중 `ensure_collection`의 `GET /collections/kb-01` 호출이 Qdrant로부터 `408 Request
+Timeout`을 응답받았고, 뒤이은 `create_collection` 시도가 `409 Conflict`("Collection already
+exists")로 실패했다(run_id=`e74c6a7a-0dac-443d-a5da-69186472d452`, 2026-07-13 08:43).
+
+**원인 (확인된 부분)**
+
+Qdrant REST 서버(actix)가 `client_request_timeout=5s`를 기본값으로 갖고 있다(Qdrant 자체 로그
+`REST transport settings: ... client_request_timeout=5s`로 확인, 커스텀 config 없음 — Qdrant
+기본값 그대로). 즉 단순 GET이라도 서버 내부에서 5초 안에 처리를 못 마치면 408을 정상 응답으로
+반환한다. 같은 배포 로그에 `Cleaned an optimization handle after timeout, explicitly triggering
+optimizers` 경고가 반복 관찰되어, 세그먼트 optimization으로 인한 컬렉션 락 경합이 유력한 원인으로
+추정된다(`dagster.yaml`의 `max_concurrent_runs: 8`로 동시 upsert가 겹칠 수 있음).
+
+**추가 관찰 필요**
+
+408이 실제로 찍힌 시점의 Qdrant 컨테이너 로그가 그 사이 재시작으로 회전(rotate)되어 남아있지
+않아, "그 순간 정확히 무엇이 5초를 넘겼는지"는 1:1로 확인하지 못했다 — 위 원인은 정황 증거
+기반 추정이다. 재발 시 Qdrant 로그를 즉시 보존해 optimization 타이밍과 408 발생 시점이 실제로
+겹치는지 확인 필요. `ensure_collection`이 404 외 응답을 "존재 확인 실패"로 처리하는 부분은
+이미 수정됨(커밋 `dc8fe7a`) — 이 이슈는 그 수정 이후에도 408의 근본 원인(Qdrant 부하) 자체는
+남아있다는 점을 추적하기 위한 것. 지금 코드 기준으로는 408이 나면 `UnexpectedResponse: 408`로
+바로 op가 실패한다(예전처럼 409로 오인되지는 않음).
+
+**해결 방안 (미구현)**
+
+- `ensure_collection`의 `get_collection()` 호출에 408 한정 짧은 재시도(backoff) 추가 — 세그먼트
+  optimization은 일시적 현상이라 근본 원인을 특정하지 않아도 적용 가능한 가장 실용적인 방어책.
+- Qdrant 서버 `client_request_timeout` 값을 늘리는 config 튜닝 — 부하 자체는 그대로 두고
+  임계치만 늦추는 임시방편.
+- `ensure_collection` 호출 자체를 줄이기 — 프로세스 내에서 이미 확인된 kb_id는 캐싱해 재확인
+  생략, Qdrant에 걸리는 요청 수 자체를 줄임.
