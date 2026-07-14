@@ -14,12 +14,7 @@ Actions 실행 목록이 전부 "Merge branch 'patch'"로만 보여 구분이 �
 git log origin/main..patch --oneline
 
 # 커밋 메시지에 요약 반영
-git merge patch -m "$(cat <<'EOF'
-merge: patch into main — <합쳐지는 커밋 요약>
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
-EOF
-)"
+git merge patch -m "merge: patch into main — <합쳐지는 커밋 요약>"
 ```
 
 - 합쳐지는 커밋이 1개면 그 커밋 메시지를 그대로(또는 축약해) 제목으로 사용.
