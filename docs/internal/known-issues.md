@@ -1022,4 +1022,14 @@ optimizers` 경고가 반복 관찰되어, 세그먼트 optimization으로 인�
 기반 추정이다. 재발 시 Qdrant 로그를 즉시 보존해 optimization 타이밍과 408 발생 시점이 실제로
 겹치는지 확인 필요. `ensure_collection`이 404 외 응답을 "존재 확인 실패"로 처리하는 부분은
 이미 수정됨(커밋 `dc8fe7a`) — 이 이슈는 그 수정 이후에도 408의 근본 원인(Qdrant 부하) 자체는
-남아있다는 점을 추적하기 위한 것.
+남아있다는 점을 추적하기 위한 것. 지금 코드 기준으로는 408이 나면 `UnexpectedResponse: 408`로
+바로 op가 실패한다(예전처럼 409로 오인되지는 않음).
+
+**해결 방안 (미구현)**
+
+- `ensure_collection`의 `get_collection()` 호출에 408 한정 짧은 재시도(backoff) 추가 — 세그먼트
+  optimization은 일시적 현상이라 근본 원인을 특정하지 않아도 적용 가능한 가장 실용적인 방어책.
+- Qdrant 서버 `client_request_timeout` 값을 늘리는 config 튜닝 — 부하 자체는 그대로 두고
+  임계치만 늦추는 임시방편.
+- `ensure_collection` 호출 자체를 줄이기 — 프로세스 내에서 이미 확인된 kb_id는 캐싱해 재확인
+  생략, Qdrant에 걸리는 요청 수 자체를 줄임.
