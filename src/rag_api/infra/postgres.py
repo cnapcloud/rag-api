@@ -287,6 +287,16 @@ def get_active_ingest_docs_for_connector(connector_id: str) -> list[dict]:
     return [_row_to_doc(r) for r in rows]
 
 
+def get_active_ingest_docs_for_kb(kb_id: str) -> list[dict]:
+    """Return docs in kb_id with status 'pending' or 'running', regardless of connector."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            _DOC_SELECT + " WHERE kb_id = %s AND status IN ('pending', 'running')",
+            [kb_id],
+        ).fetchall()
+    return [_row_to_doc(r) for r in rows]
+
+
 def get_doc_by_id(doc_id: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(

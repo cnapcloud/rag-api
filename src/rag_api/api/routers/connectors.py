@@ -208,30 +208,27 @@ async def delete_connector_endpoint(connector_id: str, background_tasks: Backgro
 
 
 def _cascade_delete(connector_id: str) -> None:
-    from botocore.exceptions import ClientError as S3ClientError
-
+    """Soft-delete every doc under this connector: Qdrant chunks and dedup bands are
+    removed, but S3 originals are always preserved (no re-sync source once the connector
+    is gone, so the S3 copy is the only remaining record) -- regardless of doc status."""
     from rag_api.infra.postgres import (
         delete_connector,
+        delete_minhash_bands,
+        delete_simhash_bands,
+        get_active_ingest_docs_for_connector,
         list_docs_by_connector,
         soft_delete_doc,
     )
     from rag_api.infra.qdrant import delete_chunks_by_doc_id
-    from rag_api.infra.s3 import delete_by_key
+    from rag_api.pipeline.utils.abort_ingest import abort_active_ingest
+
+    abort_active_ingest(get_active_ingest_docs_for_connector(connector_id))
 
     docs = list_docs_by_connector(connector_id, include_deleted=False)
     for doc in docs:
         delete_chunks_by_doc_id(doc["kb_id"], doc["doc_id"])
-
-        storage_key = doc.get("storage_key")
-        if storage_key:
-            try:
-                delete_by_key(storage_key)
-            except S3ClientError as e:
-                logger.warning(
-                    "S3 delete failed during connector cascade (ignored): connector_id=%s doc_id=%s err=%s",
-                    connector_id, doc["doc_id"], e,
-                )
-
+        delete_simhash_bands(doc["doc_id"])
+        delete_minhash_bands(doc["doc_id"])
         soft_delete_doc(doc["doc_id"])
 
     delete_connector(connector_id)
@@ -328,14 +325,12 @@ def _dispatch_sync(connector: dict) -> None:
 @router.post("/{connector_id}/sync/abort", status_code=202)
 async def abort_sync(connector_id: str):
     from rag_api.connectors.abort import request_abort
-    from rag_api.infra.dagster_utils import find_active_run_ids_by_doc_ids, terminate_dagster_run
     from rag_api.infra.postgres import (
         get_active_ingest_docs_for_connector,
         get_connector,
         set_connector_sync_status,
     )
-    from rag_api.pipeline.queue.enqueue import dequeue_upload_events
-    from rag_api.pipeline.utils.doc_state import set_failed
+    from rag_api.pipeline.utils.abort_ingest import abort_active_ingest
 
     connector = get_connector(connector_id)
     if connector is None:
@@ -347,30 +342,11 @@ async def abort_sync(connector_id: str):
     set_connector_sync_status(connector_id, "idle")
 
     docs = get_active_ingest_docs_for_connector(connector_id)
-
-    pending_ids = [d["doc_id"] for d in docs if d["status"] == "pending"]
-    for doc_id in pending_ids:
-        dequeue_upload_events(doc_id)
-        set_failed(doc_id, "Aborted")
-
-    running_docs = [d for d in docs if d["status"] == "running"]
-    run_ids = {d["run_id"] for d in running_docs if d.get("run_id")}
-    # run_id not yet recorded (QUEUED/STARTING window) -- look up by doc_id tag instead.
-    missing_run_doc_ids = [d["doc_id"] for d in running_docs if not d.get("run_id")]
-    if missing_run_doc_ids:
-        run_ids.update(find_active_run_ids_by_doc_ids(missing_run_doc_ids))
-
-    for doc_id in [d["doc_id"] for d in running_docs]:
-        set_failed(doc_id, "Aborted")
-    for run_id in run_ids:
-        try:
-            terminate_dagster_run(run_id)
-        except RuntimeError as e:
-            logger.warning("Dagster terminate failed (ignored): run_id=%s err=%s", run_id, e)
+    docs_aborted, runs_terminated = abort_active_ingest(docs)
 
     logger.info(
-        "Sync aborted: connector_id=%s pending_cleared=%d runs_terminated=%d",
-        connector_id, len(pending_ids), len(run_ids),
+        "Sync aborted: connector_id=%s docs_aborted=%d runs_terminated=%d",
+        connector_id, docs_aborted, runs_terminated,
     )
     return {"connector_id": connector_id, "status": "abort_requested"}
 

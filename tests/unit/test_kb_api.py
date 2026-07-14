@@ -55,6 +55,7 @@ class TestDeleteKB:
             patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
             patch("rag_api.infra.postgres.update_kb_status"),
             patch("rag_api.infra.postgres.list_connectors", return_value=[_SCHEDULED_CONNECTOR]) as mock_list,
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_kb", return_value=[]),
             patch("rag_api.infra.qdrant.drop_collection"),
             patch("rag_api.infra.s3.delete_kb_prefix", return_value=3),
             patch("rag_api.infra.postgres.delete_kb_meta") as mock_delete_meta,
@@ -85,6 +86,7 @@ class TestDeleteKB:
             patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
             patch("rag_api.infra.postgres.update_kb_status"),
             patch("rag_api.infra.postgres.list_connectors", return_value=[]),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_kb", return_value=[]),
             patch("rag_api.infra.qdrant.drop_collection"),
             patch("rag_api.infra.s3.delete_kb_prefix", return_value=0),
             patch("rag_api.infra.postgres.delete_kb_meta"),
@@ -94,3 +96,24 @@ class TestDeleteKB:
 
         assert resp.status_code == 200
         mock_reload.assert_not_called()
+
+    def test_aborts_active_ingest_before_delete(self, client):
+        active_doc = {"doc_id": "doc-active", "status": "pending", "run_id": ""}
+
+        with (
+            patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
+            patch("rag_api.infra.postgres.update_kb_status"),
+            patch("rag_api.infra.postgres.list_connectors", return_value=[]),
+            patch(
+                "rag_api.infra.postgres.get_active_ingest_docs_for_kb",
+                return_value=[active_doc],
+            ),
+            patch("rag_api.pipeline.utils.abort_ingest.abort_active_ingest") as mock_abort,
+            patch("rag_api.infra.qdrant.drop_collection"),
+            patch("rag_api.infra.s3.delete_kb_prefix", return_value=0),
+            patch("rag_api.infra.postgres.delete_kb_meta"),
+        ):
+            resp = client.delete(f"/api/kb/{KB_ID}")
+
+        assert resp.status_code == 200
+        mock_abort.assert_called_once_with([active_doc])

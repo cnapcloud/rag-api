@@ -78,19 +78,23 @@ async def delete_kb(kb_id: str):
     KB deletion order:
     1. Reject if any connector under this KB has a sync in progress
     2. Mark status = deleting
-    3. Drop Qdrant collection
-    4. Delete S3 prefix
-    5. Delete Postgres metadata (cascades to connectors and documents)
-    6. Reload Dagster workspace if any deleted connector had a schedule
+    3. Abort any pending/running ingest for docs in this KB (terminate Dagster runs,
+       clear queued events) so no in-flight pipeline touches content we're about to purge
+    4. Drop Qdrant collection
+    5. Delete S3 prefix
+    6. Delete Postgres metadata (cascades to connectors and documents)
+    7. Reload Dagster workspace if any deleted connector had a schedule
     """
     from rag_api.infra.postgres import (
         delete_kb_meta,
+        get_active_ingest_docs_for_kb,
         get_kb_meta,
         list_connectors,
         update_kb_status,
     )
     from rag_api.infra.qdrant import drop_collection
     from rag_api.infra.s3 import delete_kb_prefix
+    from rag_api.pipeline.utils.abort_ingest import abort_active_ingest
 
     if get_kb_meta(kb_id) is None:
         raise NotFoundError(f"KB not found: {kb_id}")
@@ -105,6 +109,8 @@ async def delete_kb(kb_id: str):
     update_kb_status(kb_id, "deleting")
 
     had_schedule = any(c.get("sync_schedule") is not None for c in connectors)
+
+    abort_active_ingest(get_active_ingest_docs_for_kb(kb_id))
 
     drop_collection(kb_id)
     deleted_count = delete_kb_prefix(kb_id)
