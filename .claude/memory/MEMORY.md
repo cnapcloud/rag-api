@@ -10,3 +10,5 @@ Claude Code가 세션 간에 학습한 내용을 저장하는 공간. 코드/des
 - [Spec-driven traceability system 적용 범위](project_spec_driven_traceability.md) — dedup 영역만 파일럿 적용, 나머지 26개 backlog 미소급 (2026-07-12)
 - [Backlog done 전환 자동화](feedback_backlog_auto_done_transition.md) — 완료 기준 충족되면 확인 없이 바로 done 전환 + todo/에서 파일 이동 (2026-07-13)
 - [Qdrant ensure_collection bare except 함정](qdrant_ensure_collection_bare_except_pitfall.md) — get_collection 실패를 404 여부 안 가리고 삼키면 409 Conflict 유발 (2026-07-13)
+- [dedup title_changed 청크 소유권 함정](dedup_title_changed_chunk_ownership_pitfall.md) — Qdrant payload doc_id 재태깅 누락 시 indexed 문서가 청크 0개로 남음 (2026-07-14)
+- [웹 커넥터 URL 인코딩 중복생성 함정](web_connector_url_encoding_dedup_pitfall.md) — path percent-encoding/NFC-NFD 미통일로 같은 페이지가 문서 2건으로 중복 생성 (2026-07-14)
