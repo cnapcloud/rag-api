@@ -19,6 +19,7 @@
 | 2026-06-28 | [doc-state-flow.md](doc-state-flow.md) | 문서 상태 전이 및 API별 허용 조건 |
 | 2026-07-04 | [duplicate-request-handling.md](duplicate-request-handling.md) | 큐 dedup / 중복 dispatch 처리 |
 | 2026-07-09 | [html-extraction.md](html-extraction.md) | HTML 본문 추출 설계 |
+| 2026-07-14 | [web-connector.md](web-connector.md) | Web 커넥터 크롤링/변경 감지/추출 상호작용 및 알려진 한계 |
 
 ## 변경 이력
 
