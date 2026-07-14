@@ -25,8 +25,8 @@ def run_ingest_pipeline(
     from rag_api.pipeline.ops.embed import embed
     from rag_api.pipeline.ops.meta import set_indexed
     from rag_api.pipeline.ops.parse import parse
-    from rag_api.pipeline.ops.validate import validate
     from rag_api.pipeline.ops.upsert import upsert
+    from rag_api.pipeline.ops.validate import validate
     from rag_api.pipeline.utils.doc_state import set_failed, set_processing
 
     doc = get_doc_by_id(doc_id)
