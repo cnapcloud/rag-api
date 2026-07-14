@@ -258,6 +258,7 @@ class TestDeleteConnector:
         with (
             patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
             patch("rag_api.infra.postgres.set_connector_status") as mock_set_status,
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[]),
             patch("rag_api.infra.postgres.list_docs_by_connector", return_value=[]),
             patch("rag_api.infra.postgres.delete_connector") as mock_delete,
         ):
@@ -300,9 +301,11 @@ class TestDeleteConnector:
         with (
             patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
             patch("rag_api.infra.postgres.set_connector_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[]),
             patch("rag_api.infra.postgres.list_docs_by_connector", return_value=[doc]),
             patch("rag_api.infra.qdrant.delete_chunks_by_doc_id"),
-            patch("rag_api.infra.s3.delete_by_key"),
+            patch("rag_api.infra.postgres.delete_simhash_bands"),
+            patch("rag_api.infra.postgres.delete_minhash_bands"),
             patch("rag_api.infra.postgres.soft_delete_doc", side_effect=lambda did: soft_delete_calls.append(did)),
             patch("rag_api.infra.postgres.delete_connector"),
         ):
@@ -311,9 +314,7 @@ class TestDeleteConnector:
         assert resp.status_code == 202
         assert soft_delete_calls == ["aaaa-0001"]
 
-    def test_cascade_s3_error_is_ignored(self, client):
-        from botocore.exceptions import ClientError as S3ClientError
-
+    def test_cascade_preserves_s3_and_clears_dedup_bands(self, client):
         doc = {
             "doc_id": "aaaa-0002",
             "kb_id": KB_ID,
@@ -321,22 +322,50 @@ class TestDeleteConnector:
             "storage_key": f"{KB_ID}/web/aaaa-0002.html",
             "status": "indexed",
         }
-
-        def raise_s3(_key):
-            raise S3ClientError({"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "DeleteObject")
+        band_calls = []
 
         with (
             patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
             patch("rag_api.infra.postgres.set_connector_status"),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[]),
             patch("rag_api.infra.postgres.list_docs_by_connector", return_value=[doc]),
             patch("rag_api.infra.qdrant.delete_chunks_by_doc_id"),
-            patch("rag_api.infra.s3.delete_by_key", side_effect=raise_s3),
+            patch(
+                "rag_api.infra.postgres.delete_simhash_bands",
+                side_effect=lambda did: band_calls.append(("simhash", did)),
+            ),
+            patch(
+                "rag_api.infra.postgres.delete_minhash_bands",
+                side_effect=lambda did: band_calls.append(("minhash", did)),
+            ),
             patch("rag_api.infra.postgres.soft_delete_doc"),
+            patch("rag_api.infra.postgres.delete_connector"),
+            patch("rag_api.infra.s3.delete_by_key") as mock_s3_delete,
+        ):
+            resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
+
+        assert resp.status_code == 202
+        mock_s3_delete.assert_not_called()
+        assert set(band_calls) == {("simhash", "aaaa-0002"), ("minhash", "aaaa-0002")}
+
+    def test_cascade_aborts_active_ingest_before_delete(self, client):
+        active_doc = {"doc_id": "aaaa-0003", "status": "running", "run_id": "run-xyz"}
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value=_BASE_CONNECTOR),
+            patch("rag_api.infra.postgres.set_connector_status"),
+            patch(
+                "rag_api.infra.postgres.get_active_ingest_docs_for_connector",
+                return_value=[active_doc],
+            ),
+            patch("rag_api.pipeline.utils.abort_ingest.abort_active_ingest") as mock_abort,
+            patch("rag_api.infra.postgres.list_docs_by_connector", return_value=[]),
             patch("rag_api.infra.postgres.delete_connector"),
         ):
             resp = client.delete(f"/api/connectors/{CONNECTOR_ID}")
 
         assert resp.status_code == 202
+        mock_abort.assert_called_once_with([active_doc])
 
 
 # ──────────────────────────────────────────────
@@ -585,6 +614,7 @@ class TestAbortSync:
             patch("rag_api.connectors.abort.request_abort"),
             patch("rag_api.infra.postgres.set_connector_sync_status"),
             patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
             patch("rag_api.pipeline.utils.doc_state.set_failed"),
             patch("rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids") as mock_lookup,
             patch("rag_api.infra.dagster_utils.terminate_dagster_run") as mock_terminate,
@@ -592,6 +622,7 @@ class TestAbortSync:
             resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
 
         assert resp.status_code == 202
+        mock_dequeue.assert_called_once_with("doc-running")
         mock_lookup.assert_not_called()
         mock_terminate.assert_called_once_with("run-abc")
 
@@ -605,6 +636,7 @@ class TestAbortSync:
             patch("rag_api.connectors.abort.request_abort"),
             patch("rag_api.infra.postgres.set_connector_sync_status"),
             patch("rag_api.infra.postgres.get_active_ingest_docs_for_connector", return_value=[doc]),
+            patch("rag_api.pipeline.queue.enqueue.dequeue_upload_events") as mock_dequeue,
             patch("rag_api.pipeline.utils.doc_state.set_failed"),
             patch(
                 "rag_api.infra.dagster_utils.find_active_run_ids_by_doc_ids",
@@ -615,5 +647,6 @@ class TestAbortSync:
             resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync/abort")
 
         assert resp.status_code == 202
+        mock_dequeue.assert_called_once_with("doc-queued")
         mock_lookup.assert_called_once_with(["doc-queued"])
         mock_terminate.assert_called_once_with("run-queued")
