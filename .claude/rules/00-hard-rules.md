@@ -112,3 +112,10 @@ print(f"[1/5] 파싱 중: {file_path}")
 logger.info("Chunking done: strategy=%s", strategy)
 print(f"[1/5] Parsing: {file_path}")
 ```
+
+---
+
+## 9. 커밋 메시지에 Co-Authored-By 트레일러 금지
+
+이 저장소에서는 `Co-Authored-By: Claude ...` 트레일러를 커밋 메시지에 붙이지 않는다
+(2026-07-14부터 적용, 기존 히스토리는 유지). 이후 새로 만드는 커밋에만 해당.

@@ -161,15 +161,21 @@ async def get_connector_endpoint(connector_id: str):
 
 @router.patch("/{connector_id}")
 async def patch_connector(connector_id: str, body: ConnectorPatch, background_tasks: BackgroundTasks):
-    from rag_api.infra.crypto import encrypt_config, mask_config
+    from rag_api.infra.crypto import MASK_VALUE, SECRET_FIELDS, encrypt_config, mask_config
     from rag_api.infra.postgres import get_connector, update_connector
 
-    if get_connector(connector_id) is None:
+    existing = get_connector(connector_id)
+    if existing is None:
         raise NotFoundError(f"Connector not found: {connector_id}")
 
     fields = body.model_dump(exclude_unset=True)
     if "config" in fields and fields["config"]:
-        fields["config"] = encrypt_config(fields["config"])
+        existing_config = existing.get("config") or {}
+        incoming_config = fields["config"]
+        for field in SECRET_FIELDS:
+            if incoming_config.get(field) == MASK_VALUE:
+                incoming_config[field] = existing_config.get(field)
+        fields["config"] = encrypt_config(incoming_config)
     updated = update_connector(connector_id, fields)
     if updated is None:
         raise NotFoundError(f"Connector not found: {connector_id}")

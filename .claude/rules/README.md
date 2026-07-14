@@ -37,6 +37,10 @@ prd.md ↔ design 문서 ↔ backlog ↔ plan을 파일 상단 고정 링크로 
 새 backlog/plan/design 작성 시, 또는 backlog를 `done`으로 전환할 때 반드시 적용. 세션마다 읽는
 0과 달리 실제로 이 문서들을 쓸 때만 열어보면 된다.
 
+### 9. Git 병합 커밋 메시지 (`conventions/08-git-merge.md`)
+`patch`를 `main`에 병합할 때 커밋 메시지 제목은 `Merge branch 'patch'` 같은 기본 문구 대신
+합쳐지는 커밋 내용을 요약해서 쓴다 (Actions 워크플로 실행 제목이 이 메시지를 그대로 사용).
+
 ---
 
 ## 워크플로우: 새 기능 추가
