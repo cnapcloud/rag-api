@@ -28,7 +28,7 @@
   - [18. 웹 커넥터 ETag 미존재 시 raw HTML 해시가 페이지 내 랜덤 블롭 때문에 매 sync마다 달라짐](#18-웹-커넥터-etag-미존재-시-raw-html-해시가-페이지-내-랜덤-블롭-때문에-매-sync마다-달라짐)
   - [19. unrestricted 웹 크롤링이 사이트 유틸리티 페이지(랜덤/최근변경 등)까지 크롤링해 매 sync마다 재인덱싱](#19-unrestricted-웹-크롤링이-사이트-유틸리티-페이지랜덤최근변경-등까지-크롤링해-매-sync마다-재인덱싱)
   - [20. 카테고리/목록형 페이지가 trafilatura 추출 후 사이트 공통 푸터만 남아 서로 다른 문서인데도 dedup에서 중복 판정](#20-카테고리목록형-페이지가-trafilatura-추출-후-사이트-공통-푸터만-남아-서로-다른-문서인데도-dedup에서-중복-판정)
-  - [21. Qdrant가 GET에도 408 Request Timeout을 반환해 ensure_collection이 409로 실패](#21-qdrant가-get에도-408-request-timeout을-반환해-ensure_collection이-409로-실패)
+  - [21. Qdrant가 GET에도 408 Request Timeout을 반환해 ensure\_collection이 409로 실패](#21-qdrant가-get에도-408-request-timeout을-반환해-ensure_collection이-409로-실패)
 
 ---
 
@@ -928,9 +928,9 @@ BFS 크롤러가 시드 경로(`/w/고양이`) 바깥의, 나무위키 전 페�
 {
   "config": {
     "exclude_patterns": [
-      "https://namu.wiki/random",
-      "https://namu.wiki/RecentChanges",
-      "https://namu.wiki/RecentDiscuss"
+      "*/random",
+      "*/RecentChanges",
+      "*/RecentDiscuss"
     ]
   }
 }
