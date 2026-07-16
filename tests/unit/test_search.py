@@ -6,14 +6,14 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 from rag_api.rag.merger import rrf_merge
-from rag_api.rag.retriever import SearchResult, search
+from rag_api.rag.retriever import SearchResult, _filter_orphaned_chunks, search
 
 
 def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchResult:
     return SearchResult(
         chunk_id=chunk_id,
         kb_id=kb_id,
-        doc_key=f"{kb_id}/doc.pdf",
+        doc_id="doc-id-1",
         title="doc.pdf",
         source_type="s3",
         source=f"{kb_id}/doc.pdf",
@@ -59,12 +59,66 @@ class TestRRFMerge:
         assert len(merged) == 6
 
 
+class TestFilterOrphanedChunks:
+    def test_keeps_results_with_existing_doc(self):
+        results = [_make_result("chunk-1", 0.9)]
+        with patch("rag_api.infra.postgres.get_existing_doc_ids", return_value={"doc-id-1"}):
+            kept = _filter_orphaned_chunks(results)
+        assert kept == results
+
+    def test_drops_results_with_missing_doc(self):
+        results = [_make_result("chunk-1", 0.9)]
+        with (
+            patch("rag_api.infra.postgres.get_existing_doc_ids", return_value=set()),
+            patch("rag_api.infra.qdrant.delete_chunks_by_doc_id") as mock_delete,
+        ):
+            kept = _filter_orphaned_chunks(results)
+        assert kept == []
+        mock_delete.assert_called_once_with("kb-test", "doc-id-1")
+
+    def test_drops_results_with_blank_doc_id(self):
+        r = _make_result("chunk-1", 0.9)
+        r.doc_id = ""
+        with (
+            patch("rag_api.infra.postgres.get_existing_doc_ids", return_value=set()) as mock_get,
+            patch("rag_api.infra.qdrant.delete_chunks_by_doc_id") as mock_delete,
+        ):
+            kept = _filter_orphaned_chunks([r])
+        assert kept == []
+        mock_get.assert_called_once_with([])
+        mock_delete.assert_called_once_with("kb-test", "")
+
+    def test_purges_once_per_doc_id_across_multiple_chunks(self):
+        r1 = _make_result("chunk-1", 0.9)
+        r2 = _make_result("chunk-2", 0.8)
+        with (
+            patch("rag_api.infra.postgres.get_existing_doc_ids", return_value=set()),
+            patch("rag_api.infra.qdrant.delete_chunks_by_doc_id") as mock_delete,
+        ):
+            kept = _filter_orphaned_chunks([r1, r2])
+        assert kept == []
+        mock_delete.assert_called_once_with("kb-test", "doc-id-1")
+
+    def test_purge_failure_is_swallowed(self):
+        results = [_make_result("chunk-1", 0.9)]
+        with (
+            patch("rag_api.infra.postgres.get_existing_doc_ids", return_value=set()),
+            patch(
+                "rag_api.infra.qdrant.delete_chunks_by_doc_id",
+                side_effect=RuntimeError("qdrant down"),
+            ),
+        ):
+            kept = _filter_orphaned_chunks(results)
+        assert kept == []
+
+
 class TestSearchSimilarity:
     def _make_node(self, node_id: str, score: float, metadata: dict | None = None):
         node = MagicMock()
         node.node_id = node_id
         node.score = score
         node.metadata = metadata or {
+            "doc_id": "doc-id-1",
             "title": "doc.pdf",
             "source_type": "s3",
             "source": "kb-test/doc.pdf",
@@ -91,6 +145,7 @@ class TestSearchSimilarity:
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
         ):
             asyncio.run(search("query", ["kb-test"], mode="similarity"))
 
@@ -111,6 +166,7 @@ class TestSearchSimilarity:
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.4))
 
@@ -128,6 +184,7 @@ class TestSearchSimilarity:
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.0))
 
@@ -143,6 +200,7 @@ class TestSearchSimilarity:
         with (
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.5))
 

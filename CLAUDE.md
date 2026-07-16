@@ -25,7 +25,7 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 구조는 `ls`/`view`로 확인 가능하므로 여기서는 **파일 배치 규칙**만 기록한다:
 
 - `api/routers/` — health, kb, docs, search 라우터
-- `pipeline/ops/` — 순수 함수 Op (validate → parse → chunk → embed → upsert → meta), `runner.py`로 Dagster 없이도 직접 실행 가능
+- `pipeline/step/` — 순수 함수 Step (validate → parse → chunk → embed → upsert → meta), `runner.py`로 Dagster 없이도 직접 실행 가능
 - `pipeline/queue/`, `pipeline/utils/` — QueueWorker(Dagster 미사용 모드) 및 파이프라인 보조 유틸
 - `defs/` — Dagster `@op` 래퍼 + `jobs/`, `ops/`, `resources/`, `schedules/`, `sensors/`
 - `rag/` — retriever, merger(RRF), reranker

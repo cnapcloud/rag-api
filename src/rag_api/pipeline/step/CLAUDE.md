@@ -1,8 +1,9 @@
-# pipeline/ops — Op 작성 규칙
+# pipeline/step — Step 작성 규칙
 
 ## 핵심 원칙
 
-각 Op은 **순수 함수**여야 한다. Dagster `@op` 래퍼와 `runner.py` 양쪽에서 재사용되기 때문.
+각 Step 함수는 **순수 함수**여야 한다. Dagster `@op` 래퍼(`defs/ops/`)와 `runner.py` 양쪽에서
+재사용되기 때문.
 외부 상태 변경(Redis, Qdrant, MinIO 쓰기)은 `meta.py`, `upsert.py`에만 허용.
 
 `meta.py`는 인제스트 파이프라인 마지막 단계(`set_indexed`)만 담당하며, 나머지 상태 전이
@@ -36,7 +37,7 @@ Dense + Sparse를 `asyncio.gather`로 병렬 실행.
 ## 테스트 패턴
 
 ```python
-# Op 함수를 직접 호출 — Dagster context 불필요
+# Step 함수를 직접 호출 — Dagster context 불필요
 nodes = chunk(docs, strategy="recursive", chunk_size=128, chunk_overlap=16)
 assert len(nodes) > 1
 ```

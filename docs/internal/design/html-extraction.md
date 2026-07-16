@@ -4,7 +4,7 @@
 
 ## 1. 개요
 
-`parse_op`의 `HTMLCleanReader`(`src/rag_api/pipeline/ops/parse.py`)는 현재 태그 이름 기반
+`parse_op`의 `HTMLCleanReader`(`src/rag_api/pipeline/step/parser/html.py`)는 현재 태그 이름 기반
 deny-list(`nav`, `footer`, `header`, `script`, `style`, `aside` 제거)로 본문을 추출한다. 이 방식은
 사이트마다 마크업 구조가 달라 실제 boilerplate(2차 네비게이션, 쿠키 배너, "이 페이지가
 도움이 되었나요?" 위젯 등)를 태그 이름만으로 걸러내지 못하는 경우가 많고, 반대로 `<aside>`
@@ -122,7 +122,7 @@ trafilatura는 `favor_precision`/`favor_recall` 두 boolean을 받지만, 내부
 `get_text(separator="\n")` 평탄화 대신 trafilatura `output_format="markdown"`을 사용한다.
 헤딩(`#`), 리스트(`-`/`1.`), 코드블록(\`\`\`)이 텍스트에 보존된다.
 
-- 청킹 품질: 현재 `chunk_op`(`pipeline/ops/chunk.py`)은 HTML 문서도 다른 문서 타입과 동일하게
+- 청킹 품질: 현재 `chunk_op`(`pipeline/step/chunk.py`)은 HTML 문서도 다른 문서 타입과 동일하게
   `SentenceSplitter`(recursive 전략)로 분할한다. 마크다운 문법 자체를 인식하는 헤딩 경계 분할기는
   아님 — 하지만 마크다운 구문이 남아있으면 문장 경계가 더 명확해지고(리스트 항목이 줄바꿈으로
   분리됨), 사람이 청크를 검수할 때도 원문 구조를 파악하기 쉬워진다.
@@ -158,7 +158,7 @@ class HTMLCleanReader(BaseReader):
         return [Document(text=text, metadata=metadata)]
 ```
 
-- 근거: `defs/`(Dagster op 래퍼), `pipeline/ops/runner.py`, `_get_file_extractor()` 어느 쪽도
+- 근거: `defs/`(Dagster op 래퍼), `pipeline/step/runner.py`, `_get_file_extractor()` 어느 쪽도
   `HTMLCleanReader`의 내부 구현에 의존하지 않고 `BaseReader` 인터페이스로만 사용하므로, 클래스
   경계만 지키면 파이프라인 배선 변경이 전혀 필요 없다.
 - `trafilatura.extract()`가 `None`을 반환하는 경우(본문 판별 실패) 빈 문자열로 폴백한다. 이 경우
@@ -268,8 +268,9 @@ JS 렌더링은 WebConnector sync 중 SPA 페이지에서만 드물게 발동하
 
 | 컴포넌트 | 영향 |
 |---|---|
-| `pipeline/ops/parse.py::HTMLCleanReader` | 내부 구현 교체 (3.4) |
-| `pipeline/ops/parse.py::_get_file_extractor()` | 변경 없음 (`.html`/`.htm` → `HTMLCleanReader` 매핑 유지) |
+| `pipeline/step/parser/html.py::HTMLCleanReader` | 내부 구현 교체 (3.4) — US-42에서 `parse.py`에서
+  `parser/html.py`로 이동, 로직은 무변경 |
+| `pipeline/step/parser/registry.py::_register_defaults()` | 변경 없음 (`.html`/`.htm` → `HTMLCleanReader` 매핑 유지) |
 | `connectors/web.py` | 변경 없음 (4절 pending — Playwright fallback 미구현) |
 | `connectors/confluence.py` | HTML export 문서는 동일하게 `HTMLCleanReader`를 거치므로 3절 변경의
   수혜를 받음. JS 렌더링은 애초에 해당 없음(API 기반 수집) |

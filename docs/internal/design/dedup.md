@@ -88,7 +88,7 @@ Dagster는 `dedup_op`이 완료될 때까지 하위 op을 실행하지 않으므
 **독립 실행 (백필 / 수동 재처리):**
 `dedup_job`은 동일한 dedup 단계를 Dagster op(`simhash_op` → `verdict_op`)으로 노출한 별도 job이다.
 센서/스케줄에서 자동 트리거되지 않으며, 운영자가 수동으로 실행하거나 백필 스크립트에서 호출한다.
-두 방식 모두 `pipeline/ops/dedup/` 의 동일한 순수 함수를 공유한다.
+두 방식 모두 `pipeline/step/dedup/` 의 동일한 순수 함수를 공유한다.
 
 ### 단계 책임 분리
 
@@ -348,7 +348,7 @@ Postgres 트랜잭션 격리로 band 조회와 INSERT가 직렬화된다.
 3. 필터링된 후보 중 **score가 가장 높은 것 1개만 선택** (Top-1) — A 청크 하나당 매칭은 0개 또는 1개로 정리
 4. 위 과정을 A의 모든 청크에 대해 반복 → (A_청크, C_청크, score) 매칭 목록 생성 (모든 score는 0.50 이상)
 5. 문서 레벨 원점수 산출: **커버리지 가중 평균** — `raw_score(A,C) = Σ(matched score_i) / N` (N = A 전체 청크 수, 미매칭 청크는 0으로 취급, matched 개수가 아닌 N으로 나눔)
-6. **청크 수 비율(chunk_ratio)로 스케일링**: `chunk_ratio = min(A청크수, C청크수) / max(A청크수, C청크수)`, `score(A,C) = raw_score(A,C) * chunk_ratio`. `chunk_ratio`가 이미 `body_similar_threshold` 미만이면 raw_score가 1.0이어도 스케일링 후 threshold를 못 넘으므로, 이 경우 3~5단계(임베딩/벡터스토어 조회)를 생략하고 `score=0.0`으로 즉시 확정한다 (구현: `pipeline/ops/dedup/chunk_compare.py::compare_chunks`)
+6. **청크 수 비율(chunk_ratio)로 스케일링**: `chunk_ratio = min(A청크수, C청크수) / max(A청크수, C청크수)`, `score(A,C) = raw_score(A,C) * chunk_ratio`. `chunk_ratio`가 이미 `body_similar_threshold` 미만이면 raw_score가 1.0이어도 스케일링 후 threshold를 못 넘으므로, 이 경우 3~5단계(임베딩/벡터스토어 조회)를 생략하고 `score=0.0`으로 즉시 확정한다 (구현: `pipeline/step/dedup/chunk_compare.py::compare_chunks`)
 7. `compare_all_candidates=true`인 경우 0~6을 대상 C마다 반복 → (A doc_id, C doc_id, score) 쌍이 C 개수만큼 생성
 
 **출력**

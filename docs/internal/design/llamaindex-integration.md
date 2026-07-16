@@ -94,8 +94,8 @@ FastEmbed BM25를 직접 사용하지 않고, 순수 Python으로 구현한 TF �
 
 | 구성 요소 | 위치 |
 |-----------|------|
-| 파싱 (parse_op) | `src/pipeline/ops/parse.py` |
-| 청킹 (chunk_op) | `src/pipeline/ops/chunk.py` |
-| 임베딩 (embed_op) | `src/pipeline/ops/embed.py` |
+| 파싱 (parse_op) | `src/pipeline/step/parse.py` |
+| 청킹 (chunk_op) | `src/pipeline/step/chunk.py` |
+| 임베딩 (embed_op) | `src/pipeline/step/embed.py` |
 | 자체 TF sparse 인코더 | `src/pipeline/utils/sparse.py` |
 | 검색 retriever | `src/rag/retriever.py` |

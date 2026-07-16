@@ -297,6 +297,18 @@ def get_active_ingest_docs_for_kb(kb_id: str) -> list[dict]:
     return [_row_to_doc(r) for r in rows]
 
 
+def get_existing_doc_ids(doc_ids: list[str]) -> set[str]:
+    """Return the subset of doc_ids that still have a row (any status)."""
+    if not doc_ids:
+        return set()
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT doc_id FROM documents WHERE doc_id = ANY(%s)",
+            [doc_ids],
+        ).fetchall()
+    return {r[0] for r in rows}
+
+
 def get_doc_by_id(doc_id: str) -> dict | None:
     with get_pool().connection() as conn:
         row = conn.execute(

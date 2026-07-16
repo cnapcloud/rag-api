@@ -93,9 +93,9 @@ leaf 포인트 삭제                  parent 포인트 삭제
 
 | 파일 | 변경 내용 |
 |------|-----------|
-| `src/pipeline/ops/chunk.py` | `document_aware` 전략 재추가, 전체 노드 반환 (leaf + parent 구분) |
-| `src/pipeline/ops/embed.py` | `parent_node_id`가 없는 노드(leaf)만 임베딩 |
-| `src/pipeline/ops/upsert.py` | leaf → 벡터 포함 저장, parent → payload만 저장 분기 |
+| `src/pipeline/step/chunk.py` | `document_aware` 전략 재추가, 전체 노드 반환 (leaf + parent 구분) |
+| `src/pipeline/step/embed.py` | `parent_node_id`가 없는 노드(leaf)만 임베딩 |
+| `src/pipeline/step/upsert.py` | leaf → 벡터 포함 저장, parent → payload만 저장 분기 |
 | `src/rag/retriever.py` | 검색 후 `parent_node_id` 유무로 parent text 조회 또는 fallback |
 
 ## 주의사항

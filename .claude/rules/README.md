@@ -19,8 +19,8 @@
 ### 3. 인프라 Mock (`conventions/02-testing.md`)
 테스트에서 실제 Redis/Qdrant/MinIO 연결 생성 금지.
 
-### 4. Op 순수 함수
-파이프라인 Op은 Dagster context 없이 동작해야 함.
+### 4. Step 순수 함수
+파이프라인 Step(`pipeline/step/`)은 Dagster context 없이 동작해야 함.
 
 ### 5. 파일 확인 후 수정
 `infra/` 파일은 수정 전 내용 확인 필수 (복붙 사고 전례).
@@ -51,7 +51,7 @@ prd.md ↔ design 문서 ↔ backlog ↔ plan을 파일 상단 고정 링크로 
    conventions/00-progress-tracking.md §5
 2. 승인 후 해당 backlog 행 status → in-progress로 변경, plans/plan.md에 계획 반영
 3. conventions/ 관련 문서 읽기
-4. 기존 Op 패턴 참조 (pipeline/ops/ 기존 파일)
+4. 기존 Step 패턴 참조 (pipeline/step/ 기존 파일)
 5. 테스트 먼저 작성 → 구현 → 테스트 통과 확인
 6. backlog/plan 인덱스 status → done으로 업데이트 (todo/ → 루트 이동 포함)
 7. 학습 내용 memory/MEMORY.md에 저장

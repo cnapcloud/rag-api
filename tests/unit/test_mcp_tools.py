@@ -91,15 +91,15 @@ def test_get_document_status_no_size():
 # search
 # ──────────────────────────────────────────────
 
-def _make_result(text="hello", kb_id="kb-a", doc_key="doc.pdf", score=0.9):
+def _make_result(text="hello", kb_id="kb-a", source="doc.pdf", score=0.9):
     from rag_api.rag.retriever import SearchResult
     return SearchResult(
         chunk_id="chunk-1",
         kb_id=kb_id,
-        doc_key=doc_key,
+        doc_id="doc-id-1",
         title="doc.pdf",
         source_type="s3",
-        source=doc_key,
+        source=source,
         doc_type="pdf",
         chunk_index=0,
         page_num=1,

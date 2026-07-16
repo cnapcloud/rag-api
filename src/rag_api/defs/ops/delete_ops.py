@@ -27,7 +27,7 @@ class DeleteConfig(Config):
 @op
 def delete_op(context: OpExecutionContext, config: DeleteConfig):
     """Delete a document. Soft delete for indexed unless force=True, hard delete otherwise."""
-    from rag_api.pipeline.ops.delete import delete_doc
+    from rag_api.pipeline.step.delete import delete_doc
 
     delete_doc(config.doc_id, run_id=context.run_id, force=config.force)
     context.log.info("Delete done: doc_id=%s force=%s", config.doc_id, config.force)

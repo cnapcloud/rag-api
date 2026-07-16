@@ -202,9 +202,9 @@ instead of being processed immediately. Delay/dedup mechanics are covered in
 
 | Item | File |
 |------|------|
-| Qdrant payload assembly | `src/pipeline/ops/upsert.py` |
-| doc_created_at extraction | `src/pipeline/ops/parse.py` — `_extract_doc_created_at()` |
+| Qdrant payload assembly | `src/pipeline/step/upsert.py` |
+| doc_created_at extraction | `src/pipeline/step/parse.py` — `_extract_doc_created_at()` |
 | Postgres KB/doc CRUD | `src/infra/postgres.py` |
-| Document state transitions | `src/pipeline/ops/meta.py` |
+| Document state transitions | `src/pipeline/step/meta.py` |
 | Schema DDL | `migrations/001_initial_schema.sql` |
 | Redis queue client | `src/infra/redis.py` |

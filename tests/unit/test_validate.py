@@ -18,14 +18,14 @@ def _make_doc(file_size: int = 1024) -> dict:
 def test_validate_normal_doc():
     """Normal doc within size limit -> True."""
     with patch("rag_api.infra.postgres.get_doc_by_id", return_value=_make_doc()):
-        from rag_api.pipeline.ops.validate import validate
+        from rag_api.pipeline.step.validate import validate
         assert validate(DOC_ID) is True
 
 
 def test_validate_doc_not_found():
     """Non-existent doc_id -> IngestValidationError."""
     with patch("rag_api.infra.postgres.get_doc_by_id", return_value=None):
-        from rag_api.pipeline.ops.validate import validate
+        from rag_api.pipeline.step.validate import validate
         with pytest.raises(IngestValidationError, match="Document not found"):
             validate(DOC_ID)
 
@@ -33,7 +33,7 @@ def test_validate_doc_not_found():
 def test_validate_file_size_exceeded():
     """File too large -> IngestValidationError."""
     with patch("rag_api.infra.postgres.get_doc_by_id", return_value=_make_doc(300 * 1024 * 1024)):
-        from rag_api.pipeline.ops.validate import validate
+        from rag_api.pipeline.step.validate import validate
         with pytest.raises(IngestValidationError, match="File too large"):
             validate(DOC_ID)
 
@@ -41,7 +41,7 @@ def test_validate_file_size_exceeded():
 def test_validate_zero_size_passes():
     """file_size=0 -> no size check, returns True."""
     with patch("rag_api.infra.postgres.get_doc_by_id", return_value=_make_doc(0)):
-        from rag_api.pipeline.ops.validate import validate
+        from rag_api.pipeline.step.validate import validate
         assert validate(DOC_ID) is True
 
 
@@ -50,12 +50,12 @@ def test_validate_none_size_passes():
     doc = _make_doc()
     doc["file_size"] = None
     with patch("rag_api.infra.postgres.get_doc_by_id", return_value=doc):
-        from rag_api.pipeline.ops.validate import validate
+        from rag_api.pipeline.step.validate import validate
         assert validate(DOC_ID) is True
 
 
 def test_validate_force_flag_passes():
     """force=True -> validate still passes (force does not change size check)."""
     with patch("rag_api.infra.postgres.get_doc_by_id", return_value=_make_doc()):
-        from rag_api.pipeline.ops.validate import validate
+        from rag_api.pipeline.step.validate import validate
         assert validate(DOC_ID, force=True) is True

@@ -47,3 +47,6 @@ docker/data/mailpit/
 
 # Logs
 *.log
+
+# Ad-hoc local experiments (not part of the codebase, may contain personal test files)
+experiments/

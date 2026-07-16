@@ -4,7 +4,7 @@ Confirms simhash/minhash stage 'similar' results by comparing A's chunks (comput
 in-memory, not indexed) against a candidate C's already-indexed Qdrant chunks.
 
 Algorithm (docs/internal/design/dedup.md 3.3.2 / 3.3.3):
-  1. Chunk + embed A in-memory (pipeline/ops/chunk.chunk + pipeline/ops/embed.embed).
+  1. Chunk + embed A in-memory (pipeline/step/chunk.chunk + pipeline/step/embed.embed).
   2. For each A chunk, search C's chunks in Qdrant (dense-only), keep hits >= chunk_match_threshold,
      take the Top-1 (highest score).
   3. Aggregate to a document-level score: coverage-weighted average = sum(matched scores) / N,
@@ -24,7 +24,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from rag_api.pipeline.ops.dedup.types import BodyMatch, DedupResult, TitleMatch
+from rag_api.pipeline.step.dedup.types import BodyMatch, DedupResult, TitleMatch
 
 if TYPE_CHECKING:
     from llama_index.core import Document
@@ -74,8 +74,8 @@ def compare_chunks(
     """
     from rag_api.infra.postgres import get_doc_by_id
     from rag_api.infra.qdrant import search_chunks_by_doc_id
-    from rag_api.pipeline.ops.chunk import chunk
-    from rag_api.pipeline.ops.embed import embed
+    from rag_api.pipeline.step.chunk import chunk
+    from rag_api.pipeline.step.embed import embed
 
     nodes = chunk(documents)
     if not nodes:
@@ -141,7 +141,7 @@ def _resolve_title_match(documents: list[Document], candidate_doc_id: str) -> Ti
     actual winning candidate fixes that.
     """
     from rag_api.infra.postgres import get_docs_fingerprints
-    from rag_api.pipeline.ops.dedup.simhash import compute_title_hash
+    from rag_api.pipeline.step.dedup.simhash import compute_title_hash
 
     title = " ".join(d.metadata.get("file_name", "") for d in documents[:1])
     title_hash = compute_title_hash(title)

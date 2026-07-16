@@ -475,13 +475,13 @@ class TestProcessAttachment:
         mock_enqueue.assert_not_called()
 
     def test_all_supported_extensions_accepted(self):
-        from rag_api.pipeline.ops.parse import SUPPORTED_EXTENSIONS
+        from rag_api.pipeline.step.parse import supported_extensions
 
         c = _make_confluence_connector()
         client = _make_client()
         client.get = MagicMock(return_value=self._make_download_response(b"content"))
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in supported_extensions():
             att = {**_ATTACHMENT, "title": f"file{ext}"}
             new_doc = {**_BASE_ATT_DOC, "doc_type": ext.lstrip(".")}
             with (

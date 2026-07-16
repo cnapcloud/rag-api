@@ -111,6 +111,9 @@ class FakePostgresStore:
     def get_doc_by_id(self, doc_id: str) -> dict | None:
         return dict(self._docs[doc_id]) if doc_id in self._docs else None
 
+    def get_existing_doc_ids(self, doc_ids: list[str]) -> set[str]:
+        return {d for d in doc_ids if d in self._docs}
+
     def get_doc_by_source(self, kb_id: str, source: str) -> dict | None:
         for doc in self._docs.values():
             if doc["kb_id"] == kb_id and doc["source"] == source:
@@ -330,6 +333,7 @@ def mock_postgres(monkeypatch):
     monkeypatch.setattr("rag_api.infra.postgres.delete_kb_meta", store.delete_kb_meta)
     monkeypatch.setattr("rag_api.infra.postgres.create_doc", store.create_doc)
     monkeypatch.setattr("rag_api.infra.postgres.get_doc_by_id", store.get_doc_by_id)
+    monkeypatch.setattr("rag_api.infra.postgres.get_existing_doc_ids", store.get_existing_doc_ids)
     monkeypatch.setattr("rag_api.infra.postgres.get_doc_by_source", store.get_doc_by_source)
     monkeypatch.setattr("rag_api.infra.postgres.update_doc_fields", store.update_doc_fields)
     monkeypatch.setattr("rag_api.infra.postgres.soft_delete_doc", store.soft_delete_doc)

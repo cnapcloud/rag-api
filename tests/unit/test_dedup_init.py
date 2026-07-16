@@ -1,4 +1,4 @@
-"""Unit tests for pipeline/ops/dedup/__init__.py — non-document skip behavior."""
+"""Unit tests for pipeline/step/dedup/__init__.py — non-document skip behavior."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from llama_index.core import Document
 
-from rag_api.pipeline.ops.dedup import is_document, run_dedup_pipeline
+from rag_api.pipeline.step.dedup import is_document, run_dedup_pipeline
 
 
 def _doc(doc_type: str) -> Document:
@@ -37,7 +37,7 @@ def test_is_document_true_when_no_documents():
 # run_dedup_pipeline — skips SimHash/MinHash for non-document types
 # ──────────────────────────────────────────────
 
-@patch("rag_api.pipeline.ops.dedup.run_simhash_detection")
+@patch("rag_api.pipeline.step.dedup.run_simhash_detection")
 @patch("rag_api.config.settings.get_settings")
 def test_run_dedup_pipeline_skips_non_document(mock_get_settings, mock_simhash):
     mock_get_settings.return_value = MagicMock(dedup=MagicMock(enabled=True))
@@ -49,11 +49,11 @@ def test_run_dedup_pipeline_skips_non_document(mock_get_settings, mock_simhash):
     mock_simhash.assert_not_called()
 
 
-@patch("rag_api.pipeline.ops.dedup.run_verdict")
-@patch("rag_api.pipeline.ops.dedup.run_simhash_detection")
+@patch("rag_api.pipeline.step.dedup.run_verdict")
+@patch("rag_api.pipeline.step.dedup.run_simhash_detection")
 @patch("rag_api.config.settings.get_settings")
 def test_run_dedup_pipeline_runs_for_document(mock_get_settings, mock_simhash, mock_verdict):
-    from rag_api.pipeline.ops.dedup.types import DedupResult
+    from rag_api.pipeline.step.dedup.types import DedupResult
 
     mock_get_settings.return_value = MagicMock(dedup=MagicMock(enabled=True))
     mock_simhash.return_value = DedupResult(body_match="identical_level", needs_indexing=False)
@@ -68,14 +68,14 @@ def test_run_dedup_pipeline_runs_for_document(mock_get_settings, mock_simhash, m
 # run_dedup_pipeline — routes 'similar' through chunk_compare (stage 3)
 # ──────────────────────────────────────────────
 
-@patch("rag_api.pipeline.ops.dedup.run_verdict")
-@patch("rag_api.pipeline.ops.dedup.run_chunk_compare")
-@patch("rag_api.pipeline.ops.dedup.run_simhash_detection")
+@patch("rag_api.pipeline.step.dedup.run_verdict")
+@patch("rag_api.pipeline.step.dedup.run_chunk_compare")
+@patch("rag_api.pipeline.step.dedup.run_simhash_detection")
 @patch("rag_api.config.settings.get_settings")
 def test_run_dedup_pipeline_routes_similar_to_chunk_compare(
     mock_get_settings, mock_simhash, mock_chunk_compare, mock_verdict
 ):
-    from rag_api.pipeline.ops.dedup.types import DedupResult
+    from rag_api.pipeline.step.dedup.types import DedupResult
 
     mock_get_settings.return_value = MagicMock(dedup=MagicMock(enabled=True))
     mock_simhash.return_value = DedupResult(
@@ -91,14 +91,14 @@ def test_run_dedup_pipeline_routes_similar_to_chunk_compare(
     assert result.body_match == "identical_level"
 
 
-@patch("rag_api.pipeline.ops.dedup.run_verdict")
-@patch("rag_api.pipeline.ops.dedup.run_chunk_compare")
-@patch("rag_api.pipeline.ops.dedup.run_simhash_detection")
+@patch("rag_api.pipeline.step.dedup.run_verdict")
+@patch("rag_api.pipeline.step.dedup.run_chunk_compare")
+@patch("rag_api.pipeline.step.dedup.run_simhash_detection")
 @patch("rag_api.config.settings.get_settings")
 def test_run_dedup_pipeline_skips_chunk_compare_when_not_similar(
     mock_get_settings, mock_simhash, mock_chunk_compare, mock_verdict
 ):
-    from rag_api.pipeline.ops.dedup.types import DedupResult
+    from rag_api.pipeline.step.dedup.types import DedupResult
 
     mock_get_settings.return_value = MagicMock(dedup=MagicMock(enabled=True))
     mock_simhash.return_value = DedupResult(body_match="identical_level", needs_indexing=False)

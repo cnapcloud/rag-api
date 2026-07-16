@@ -48,7 +48,7 @@ class SearchRequest(BaseModel):
 class SearchResultItem(BaseModel):
     chunk_id: str
     kb_id: str
-    doc_key: str
+    doc_id: str
     title: str
     source_type: str
     source: str
@@ -126,7 +126,7 @@ async def search(req: SearchRequest):
             SearchResultItem(
                 chunk_id=r.chunk_id,
                 kb_id=r.kb_id,
-                doc_key=r.doc_key,
+                doc_id=r.doc_id,
                 title=r.title,
                 source_type=r.source_type,
                 source=r.source,

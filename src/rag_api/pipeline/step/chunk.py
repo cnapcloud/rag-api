@@ -10,7 +10,7 @@ from llama_index.core.schema import BaseNode
 
 from rag_api.config.settings import get_settings
 from rag_api.exceptions import ConfigError
-from rag_api.pipeline.ops.parse import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
+from rag_api.pipeline.step.parser.extensions import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def _build_parser(strategy: ChunkStrategy, chunk_size: int, chunk_overlap: int, 
     elif strategy == "semantic":
         from llama_index.core.node_parser import SemanticSplitterNodeParser
 
-        from rag_api.pipeline.ops.embed import build_embed_model
+        from rag_api.pipeline.step.embed import build_embed_model
 
         embed_model = build_embed_model()
         return SemanticSplitterNodeParser(

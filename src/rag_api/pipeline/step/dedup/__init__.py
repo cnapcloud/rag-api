@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 
-from rag_api.pipeline.ops.dedup.chunk_compare import run_chunk_compare
-from rag_api.pipeline.ops.dedup.simhash import run_simhash_detection
-from rag_api.pipeline.ops.dedup.types import BodyMatch, DedupResult, TitleMatch
-from rag_api.pipeline.ops.dedup.verdict import run_verdict
-from rag_api.pipeline.ops.parse import DOCUMENT_EXTENSIONS
+from rag_api.pipeline.step.dedup.chunk_compare import run_chunk_compare
+from rag_api.pipeline.step.dedup.simhash import run_simhash_detection
+from rag_api.pipeline.step.dedup.types import BodyMatch, DedupResult, TitleMatch
+from rag_api.pipeline.step.dedup.verdict import run_verdict
+from rag_api.pipeline.step.parser.extensions import DOCUMENT_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def run_dedup_pipeline(
     if documents is None:
         from rag_api.exceptions import IngestValidationError
         from rag_api.infra.postgres import get_doc_by_id
-        from rag_api.pipeline.ops.parse import parse
+        from rag_api.pipeline.step.parse import parse
 
         doc = get_doc_by_id(doc_id)
         if doc is None:
@@ -81,7 +81,7 @@ def run_dedup_pipeline(
 
     # minhash step (only when the simhash step found no candidates)
     if result.body_match == "none":
-        from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
+        from rag_api.pipeline.step.dedup.minhash import run_minhash_detection
         result = run_minhash_detection(doc_id=doc_id, text=body, title=title, cfg=cfg.dedup.minhash, kb_id=kb_id)
 
     # chunk_compare step (only when simhash/minhash routed a near-duplicate candidate)

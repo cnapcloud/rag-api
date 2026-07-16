@@ -60,10 +60,13 @@ class QdrantSettings(BaseModel):
 class IngestionSettings(BaseModel):
     max_file_size_mb: int = 200
     min_content_chars: int = 200
-    # trafilatura extraction bias — see HTMLCleanReader (pipeline/ops/parse.py).
+    # trafilatura extraction bias — see HTMLCleanReader (pipeline/step/parser/html.py).
     # strict: 애매한 블록 제외 (짧고 확실한 본문만) / lenient: 애매한 블록 포함 (본문 손실 최소화,
     # 짧은 boilerplate 잔존 가능) / balanced: 중립.
     html_extraction_policy: Literal["strict", "lenient", "balanced"] = "lenient"
+    # "module.path:register_func" 목록 — pipeline/step/parser/registry.py가 지연 로드 시점에
+    # 순서대로 import하여 각 register 함수를 호출한다. docs/internal/design/parser-registry.md 참고.
+    parser_plugins: list[str] = Field(default_factory=list)
 
 
 class QueueWorkerSettings(BaseModel):

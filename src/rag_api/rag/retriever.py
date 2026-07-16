@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class SearchResult:
     chunk_id: str
     kb_id: str
-    doc_key: str
-    title: str
+    doc_id: str
     doc_type: str
+    title: str
     chunk_index: int
     page_num: int | None
     text: str
@@ -49,7 +49,7 @@ def _build_vector_store(kb_id: str, qdrant_client=None):
 def _build_index(kb_id: str, embed_model=None):
     from llama_index.core import VectorStoreIndex
 
-    from rag_api.pipeline.ops.embed import build_embed_model
+    from rag_api.pipeline.step.embed import build_embed_model
 
     vector_store = _build_vector_store(kb_id)
     em = embed_model or build_embed_model()
@@ -62,7 +62,7 @@ def _node_to_result(kb_id: str, node) -> SearchResult:
     return SearchResult(
         chunk_id=node.node_id,
         kb_id=kb_id,
-        doc_key=source,
+        doc_id=meta.get("doc_id", ""),
         title=meta.get("title", ""),
         source_type=meta.get("source_type", ""),
         source=source,
@@ -74,6 +74,45 @@ def _node_to_result(kb_id: str, node) -> SearchResult:
         rerank_score=None,
         updated_at=meta.get("updated_at", ""),
     )
+
+
+def _filter_orphaned_chunks(results: list[SearchResult]) -> list[SearchResult]:
+    """Drop chunks whose doc_id no longer has a Postgres row, purging them from Qdrant.
+
+    Qdrant chunk deletion is best-effort on non-indexed statuses
+    (pipeline/step/delete.py: _delete_qdrant_chunks), so a document row removed
+    while its chunks are being written/deleted can leave orphaned chunks behind.
+    Purging on detection is self-healing — best-effort, never blocks the search response.
+    """
+    from rag_api.infra import qdrant as qdrant_infra
+    from rag_api.infra.postgres import get_existing_doc_ids
+
+    doc_ids = {r.doc_id for r in results if r.doc_id}
+    existing = get_existing_doc_ids(list(doc_ids))
+
+    kept = []
+    purged: set[tuple[str, str]] = set()
+    for r in results:
+        if r.doc_id and r.doc_id in existing:
+            kept.append(r)
+            continue
+
+        logger.warning(
+            "Orphaned chunk excluded from search results: kb=%s doc_id=%s chunk_id=%s",
+            r.kb_id, r.doc_id, r.chunk_id,
+        )
+        key = (r.kb_id, r.doc_id)
+        if key in purged:
+            continue
+        purged.add(key)
+        try:
+            qdrant_infra.delete_chunks_by_doc_id(r.kb_id, r.doc_id)
+        except Exception as e:
+            logger.warning(
+                "Failed to purge orphaned chunk from Qdrant (ignored): kb=%s doc_id=%s err=%s",
+                r.kb_id, r.doc_id, e,
+            )
+    return kept
 
 
 def _search_kb(
@@ -156,6 +195,8 @@ async def search(
     else:
         from rag_api.rag.merger import rrf_merge
         merged = rrf_merge(all_results, k=cfg.hybrid.rrf_k)[:_top_k]
+
+    merged = _filter_orphaned_chunks(merged)
 
     total_candidates = len(merged)
     logger.info("Search done: mode=%s kbs=%d candidates=%d", mode, len(kb_ids), total_candidates)
