@@ -23,7 +23,7 @@ retrieval:
 tracing:
   langfuse_public_key: "yaml-langfuse-public"
   langfuse_secret_key: "yaml-langfuse-secret"
-embedding:
+provider:
   openai_api_key: "yaml-openai-key"
 """
 
@@ -46,7 +46,7 @@ def test_secret_fields_default_to_yaml_values(settings_yaml: Path) -> None:
     assert settings.retrieval.rerank.api_key == "yaml-rerank-key"
     assert settings.tracing.langfuse_public_key == "yaml-langfuse-public"
     assert settings.tracing.langfuse_secret_key == "yaml-langfuse-secret"
-    assert settings.embedding.openai_api_key == "yaml-openai-key"
+    assert settings.provider.openai_api_key == "yaml-openai-key"
 
 
 def test_env_vars_override_yaml_secret_values(settings_yaml: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,7 +70,7 @@ def test_env_vars_override_yaml_secret_values(settings_yaml: Path, monkeypatch: 
     assert settings.retrieval.rerank.api_key == "env-rerank-key"
     assert settings.tracing.langfuse_public_key == "env-langfuse-public"
     assert settings.tracing.langfuse_secret_key == "env-langfuse-secret"
-    assert settings.embedding.openai_api_key == "env-openai-key"
+    assert settings.provider.openai_api_key == "env-openai-key"
 
 
 def test_rerank_env_override_applies_without_yaml_retrieval_section(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -73,12 +73,14 @@ chunking:
   min_chunk_chars: 30
   semantic_threshold: 0.8
 
-embedding:
-  provider: "ollama"
-  model: "bge-m3"
-  vector_size: 1024
+provider:
+  name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
   ollama_url: "http://192.168.0.75:11434"
-  openai_model: "text-embedding-3-small"
+  openai_api_key: ""
+
+embedding:
+  model: "bge-m3"                # provider에 맞는 모델명 (ollama: bge-m3 / openai: text-embedding-3-small)
+  vector_size: 1024
 
 retrieval:
   mode: "hybrid"

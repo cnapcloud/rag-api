@@ -42,7 +42,6 @@
 | [US-37](US-37-web-connector-unrestricted-scope.md) | WebConnector — unrestricted 도메인 스코프 옵션 (백엔드) | done |
 | [US-38](US-38-web-connector-admin-ui-unrestricted.md) | WebConnector Admin UI — seed page 포함 / unrestricted 체크박스 노출 | done |
 | [US-39](US-39-html-extraction-policy-lenient-default.md) | HTML 추출 정책(strict/lenient/balanced) 설정화 + 기본값 lenient 전환 | done |
-| [US-40](todo/US-40-image-captioning-ocr-fallback.md) | 이미지 캡셔닝 + PDF OCR 폴백 (parse_op vision/OCR 처리) | todo |
 | [US-41](US-41-parser-extension-registry.md) | 파서 확장 레지스트리 (parse_op 확장자->리더 매핑을 등록 기반으로 전환) | done |
 | [US-42](US-42-parser-package-restructure.md) | 파서 패키지 구조화 + 신규 포맷 8종 지원 (CSV/TSV/JSON/EPUB/XLSX/XLS/RST/EML) | done |
 | [US-43](US-43-legacy-office-formats.md) | 레거시 .doc/.ppt + .pptx 지원 추가 | done |

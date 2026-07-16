@@ -32,24 +32,25 @@ class EmbeddedNode:
 
 def build_embed_model():
     """settings.yaml provider에 따라 LlamaIndex Embedding 모델을 반환한다."""
+    provider = get_settings().provider
     cfg = get_settings().embedding
 
-    if cfg.provider == "ollama":
+    if provider.name == "ollama":
         from llama_index.embeddings.ollama import OllamaEmbedding
 
         return OllamaEmbedding(
             model_name=cfg.model,
-            base_url=cfg.ollama_url,
+            base_url=provider.ollama_url,
         )
-    elif cfg.provider == "openai":
+    elif provider.name == "openai":
         from llama_index.embeddings.openai import OpenAIEmbedding
 
         return OpenAIEmbedding(
-            model=cfg.openai_model,
-            api_key=cfg.openai_api_key,
+            model=cfg.model,
+            api_key=provider.openai_api_key,
         )
     else:
-        raise ConfigError(f"Unknown embedding provider: {cfg.provider}")
+        raise ConfigError(f"Unknown embedding provider: {provider.name}")
 
 
 # ──────────────────────────────────────────────
@@ -87,6 +88,7 @@ async def _embed_batch_async(
 
 def embed(nodes: list[BaseNode], batch_size: int = 32) -> list[EmbeddedNode]:
     """Node 리스트에 Dense + Sparse 벡터를 주입한다."""
+    provider = get_settings().provider
     cfg = get_settings().embedding
 
     embed_model = build_embed_model()
@@ -102,8 +104,8 @@ def embed(nodes: list[BaseNode], batch_size: int = 32) -> list[EmbeddedNode]:
 
     embedded: list[EmbeddedNode] = []
     for node, (dense, sp_idx, sp_val) in zip(nodes, vector_tuples):
-        node.metadata["embedding_model"] = cfg.openai_model if cfg.provider == "openai" else cfg.model
-        node.metadata["embedding_provider"] = cfg.provider
+        node.metadata["embedding_model"] = cfg.model
+        node.metadata["embedding_provider"] = provider.name
         embedded.append(
             EmbeddedNode(
                 node=node,
@@ -113,5 +115,5 @@ def embed(nodes: list[BaseNode], batch_size: int = 32) -> list[EmbeddedNode]:
             )
         )
 
-    logger.info("Embedding done: nodes=%d provider=%s model=%s", len(nodes), cfg.provider, cfg.model)
+    logger.info("Embedding done: nodes=%d provider=%s model=%s", len(nodes), provider.name, cfg.model)
     return embedded

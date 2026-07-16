@@ -90,13 +90,15 @@ class ChunkingSettings(BaseModel):
     code_chunk_lines_overlap: int = 5
 
 
-class EmbeddingSettings(BaseModel):
-    provider: str = "ollama"           # ollama / openai
-    model: str = "bge-m3"
-    vector_size: int = 1024            # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
+class ProviderSettings(BaseModel):
+    name: str = "ollama"               # ollama / openai — embedding, ingestion.image_captioning 공통
     ollama_url: str = "http://ollama:11434"
     openai_api_key: str = ""
-    openai_model: str = "text-embedding-3-small"
+
+
+class EmbeddingSettings(BaseModel):
+    model: str = "bge-m3"              # provider에 맞는 모델명 (ollama: bge-m3 / openai: text-embedding-3-small)
+    vector_size: int = 1024            # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
 
 
 class RerankerSettings(BaseModel):
@@ -196,8 +198,17 @@ class KBDefinition(BaseModel):
 # 메인 설정
 # ──────────────────────────────────────────────
 
-_SETTINGS_PATH = Path(__file__).parents[3] / "settings.yaml"
-
+# /app/settings.yaml wins unconditionally when present — both rag-api standalone and any app
+# vendoring it (e.g. rag-ent-api) use /app as their own container WORKDIR + settings.yaml
+# location. Falls back to a path relative to this package's own install location (correct for
+# local `uv run`/`rag-api serve`, where /app doesn't exist) otherwise. Without this, a vendoring
+# app's settings.yaml is invisible to rag-api's own Settings.from_yaml() — it would resolve
+# relative to wherever rag-api's source got installed instead (e.g. an editable path dependency
+# mount), never the consuming app's own config.
+_APP_SETTINGS_PATH = Path("/app/settings.yaml")
+_SETTINGS_PATH = (
+    _APP_SETTINGS_PATH if _APP_SETTINGS_PATH.exists() else Path(__file__).parents[3] / "settings.yaml"
+)
 
 class Settings(BaseModel):
     server: ServerSettings = Field(default_factory=ServerSettings)
@@ -211,6 +222,7 @@ class Settings(BaseModel):
     queue_worker: QueueWorkerSettings = Field(default_factory=QueueWorkerSettings)
     queue_poll: QueuePollSettings = Field(default_factory=QueuePollSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
+    provider: ProviderSettings = Field(default_factory=ProviderSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
@@ -227,7 +239,7 @@ class Settings(BaseModel):
             data = {}
 
         if api_key := os.environ.get("OPENAI_API_KEY"):
-            data.setdefault("embedding", {})["openai_api_key"] = api_key
+            data.setdefault("provider", {})["openai_api_key"] = api_key
         if access_key := os.environ.get("S3_ACCESS_KEY"):
             data.setdefault("s3", {})["access_key"] = access_key
         if secret_key := os.environ.get("S3_SECRET_KEY"):

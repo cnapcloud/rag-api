@@ -20,7 +20,6 @@
 | 2026-07-04 | [duplicate-request-handling.md](duplicate-request-handling.md) | 큐 dedup / 중복 dispatch 처리 |
 | 2026-07-09 | [html-extraction.md](html-extraction.md) | HTML 본문 추출 설계 |
 | 2026-07-14 | [web-connector.md](web-connector.md) | Web 커넥터 크롤링/변경 감지/추출 상호작용 및 알려진 한계 |
-| 2026-07-15 | [image-ocr-parsing.md](image-ocr-parsing.md) | 이미지 캡셔닝 + PDF OCR 폴백 — vision 모델/OCR 엔진 기반 `parse_op` 확장 |
 | 2026-07-15 | [parser-registry.md](parser-registry.md) | 파서 확장 레지스트리 — 등록 기반으로 파서 추가/교체/제거를 가능하게 하는 구조 |
 
 ## 변경 이력

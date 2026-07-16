@@ -14,7 +14,7 @@ from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from rag_api.exceptions import ConflictError, IngestValidationError, NotFoundError
-from rag_api.pipeline.step.parser.extensions import DOCUMENT_EXTENSIONS
+from rag_api.pipeline.step.parse import supported_extensions
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ router = APIRouter()
 
 def _check_ext(filename: str) -> str:
     ext = Path(filename).suffix.lower()
-    if ext not in DOCUMENT_EXTENSIONS:
+    if ext not in supported_extensions():
         raise IngestValidationError(f"Unsupported file format: {ext}")
     return ext
 

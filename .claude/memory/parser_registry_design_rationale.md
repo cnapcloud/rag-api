@@ -11,10 +11,14 @@ design 문서([parser-registry.md](../../docs/internal/design/parser-registry.md
   쉽다.
 - 이런 기능은 rag-ent-api(비공개 enterprise 레이어) 쪽에 구현하고, rag-api는 확장 지점만
   제공해야 한다는 결론에 도달 — US-41 파서 레지스트리가 그 결과물.
-- rag-ent-api 쪽 실제 배선(캡셔닝/OCR 플러그인 모듈 위치, `image_captioning`/`pdf_ocr_fallback`
-  세부 설정을 rag_ent 자체 Settings 서브클래스에 두는 것 등)은 아직 미착수 — US-40은 여전히
-  이 레지스트리 이전의 정적 딕셔너리 구조를 전제로 작성돼 있어 그대로 구현하면 안 됨(US-41
-  오픈이슈 참고).
+- **2026-07-16 완료**: rag-ent-api 쪽 실제 배선을 완료함(E-21). `pipeline/plugins/image_ocr.py`
+  가 유일한 진입점, `config/settings.py`의 `IngestionSettings(RagApiIngestionSettings)`
+  서브클래스가 `image_captioning`/`pdf_ocr_fallback`을 갖는다. OCR 엔진은 계획했던 PaddleOCR
+  대신 RapidOCR로 채택(설치 용량/정확도 실측 근거는 rag-ent-api
+  `docs/internal/reference/02-ocr-engine-selection.md`). rag-api 쪽 US-40
+  backlog/`image-ocr-parsing.md`는 이 작업으로 대체되어 삭제, 내용은 rag-ent-api의
+  `E-21-image-captioning-ocr-fallback.md`/`docs/internal/design/05-image-ocr-parsing.md`로
+  이관됨 — 앞으로 이 기능을 다시 조사할 때는 rag-api가 아니라 rag-ent-api 저장소를 볼 것.
 
 **재발 방지 교훈**: "이 기능을 비공개로 유지해야 한다"는 요구가 나오면, 코드만 옮기면 되는 게
 아니라 **그 기능을 설명하는 design 문서 자체도 공개 저장소에 남으면 안 된다**는 점을 함께
