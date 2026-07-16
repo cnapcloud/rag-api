@@ -31,6 +31,7 @@
   - [21. Qdrant가 GET에도 408 Request Timeout을 반환해 ensure\_collection이 409로 실패](#21-qdrant가-get에도-408-request-timeout을-반환해-ensure_collection이-409로-실패)
   - [22. .ppt 레거시 파서(catppt)가 실제 파일에서 항상 빈 텍스트를 반환](#22-ppt-레거시-파서catppt가-실제-파일에서-항상-빈-텍스트를-반환)
   - [23. 삭제-인제스트 경합으로 남은 고아 Qdrant 청크가 검색 결과에 노출됨](#23-삭제-인제스트-경합으로-남은-고아-qdrant-청크가-검색-결과에-노출됨)
+  - [24. 나무위키 /activity/ 페이지가 봇 User-Agent에만 404를 반환해 unrestricted 크롤링 문서가 failed로 남음](#24-나무위키-activity-페이지가-봇-user-agent에만-404를-반환해-unrestricted-크롤링-문서가-failed로-남음)
 
 ---
 
@@ -1147,3 +1148,63 @@ Qdrant 쓰기를 끝낼 수 있다. 더 나쁜 경우는 `upsert()`(`pipeline/st
 - `_delete_qdrant_chunks`의 best-effort 삼킴 정책 자체를 좁히는 방안(예: 실패 시 재시도 큐에
   적재)은 검토하지 않았다 — 항목 4번(Delete + Reindex race condition)과 마찬가지로 복잡도 대비
   이득을 아직 판단하지 못해 보류.
+
+---
+
+## 24. 나무위키 /activity/ 페이지가 봇 User-Agent에만 404를 반환해 unrestricted 크롤링 문서가 failed로 남음
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-16 |
+| 심각도 | LOW |
+
+**증상**
+
+connector_id=`b94692af7e75444c`(namu.wiki "고양이", `unrestricted: true`)의 docs 목록에
+`https://namu.wiki/activity/고양이`가 `failed` 상태로 남는다. 에러 메시지:
+`Client error '404 Not Found' for url 'https://namu.wiki/activity/%EA%B3%A0%EC%96%91%EC%9D%B4'`.
+같은 페이지를 브라우저로 열면 정상적으로 보인다.
+
+**원인**
+
+인코딩 문제가 아니다 — 정확히 같은 percent-encoded URL로 UA만 바꿔 비교하면 원인이 명확히
+드러난다.
+
+| User-Agent | `/activity/고양이` | `/discuss/고양이` | `/w/고양이` |
+|---|---|---|---|
+| 브라우저(Chrome) | 200 | - | - |
+| 커넥터 실제 UA(`RAG-WebConnector/1.0`, `connectors/web.py:20`) | **404** | 200 | 200 |
+
+같은 봇 UA로도 `/discuss/`, `/w/`는 정상 응답하는데 `/activity/`(문서 편집 이력 페이지)만
+404가 난다 — 나무위키가 이 엔드포인트에만 선택적으로 봇 차단(또는 더 엄격한 UA/JS 챌린지)을
+걸어둔 것으로 보인다. `connectors/web.py`나 rag-api 쪽 문제가 아니라 나무위키 서버 정책이다.
+[이슈 19](#19-unrestricted-웹-크롤링이-사이트-유틸리티-페이지랜덤최근변경-등까지-크롤링해-매-sync마다-재인덱싱)와
+같은 근본 원인(`unrestricted: true`로 시드 페이지 바깥의 사이트 유틸리티 링크까지 크롤 대상에
+포함)의 변형이다 — 이슈 19는 "내용이 매번 달라져 매 sync 재인덱싱"이었다면, 이건 "애초에 봇
+요청 자체가 거부되어 항상 failed"라는 차이가 있다.
+
+**현재 대안**
+
+`/activity/`는 편집 이력 페이지라 지식베이스에 넣을 콘텐츠도 아니므로, 브라우저 UA로 위장해
+우회하기보다 커넥터 `config.exclude_patterns`에 추가해 크롤 대상에서 제외한다. `/discuss/`도
+같은 성격의 사이트 유틸리티 페이지라 함께 제외하는 것을 권장.
+
+```json
+{
+  "config": {
+    "exclude_patterns": [
+      "*/random", "*/RecentChanges", "*/RecentDiscuss",
+      "*/activity/*", "*/discuss/*"
+    ]
+  }
+}
+```
+
+`PATCH /api/connectors/{connector_id}`로 적용.
+
+**미해결**
+
+- `unrestricted: true` 크롤링이 나무위키류 위키 사이트의 유틸리티 링크(활동 이력/토론/최근변경/
+  무작위 문서 등)를 계속 새로 발견해낼 때마다 매번 `exclude_patterns`를 수동으로 추가해야 한다 —
+  사이트별 유틸리티 URL 패턴을 커넥터 프리셋으로 미리 알아두는 방안은 검토하지 않았다.
