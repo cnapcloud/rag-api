@@ -21,6 +21,7 @@
 | 2026-07-09 | [html-extraction.md](html-extraction.md) | HTML 본문 추출 설계 |
 | 2026-07-14 | [web-connector.md](web-connector.md) | Web 커넥터 크롤링/변경 감지/추출 상호작용 및 알려진 한계 |
 | 2026-07-15 | [parser-registry.md](parser-registry.md) | 파서 확장 레지스트리 — 등록 기반으로 파서 추가/교체/제거를 가능하게 하는 구조 |
+| 2026-07-16 | [settings-composition.md](settings-composition.md) | Settings 확장 아키텍처 — vendoring 앱이 Settings를 안전하게 확장/공유하는 기본 설계 |
 
 ## 변경 이력
 
