@@ -11,8 +11,7 @@ dependencies = [
     "llama-index-vector-stores-qdrant>=0.2.0",
     # Dagster
     "dagster>=1.7.0",
-    "dagster-webserver>=1.7.0",
-    "dagster-postgres",
+    "dagster-postgres>=0.23.0",
     # FastAPI
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",
@@ -23,7 +22,6 @@ dependencies = [
     "psycopg-pool>=3.1",
     "qdrant-client>=1.18.0,<1.19",
     "redis>=5.0.0",
-    "fastembed>=0.3.0",
     # 문서 파싱
     "pypdf>=4.0.0",
     "pymupdf>=1.24.0",
@@ -68,7 +66,6 @@ dev = [
     "httpx2>=2.4.0",
     "pytest-asyncio>=0.23.0",
     "pytest-mock>=3.14.0",
-    "dagster-webserver>=1.7.0",
     "ruff>=0.4.0",
     "mypy>=1.9.0",
     "types-PyYAML>=6.0.0",
