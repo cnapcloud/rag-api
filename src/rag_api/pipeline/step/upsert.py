@@ -52,6 +52,7 @@ def upsert(
             "source_type": source_type,
             "source": source,
             "doc_type": meta.get("doc_type", ""),
+            "content_type": meta.get("content_type", "text"),
             "chunk_index": meta.get("chunk_index", 0),
             "page_num": meta.get("page_label", None),
             "total_chunks": meta.get("total_chunks", len(embedded_nodes)),
