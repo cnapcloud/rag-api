@@ -1,4 +1,4 @@
-# pipeline/step — Step 작성 규칙
+# pipeline/steps — Step 작성 규칙
 
 ## 핵심 원칙
 

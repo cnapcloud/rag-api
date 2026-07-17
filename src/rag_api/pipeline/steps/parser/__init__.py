@@ -1,4 +1,4 @@
-"""pipeline/step/parser — extension-point registry package for parse.py file readers.
+"""pipeline/steps/parser — extension-point registry package for parse.py file readers.
 
 See docs/internal/design/parser-registry.md for the architecture. This package re-exports
 the registration API (registry.py) as its public surface; individual reader modules
@@ -8,7 +8,7 @@ that need those specific symbols (e.g. tests, chunk.py).
 
 from __future__ import annotations
 
-from rag_api.pipeline.step.parser.registry import (
+from rag_api.pipeline.steps.parser.registry import (
     get_parsers,
     get_post_processors,
     register_parser,

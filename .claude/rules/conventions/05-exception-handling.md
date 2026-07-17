@@ -41,7 +41,7 @@ def upload_object(...) -> str:
     return (result.etag or "").strip('"')
 ```
 
-### pipeline/step/ (validate.py, parse.py, chunk.py, embed.py)
+### pipeline/steps/ (validate.py, parse.py, chunk.py, embed.py)
 
 - Pure functions — no HTTP knowledge, no `HTTPException`.
 - Raise `IngestValidationError` for user-fixable input errors (bad format, file too large).

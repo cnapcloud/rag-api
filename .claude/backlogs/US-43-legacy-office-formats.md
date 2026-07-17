@@ -19,17 +19,17 @@ MS Word/PowerPoint 문서 지원이 `.docx`(신형)만 있고 `.doc`(구형 바�
 - `Dockerfile`(빌드 대상은 이 파일 하나뿐 — `Dockerfile.dagster`/k8s dagster Dockerfile은
   `build-push.yml` 트리거 경로에 없고 `src/`도 COPY하지 않아 우리 파싱 코드를 실행하지
   않음)에 `antiword`(.doc), `catdoc`(.ppt — `catppt` 바이너리 제공) apt 패키지 추가.
-- `pipeline/step/parser/doc.py` 신규 — `DocReader(BaseReader)`, `subprocess.run(["antiword",
+- `pipeline/steps/parser/doc.py` 신규 — `DocReader(BaseReader)`, `subprocess.run(["antiword",
   file])`로 텍스트 추출. 바이너리 미설치(`FileNotFoundError`) -> `ConfigError`, 파싱 실패
   (non-zero exit) -> `IngestValidationError`.
-- `pipeline/step/parser/ppt.py` 신규 — 최초 구현은 `PptReader(BaseReader)`가 `catppt` 서브프로세스를
+- `pipeline/steps/parser/ppt.py` 신규 — 최초 구현은 `PptReader(BaseReader)`가 `catppt` 서브프로세스를
   썼으나, 실물 검증(2026-07-16, 아래 "후속 수정" 참고)에서 실제 파일마다 빈 텍스트만 반환하는
   결함이 발견되어 `olefile` 기반 순수 Python 구현으로 교체됐다 — 최종 구현은 시스템 바이너리를
   쓰지 않는다.
 - `.pptx`는 별도 파일 없이 `registry.py`에서 LlamaIndex `PptxReader` 바로 등록(csv/json/epub/
   xlsx/xls와 동일 패턴 — US-42 §패키지 구조 참고).
-- `pipeline/step/parser/extensions.py`의 `DOCUMENT_EXTENSIONS`에 `.doc`/`.ppt`/`.pptx` 추가.
-- `pipeline/step/parser/registry.py`의 `_register_defaults()`에 세 확장자 등록 추가.
+- `pipeline/steps/parser/extensions.py`의 `DOCUMENT_EXTENSIONS`에 `.doc`/`.ppt`/`.pptx` 추가.
+- `pipeline/steps/parser/registry.py`의 `_register_defaults()`에 세 확장자 등록 추가.
 - 테스트: `DocReader`는 `subprocess.run`을 mock해 stdout/exit code 시나리오(성공/파싱 실패/
   바이너리 없음) 검증 — CI 환경에 antiword 설치를 전제하지 않는다. `PptReader`는 최초엔
   `DocReader`와 동일하게 mock 테스트만 있었으나, 후속 수정에서 실제 `.ppt` 바이너리 픽스처
@@ -74,7 +74,7 @@ MS Word/PowerPoint 문서 지원이 `.docx`(신형)만 있고 `.doc`(구형 바�
 
 ## 의존성
 
-- US-42 — `pipeline/step/parser/` 패키지 구조(기능영역별 파일 분리 컨벤션)가 먼저 있어야 함 (done).
+- US-42 — `pipeline/steps/parser/` 패키지 구조(기능영역별 파일 분리 컨벤션)가 먼저 있어야 함 (done).
 
 ## 오픈 이슈
 

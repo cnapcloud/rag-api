@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def supported_extensions() -> frozenset[str]:
-    """All parseable extensions — registry-managed formats (see pipeline/step/parser/)."""
-    from rag_api.pipeline.step import parser
+    """All parseable extensions — registry-managed formats (see pipeline/steps/parser/)."""
+    from rag_api.pipeline.steps import parser
 
     return parser.supported_extensions()
 
@@ -77,7 +77,7 @@ def parse(doc_id: str, storage_key: str, local_path: Path | None = None) -> list
         storage_key: Full S3 object path (e.g. 'kb-01/report.pdf').
         local_path: Pre-downloaded local file (for tests / CLI use).
     """
-    from rag_api.pipeline.step import parser
+    from rag_api.pipeline.steps import parser
 
     suffix = Path(storage_key).suffix.lower()
     if suffix not in supported_extensions():

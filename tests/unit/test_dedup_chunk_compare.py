@@ -1,21 +1,21 @@
-"""Unit tests for pipeline/step/dedup/chunk_compare.py."""
+"""Unit tests for pipeline/steps/dedup/chunk_compare.py."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from rag_api.pipeline.step.dedup.chunk_compare import (
+from rag_api.pipeline.steps.dedup.chunk_compare import (
     ChunkCompareScore,
     compare_chunks,
     run_chunk_compare,
     score_to_body_match,
 )
-from rag_api.pipeline.step.dedup.types import DedupResult
-from rag_api.pipeline.step.embed import EmbeddedNode
+from rag_api.pipeline.steps.dedup.types import DedupResult
+from rag_api.pipeline.steps.embed import EmbeddedNode
 
-_MODULE = "rag_api.pipeline.step.dedup.chunk_compare"
-_CHUNK = "rag_api.pipeline.step.chunk.chunk"
-_EMBED = "rag_api.pipeline.step.embed.embed"
+_MODULE = "rag_api.pipeline.steps.dedup.chunk_compare"
+_CHUNK = "rag_api.pipeline.steps.chunk.chunk"
+_EMBED = "rag_api.pipeline.steps.embed.embed"
 _SEARCH = "rag_api.infra.qdrant.search_chunks_by_doc_id"
 _FINGERPRINTS = "rag_api.infra.postgres.get_docs_fingerprints"
 _GET_DOC = "rag_api.infra.postgres.get_doc_by_id"
@@ -200,7 +200,7 @@ def test_run_chunk_compare_confirms_identical_same_title():
 
 
 def test_run_chunk_compare_confirms_identical_title_matches_winner():
-    from rag_api.pipeline.step.dedup.simhash import compute_title_hash
+    from rag_api.pipeline.steps.dedup.simhash import compute_title_hash
 
     fingerprints = {"doc-c": {"title_hash": compute_title_hash("a.md")}}
     with patch(f"{_MODULE}.compare_chunks", return_value=ChunkCompareScore("doc-c", 0.97)), \

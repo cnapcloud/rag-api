@@ -475,7 +475,7 @@ class TestProcessAttachment:
         mock_enqueue.assert_not_called()
 
     def test_all_supported_extensions_accepted(self):
-        from rag_api.pipeline.step.parse import supported_extensions
+        from rag_api.pipeline.steps.parse import supported_extensions
 
         c = _make_confluence_connector()
         client = _make_client()

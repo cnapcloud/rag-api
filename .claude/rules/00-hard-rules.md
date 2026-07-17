@@ -64,7 +64,7 @@ def chunk(documents, strategy, chunk_size, chunk_overlap) -> list[BaseNode]:
     ...
 ```
 
-`pipeline/step/`의 Step 함수는 순수 함수. Dagster 의존성은 `defs/ops/` 래퍼에서만.
+`pipeline/steps/`의 Step 함수는 순수 함수. Dagster 의존성은 `defs/ops/` 래퍼에서만.
 
 ---
 

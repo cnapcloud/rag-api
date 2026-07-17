@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-`pipeline/step/dedup/verdict.py`의 `handle_title_changed()` — incoming(A)이 기존(C)보다 최신일
+`pipeline/steps/dedup/verdict.py`의 `handle_title_changed()` — incoming(A)이 기존(C)보다 최신일
 때, 본문이 동일해 재임베딩하지 않고 C가 물리적으로 보유한 Qdrant 청크를 그대로 재사용한다. 이때
 `update_payload_by_doc_id()`로 `title`/`source`만 A 값으로 덮어쓰고 payload의 `doc_id` 필드를
 그대로 두면, 청크는 계속 C(이제 `status=outdated`)에 귀속된 채로 남고 A는 `status=indexed`인데

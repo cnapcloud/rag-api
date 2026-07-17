@@ -49,7 +49,7 @@ def _build_vector_store(kb_id: str, qdrant_client=None):
 def _build_index(kb_id: str, embed_model=None):
     from llama_index.core import VectorStoreIndex
 
-    from rag_api.pipeline.step.embed import build_embed_model
+    from rag_api.pipeline.steps.embed import build_embed_model
 
     vector_store = _build_vector_store(kb_id)
     em = embed_model or build_embed_model()
@@ -80,7 +80,7 @@ def _filter_orphaned_chunks(results: list[SearchResult]) -> list[SearchResult]:
     """Drop chunks whose doc_id no longer has a Postgres row, purging them from Qdrant.
 
     Qdrant chunk deletion is best-effort on non-indexed statuses
-    (pipeline/step/delete.py: _delete_qdrant_chunks), so a document row removed
+    (pipeline/steps/delete.py: _delete_qdrant_chunks), so a document row removed
     while its chunks are being written/deleted can leave orphaned chunks behind.
     Purging on detection is self-healing — best-effort, never blocks the search response.
     """

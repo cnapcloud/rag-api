@@ -1,4 +1,4 @@
-"""Dagster @op wrappers — wrap pipeline/step pure functions as Dagster Ops."""
+"""Dagster @op wrappers — wrap pipeline/steps pure functions as Dagster Ops."""
 
 from dagster import Config, HookContext, OpExecutionContext, Out, Output, failure_hook, op
 
@@ -36,7 +36,7 @@ class IngestConfig(Config):
 @op(out={"valid_config": Out(dagster_type=dict, is_required=False)})
 def validate_op(context: OpExecutionContext, config: IngestConfig):
     """File size validation. Emits valid_config dict on success."""
-    from rag_api.pipeline.step.validate import validate
+    from rag_api.pipeline.steps.validate import validate
     from rag_api.pipeline.utils.doc_state import set_failed, set_processing
 
     set_processing(config.doc_id, run_id=context.run_id)
@@ -76,7 +76,7 @@ def validate_op(context: OpExecutionContext, config: IngestConfig):
 def parse_op(context: OpExecutionContext, valid_config: dict):
     """Download file from S3, convert to LlamaIndex Documents, persist doc_created_at."""
     from rag_api.infra.postgres import update_doc_fields
-    from rag_api.pipeline.step.parse import parse
+    from rag_api.pipeline.steps.parse import parse
 
     doc_id = valid_config["doc_id"]
     documents = parse(doc_id=doc_id, storage_key=valid_config["storage_key"])
@@ -97,7 +97,7 @@ def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
 
     Emits to_chunk only when needs_indexing=True; otherwise terminates the pipeline branch.
     """
-    from rag_api.pipeline.step.dedup import run_dedup_pipeline
+    from rag_api.pipeline.steps.dedup import run_dedup_pipeline
 
     doc_id = valid_config["doc_id"]
     kb_id = valid_config["kb_id"]
@@ -118,7 +118,7 @@ def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
 def chunk_op(context: OpExecutionContext, to_chunk):
     """Document -> Node chunking."""
     from rag_api.exceptions import IngestValidationError
-    from rag_api.pipeline.step.chunk import chunk
+    from rag_api.pipeline.steps.chunk import chunk
 
     nodes = chunk(to_chunk)
     if not nodes:
@@ -130,7 +130,7 @@ def chunk_op(context: OpExecutionContext, to_chunk):
 @op
 def embed_op(context: OpExecutionContext, nodes):
     """Node -> Dense + Sparse vector embedding (asyncio parallel)."""
-    from rag_api.pipeline.step.embed import embed
+    from rag_api.pipeline.steps.embed import embed
 
     embedded = embed(nodes)
     context.log.info("Embedding done: %d nodes", len(embedded))
@@ -140,7 +140,7 @@ def embed_op(context: OpExecutionContext, nodes):
 @op
 def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
     """Delete existing Qdrant chunks then insert new ones."""
-    from rag_api.pipeline.step.upsert import upsert
+    from rag_api.pipeline.steps.upsert import upsert
 
     result = upsert(
         kb_id=valid_config["kb_id"],
@@ -158,7 +158,7 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
 def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
     """Update Postgres document metadata to status=indexed."""
     from rag_api.config.settings import get_settings
-    from rag_api.pipeline.step.meta import set_indexed
+    from rag_api.pipeline.steps.meta import set_indexed
 
     storage_key = valid_config.get("storage_key", "")
     doc_type = storage_key.rsplit(".", 1)[-1] if "." in storage_key else ""

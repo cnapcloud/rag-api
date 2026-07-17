@@ -22,10 +22,10 @@ def test_embed_returns_embedded_nodes():
     mock_model.get_text_embedding_batch.return_value = [[0.1] * 1024] * 3
 
     with (
-        patch("rag_api.pipeline.step.embed.build_embed_model", return_value=mock_model),
+        patch("rag_api.pipeline.steps.embed.build_embed_model", return_value=mock_model),
         patch("rag_api.pipeline.utils.sparse.compute_sparse_tf", side_effect=_sparse_side_effect),
     ):
-        from rag_api.pipeline.step.embed import embed
+        from rag_api.pipeline.steps.embed import embed
 
         nodes = _make_nodes(3)
         result = embed(nodes)
@@ -43,10 +43,10 @@ def test_embed_adds_metadata():
     mock_model.get_text_embedding_batch.return_value = [[0.0] * 1024]
 
     with (
-        patch("rag_api.pipeline.step.embed.build_embed_model", return_value=mock_model),
+        patch("rag_api.pipeline.steps.embed.build_embed_model", return_value=mock_model),
         patch("rag_api.pipeline.utils.sparse.compute_sparse_tf", side_effect=_sparse_side_effect),
     ):
-        from rag_api.pipeline.step.embed import embed
+        from rag_api.pipeline.steps.embed import embed
 
         nodes = _make_nodes(1)
         result = embed(nodes)

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from qdrant_client.http import models as qmodels
 
 from rag_api.infra import qdrant as qdrant_infra
-from rag_api.pipeline.step.embed import EmbeddedNode
+from rag_api.pipeline.steps.embed import EmbeddedNode
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-"""Unit tests for pipeline/step/dedup/verdict.py."""
+"""Unit tests for pipeline/steps/dedup/verdict.py."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import logging
 from datetime import UTC, datetime
 from unittest.mock import patch
 
-from rag_api.pipeline.step.dedup.types import DedupResult
-from rag_api.pipeline.step.dedup.verdict import handle_similar, handle_title_changed, run_verdict
+from rag_api.pipeline.steps.dedup.types import DedupResult
+from rag_api.pipeline.steps.dedup.verdict import handle_similar, handle_title_changed, run_verdict
 
 _PG = "rag_api.infra.postgres.update_doc_fields"
 _GET_DOC = "rag_api.infra.postgres.get_doc_by_id"
@@ -37,20 +37,20 @@ def _result(body_match, title_match="unknown", needs_indexing=True, duplicate_do
 # ──────────────────────────────────────────────
 
 def test_run_verdict_identical_dispatches():
-    with patch("rag_api.pipeline.step.dedup.verdict.handle_identical") as mock_h, patch(_PG):
+    with patch("rag_api.pipeline.steps.dedup.verdict.handle_identical") as mock_h, patch(_PG):
         run_verdict("doc-1", _result("identical_level", "same", False, "doc-orig"), run_id="r1")
         mock_h.assert_called_once_with("doc-1", "doc-orig")
 
 
 def test_run_verdict_title_changed_dispatches():
-    with patch("rag_api.pipeline.step.dedup.verdict.handle_title_changed") as mock_h, patch(_PG):
+    with patch("rag_api.pipeline.steps.dedup.verdict.handle_title_changed") as mock_h, patch(_PG):
         run_verdict("doc-2", _result("identical_level", "changed", False, "doc-old"), run_id="r2")
         mock_h.assert_called_once_with("doc-2", "doc-old", "r2")
 
 
 def test_run_verdict_proceed_no_handler_called():
-    with patch("rag_api.pipeline.step.dedup.verdict.handle_identical") as mock_i, \
-         patch("rag_api.pipeline.step.dedup.verdict.handle_title_changed") as mock_t:
+    with patch("rag_api.pipeline.steps.dedup.verdict.handle_identical") as mock_i, \
+         patch("rag_api.pipeline.steps.dedup.verdict.handle_title_changed") as mock_t:
         run_verdict("doc-3", _result("none"))
         mock_i.assert_not_called()
         mock_t.assert_not_called()
@@ -59,13 +59,13 @@ def test_run_verdict_proceed_no_handler_called():
 def test_run_verdict_similar_dispatches():
     result = _result("similar", needs_indexing=False, duplicate_doc_id="doc-c")
 
-    with patch("rag_api.pipeline.step.dedup.verdict.handle_similar") as mock_h:
+    with patch("rag_api.pipeline.steps.dedup.verdict.handle_similar") as mock_h:
         run_verdict("doc-a", result, run_id="r1")
         mock_h.assert_called_once_with("doc-a", result, "r1")
 
 
 def test_run_verdict_unknown_body_match_logs_warning(caplog):
-    with caplog.at_level(logging.WARNING, logger="rag_api.pipeline.step.dedup.verdict"):
+    with caplog.at_level(logging.WARNING, logger="rag_api.pipeline.steps.dedup.verdict"):
         run_verdict("doc-6", _result("unknown_body"))  # type: ignore[arg-type]
     assert "unhandled body_match=unknown_body" in caplog.text
 

@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 
 from rag_api.exceptions import ConfigError
-from rag_api.pipeline.step.parse import supported_extensions
+from rag_api.pipeline.steps.parse import supported_extensions
 from rag_api.pipeline.utils.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)

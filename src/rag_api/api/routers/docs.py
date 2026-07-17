@@ -14,7 +14,7 @@ from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from rag_api.exceptions import ConflictError, IngestValidationError, NotFoundError
-from rag_api.pipeline.step.parse import supported_extensions
+from rag_api.pipeline.steps.parse import supported_extensions
 
 logger = logging.getLogger(__name__)
 

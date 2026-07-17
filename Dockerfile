@@ -31,7 +31,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 
 # antiword: legacy .doc (MS Word 97-2003) parser, invoked via subprocess at runtime
-# (pipeline/step/parser/doc.py). This is a genuine runtime dependency, unlike
+# (pipeline/steps/parser/doc.py). This is a genuine runtime dependency, unlike
 # build-essential/git above.
 RUN apt-get update && apt-get install -y --no-install-recommends antiword && rm -rf /var/lib/apt/lists/*
 

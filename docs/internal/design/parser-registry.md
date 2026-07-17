@@ -2,7 +2,7 @@
 
 > 요건: [prd.md §2](../requirement/prd.md#2-문서-인제스트) (파이프라인 단계 2. 파싱)
 
-`pipeline/step/parse.py`의 확장자 -> 리더 매핑을 정적 상수에서 **등록 기반 레지스트리**로 바꿔,
+`pipeline/steps/parse.py`의 확장자 -> 리더 매핑을 정적 상수에서 **등록 기반 레지스트리**로 바꿔,
 `parse.py`를 고치지 않고도 파서를 추가·교체·제거할 수 있게 한다.
 
 ## 1. 배경 (요약)
@@ -24,7 +24,7 @@
 
 | 컴포넌트 | 위치 | 역할 |
 |---|---|---|
-| 레지스트리 상태 | `pipeline/step/parser/registry.py` | 확장자 -> 리더 매핑, 후처리 함수 목록을 모듈 전역으로 보관 |
+| 레지스트리 상태 | `pipeline/steps/parser/registry.py` | 확장자 -> 리더 매핑, 후처리 함수 목록을 모듈 전역으로 보관 |
 | 등록 API | `register_parser()` / `unregister_parser()` / `register_post_processor()` | 레지스트리 상태를 변경하는 유일한 통로 |
 | 조회 API | `supported_extensions()` | 현재 등록된 확장자 목록 반환 (기존 정적 상수 `SUPPORTED_EXTENSIONS` 대체) |
 | 지연 로더 | `_ensure_loaded()` (내부) | 프로세스 내 최초 1회, 기본 파서 등록 -> 설정에 나열된 확장 로직 순차 실행 |
@@ -93,7 +93,7 @@ ingestion:
 ### 2.5 기본 파서 구성
 
 `_register_defaults()`가 `register_parser()`로 등록하는 목록. 각 리더는 기능영역별 파일로
-분리되어 있다(`pipeline/step/parser/` — `html.py`/`pdf.py`/`rst.py`/`eml.py`/`tsv.py`/`doc.py`/
+분리되어 있다(`pipeline/steps/parser/` — `html.py`/`pdf.py`/`rst.py`/`eml.py`/`tsv.py`/`doc.py`/
 `ppt.py`). LlamaIndex가 이미 동급 리더를 제공하는 포맷(csv/json/epub/xlsx/xls/pptx)은 별도
 파일 없이 `registry.py`에서 바로 import & 등록한다 (US-42/US-43).
 
@@ -161,12 +161,12 @@ ingestion:
 
 ## 4. 참조 대상 코드
 
-- 레지스트리 엔진: `pipeline/step/parser/registry.py` (등록 API), `pipeline/step/parser/__init__.py`
+- 레지스트리 엔진: `pipeline/steps/parser/registry.py` (등록 API), `pipeline/steps/parser/__init__.py`
   (공개 API re-export)
-- `pipeline/step/parse.py`는 Op 계약 함수(`parse`/`parse_local`/`supported_extensions`/
+- `pipeline/steps/parse.py`는 Op 계약 함수(`parse`/`parse_local`/`supported_extensions`/
   `_extract_doc_created_at`)만 남기고 리더 클래스/확장자 상수는 갖지 않는다 (US-42)
 - 사용처: `connectors/confluence.py:294`, `connectors/github.py:103` (둘 다
-  `pipeline.step.parse.supported_extensions()`를 그대로 호출 — 위치 이동에 영향 없음)
+  `pipeline.steps.parse.supported_extensions()`를 그대로 호출 — 위치 이동에 영향 없음)
 
 ## 5. 검토한 대안
 

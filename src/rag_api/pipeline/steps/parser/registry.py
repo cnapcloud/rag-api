@@ -1,4 +1,4 @@
-"""parser.registry — extension-point registry for pipeline/step/parse.py file readers.
+"""parser.registry — extension-point registry for pipeline/steps/parse.py file readers.
 
 See docs/internal/design/parser-registry.md for the architecture. parse.py's built-in readers
 and any settings-configured plugins are registered through the same API (register_parser) —
@@ -70,14 +70,14 @@ def reset_registry() -> None:
 
 
 def _register_defaults() -> None:
-    from rag_api.pipeline.step.parser.doc import DocReader
-    from rag_api.pipeline.step.parser.eml import EmlReader
-    from rag_api.pipeline.step.parser.extensions import CODE_EXTENSIONS, CONFIG_DATA_EXTENSIONS
-    from rag_api.pipeline.step.parser.html import HTMLCleanReader
-    from rag_api.pipeline.step.parser.pdf import PyMuPDFReader
-    from rag_api.pipeline.step.parser.ppt import PptReader
-    from rag_api.pipeline.step.parser.rst import RstReader
-    from rag_api.pipeline.step.parser.tsv import TsvReader
+    from rag_api.pipeline.steps.parser.doc import DocReader
+    from rag_api.pipeline.steps.parser.eml import EmlReader
+    from rag_api.pipeline.steps.parser.extensions import CODE_EXTENSIONS, CONFIG_DATA_EXTENSIONS
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.pdf import PyMuPDFReader
+    from rag_api.pipeline.steps.parser.ppt import PptReader
+    from rag_api.pipeline.steps.parser.rst import RstReader
+    from rag_api.pipeline.steps.parser.tsv import TsvReader
 
     try:
         from llama_index.core.readers.json import JSONReader

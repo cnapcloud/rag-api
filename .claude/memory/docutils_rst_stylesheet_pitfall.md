@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-`RstReader`(`src/rag_api/pipeline/step/parser/rst.py`, US-42)를 R2R의 `rst_parser.py` 방식
+`RstReader`(`src/rag_api/pipeline/steps/parser/rst.py`, US-42)를 R2R의 `rst_parser.py` 방식
 그대로(`docutils.core.publish_string()` + html5_polyglot writer → 정규식으로 태그 제거) 포팅했더니
 결과 텍스트에 docutils 기본 스타일시트 전체(`font-family`, `margin` 등 수백 단어 분량의 CSS)가
 그대로 섞여 나왔다. `publish_string()`은 `<head>`에 `<style>` 블록으로 CSS를 임베드한 완전한

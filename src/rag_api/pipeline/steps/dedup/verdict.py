@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from rag_api.pipeline.step.dedup.types import DedupResult
+    from rag_api.pipeline.steps.dedup.types import DedupResult
 
 logger = logging.getLogger(__name__)
 

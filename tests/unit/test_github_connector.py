@@ -253,7 +253,7 @@ class TestChunkCodeRouting:
 
         from llama_index.core import Document
 
-        from rag_api.pipeline.step.chunk import chunk
+        from rag_api.pipeline.steps.chunk import chunk
 
         doc = Document(text="def hello():\n    return 'world'\n" * 10, metadata={"doc_type": "py"})
 
@@ -264,7 +264,7 @@ class TestChunkCodeRouting:
         mock_parser = MagicMock()
         mock_parser.get_nodes_from_documents.return_value = [mock_node]
 
-        with _patch("rag_api.pipeline.step.chunk._build_code_parser", return_value=mock_parser) as mock_build:
+        with _patch("rag_api.pipeline.steps.chunk._build_code_parser", return_value=mock_parser) as mock_build:
             chunk([doc])
 
         mock_build.assert_called_once()
@@ -276,11 +276,11 @@ class TestChunkCodeRouting:
 
         from llama_index.core import Document
 
-        from rag_api.pipeline.step.chunk import chunk
+        from rag_api.pipeline.steps.chunk import chunk
 
         doc = Document(text="sample text " * 200, metadata={"doc_type": "pdf"})
 
-        with _patch("rag_api.pipeline.step.chunk._build_code_parser") as mock_code:
+        with _patch("rag_api.pipeline.steps.chunk._build_code_parser") as mock_code:
             nodes = chunk([doc], strategy="recursive", chunk_size=128, chunk_overlap=16)
 
         mock_code.assert_not_called()
@@ -292,13 +292,13 @@ class TestChunkCodeRouting:
 
 class TestParseCodeExtensions:
     def test_code_extensions_subset_of_supported(self):
-        from rag_api.pipeline.step.parse import supported_extensions
-        from rag_api.pipeline.step.parser.extensions import CODE_EXTENSIONS
+        from rag_api.pipeline.steps.parse import supported_extensions
+        from rag_api.pipeline.steps.parser.extensions import CODE_EXTENSIONS
 
         assert CODE_EXTENSIONS.issubset(supported_extensions())
 
     def test_code_language_map_covers_all_code_extensions(self):
-        from rag_api.pipeline.step.parser.extensions import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
+        from rag_api.pipeline.steps.parser.extensions import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
 
         for ext in CODE_EXTENSIONS:
             assert ext in CODE_LANGUAGE_MAP, f"Missing language mapping for {ext}"

@@ -9,7 +9,7 @@ from pathlib import Path
 from llama_index.core import Document
 from llama_index.core.readers.base import BaseReader
 
-from rag_api.pipeline.step.parser import register_parser
+from rag_api.pipeline.steps.parser import register_parser
 
 
 class FakePdfReader(BaseReader):

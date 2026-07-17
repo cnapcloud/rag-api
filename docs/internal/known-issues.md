@@ -235,7 +235,7 @@ SimHash/MinHash 탐지-저장 구간을 Redis 분산 락(예: `SET NX PX` 또는
 
 ```
 dagster._core.errors.DagsterExecutionInterruptedError
-  File "pipeline/step/dedup/minhash.py", line 161, in run_minhash_detection
+  File "pipeline/steps/dedup/minhash.py", line 161, in run_minhash_detection
       logger.info("no candidates doc_id=%s", doc_id)
   ...
   File "dagster/_utils/interrupts.py", line 81, in _new_signal_handler
@@ -287,7 +287,7 @@ dagster._core.errors.DagsterExecutionInterruptedError
 
 **원인**
 
-1. `rag-api`는 코드 청킹에 [`chunk.py`](../../src/rag_api/pipeline/step/chunk.py)의
+1. `rag-api`는 코드 청킹에 [`chunk.py`](../../src/rag_api/pipeline/steps/chunk.py)의
    `_build_code_parser()`를 통해 `llama_index.core.node_parser.CodeSplitter`를 사용한다.
 2. `CodeSplitter`는 내부적으로 `tree-sitter-languages` 패키지에 의존한다
    ([pyproject.toml:37-38](../../pyproject.toml#L37-L38)).
@@ -591,20 +591,20 @@ executor)에서 50×3개 ping이 경합하기 때문으로 추정되며, 이는 
 
 **원인**
 
-`run_dedup_pipeline`([dedup/**init**.py:79-82](../../src/rag_api/pipeline/step/dedup/__init__.py#L79-L82))은
+`run_dedup_pipeline`([dedup/**init**.py:79-82](../../src/rag_api/pipeline/steps/dedup/__init__.py#L79-L82))은
 stage 1 결과 `body_match == "none"`일 때만 stage 2(MinHash)를 실행한다. `"similar"`
 (Hamming distance가 identical_threshold~similar_threshold 사이)와 `"identical_level"`
 둘 다 stage 2 확인 없이 즉시 `run_verdict`로 넘어가며, `"similar"`는
-`handle_similar()`([verdict.py:109-143](../../src/rag_api/pipeline/step/dedup/verdict.py#L109-L143))를
+`handle_similar()`([verdict.py:109-143](../../src/rag_api/pipeline/steps/dedup/verdict.py#L109-L143))를
 통해 파괴적 액션(청크 삭제/색인 스킵)을 수행한다.
 
-SimHash([simhash.py:26-48](../../src/rag_api/pipeline/step/dedup/simhash.py#L26-L48), 문자
+SimHash([simhash.py:26-48](../../src/rag_api/pipeline/steps/dedup/simhash.py#L26-L48), 문자
 3-gram, 64bit)는 텍스트 길이·어휘 중복에 민감한 성긴(coarse) 신호라, 같은
 카테고리/주제의 문서끼리는 실제 중복이 아니어도 "similar" 밴드에 쉽게 들어갈 수 있다.
 
 **모의 테스트로 확인한 사실**
 
-처음에는 `HTMLCleanReader`(`pipeline/step/parser/html.py`)가 사이트 공통 boilerplate(`#pre-footer`
+처음에는 `HTMLCleanReader`(`pipeline/steps/parser/html.py`)가 사이트 공통 boilerplate(`#pre-footer`
 Feedback 블록 등, nav/header/footer/aside 태그로 감싸지지 않아 stripping 대상에서 빠짐)를
 제거하지 못해 생기는 파싱 문제로 의심했으나, 실제 프로젝트 코드(`compute_simhash`,
 `hamming_distance`, `compute_minhash`, `compute_jaccard`)로 두 문서의 `<main>` 본문에 대해
@@ -633,10 +633,10 @@ boilerplate를 제거해도 Hamming distance는 오히려 늘었고(8→10) 여�
 
 당초 제안(stage 2 MinHash로 재확인)은 US-35(chunk_compare, dedup 3단계) 구현으로 대체되어
 해소되었다. `body_match == "similar"`(simhash 또는 minhash 단계 산출)는 이제 즉시 verdict로
-커밋되지 않고, `run_chunk_compare()`([chunk_compare.py](../../src/rag_api/pipeline/step/dedup/chunk_compare.py))가
+커밋되지 않고, `run_chunk_compare()`([chunk_compare.py](../../src/rag_api/pipeline/steps/dedup/chunk_compare.py))가
 청크 단위 임베딩 코사인 유사도로 문서 레벨 집계 점수를 산출해 `body_identical_threshold`(0.95)/
 `body_similar_threshold`(0.75) 임계값으로 body(identical_level/similar/none)를 재확정한 뒤에야
-`run_verdict()`로 넘어간다(`pipeline/step/dedup/__init__.py`의 `run_dedup_pipeline()` 라우팅 참고).
+`run_verdict()`로 넘어간다(`pipeline/steps/dedup/__init__.py`의 `run_dedup_pipeline()` 라우팅 참고).
 MinHash(stage 2)가 아닌 더 정밀한 임베딩 비교로 재확인이 이뤄지므로 원래 제안보다 강한 형태로
 해결되었다고 판단.
 
@@ -827,7 +827,7 @@ kb-02 doc_id=`b950892c61d1463c`(namu.wiki "고양이" 문서)를 "최고령 고�
 
 **원인**
 
-`HTMLCleanReader`(`pipeline/step/parser/html.py`)가 쓰는 trafilatura의 `favor_precision=True`(당시
+`HTMLCleanReader`(`pipeline/steps/parser/html.py`)가 쓰는 trafilatura의 `favor_precision=True`(당시
 기본값)는 "본문인지 애매한 블록"을 공격적으로 제외하는데, namu.wiki 특유의 각주/목차/접기박스
 밀집 구조에서 실제 본문의 93% 이상을 "애매한 블록"으로 오판해 통째로 버렸다. 원문을
 `favor_recall=True`로 재추출하면 104,952자가 나오는데, 실제 인제스트분은 7,813자뿐이었다.
@@ -1072,7 +1072,7 @@ catdoc 0.95(패키지 최종 릴리스가 2000년대 초반)의 `.ppt` 파서가
 
 **해결**
 
-`PptReader`(`pipeline/step/parser/ppt.py`)를 `catppt` 서브프로세스 방식에서 `olefile`(순수
+`PptReader`(`pipeline/steps/parser/ppt.py`)를 `catppt` 서브프로세스 방식에서 `olefile`(순수
 Python, 시스템 바이너리 불필요) 기반으로 교체했다. OLE 컨테이너의 `PowerPoint Document`
 스트림을 직접 열어 `TextBytesAtom`/`TextCharsAtom` 레코드(타입 `0x0fa0`/`0x0fd0`)를 스캔해
 UTF-16-LE 텍스트를 추출한다 — R2R(`core/parsers/media/ppt_parser.py`)의 동일한 접근을 참고했으나,
@@ -1119,7 +1119,7 @@ Postgres 문서 row는 이미 없는 "고아 청크"다.
 **신호**만 보낸 뒤 바로 `drop_collection()`/purge를 실행한다. `terminate_dagster_run()` 호출은
 실패해도 `logger.warning`만 남기고 진행하는 best-effort이고(`abort_ingest.py:48-52`), Dagster
 종료 자체도 즉시 반영되지 않는 비동기 신호라서, 이미 실행 중이던 `upsert_op`이 신호를 받기 전에
-Qdrant 쓰기를 끝낼 수 있다. 더 나쁜 경우는 `upsert()`(`pipeline/step/upsert.py`)가 쓰기 전
+Qdrant 쓰기를 끝낼 수 있다. 더 나쁜 경우는 `upsert()`(`pipeline/steps/upsert.py`)가 쓰기 전
 `ensure_collection()`을 호출한다는 점이다 — `drop_collection()` 직후에 지연된 upsert가 뒤늦게
 실행되면 **컬렉션을 재생성하면서까지** 청크를 써서, KB를 통째로 지웠는데도 유령 컬렉션/청크가
 다시 생길 수 있다

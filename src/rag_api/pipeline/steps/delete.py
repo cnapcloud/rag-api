@@ -1,4 +1,4 @@
-"""pipeline/step/delete.py — pure delete function, status-based branching."""
+"""pipeline/steps/delete.py — pure delete function, status-based branching."""
 
 from __future__ import annotations
 

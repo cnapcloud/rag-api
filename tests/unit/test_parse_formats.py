@@ -1,5 +1,5 @@
 """New format readers added in US-42/US-43: RstReader/EmlReader/TsvReader/DocReader/PptReader
-(custom BaseReader subclasses under pipeline/step/parser/) plus registry-level sanity checks
+(custom BaseReader subclasses under pipeline/steps/parser/) plus registry-level sanity checks
 for the LlamaIndex built-in readers registered for .csv/.json/.epub/.xlsx/.xls/.pptx."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rag_api.exceptions import ConfigError, IngestValidationError
-from rag_api.pipeline.step import parser as parser_registry
+from rag_api.pipeline.steps import parser as parser_registry
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -62,7 +62,7 @@ Section
 
 class TestRstReader:
     def test_strips_rst_markup(self):
-        from rag_api.pipeline.step.parser.rst import RstReader
+        from rag_api.pipeline.steps.parser.rst import RstReader
 
         path = _write(".rst", RST_SAMPLE)
         try:
@@ -75,7 +75,7 @@ class TestRstReader:
         assert ".. code-block::" not in text
 
     def test_keeps_prose_content(self):
-        from rag_api.pipeline.step.parser.rst import RstReader
+        from rag_api.pipeline.steps.parser.rst import RstReader
 
         path = _write(".rst", RST_SAMPLE)
         try:
@@ -94,7 +94,7 @@ class TestRstReader:
         """publish_parts()['body'] must be used instead of a full publish_string() document —
         otherwise docutils' default stylesheet ends up embedded as inline <style> text that
         tag-stripping alone doesn't remove."""
-        from rag_api.pipeline.step.parser.rst import RstReader
+        from rag_api.pipeline.steps.parser.rst import RstReader
 
         path = _write(".rst", RST_SAMPLE)
         try:
@@ -107,7 +107,7 @@ class TestRstReader:
 
     def test_registered_as_default_for_rst(self):
         parsers = parser_registry.get_parsers()
-        from rag_api.pipeline.step.parser.rst import RstReader
+        from rag_api.pipeline.steps.parser.rst import RstReader
 
         assert isinstance(parsers[".rst"], RstReader)
 
@@ -129,7 +129,7 @@ EML_SAMPLE = (
 
 class TestEmlReader:
     def test_extracts_headers_and_body(self):
-        from rag_api.pipeline.step.parser.eml import EmlReader
+        from rag_api.pipeline.steps.parser.eml import EmlReader
 
         path = _write(".eml", EML_SAMPLE)
         try:
@@ -153,7 +153,7 @@ class TestEmlReader:
 
 class TestTsvReader:
     def test_splits_on_tab_not_comma(self):
-        from rag_api.pipeline.step.parser.tsv import TsvReader
+        from rag_api.pipeline.steps.parser.tsv import TsvReader
 
         path = _write(".tsv", "name\tcity\nAlice, Inc\tSeoul\n")
         try:
@@ -176,7 +176,7 @@ class TestTsvReader:
 
 class TestBuiltinFormatRegistration:
     def test_csv_parses(self):
-        from rag_api.pipeline.step.parse import parse_local
+        from rag_api.pipeline.steps.parse import parse_local
 
         path = _write(".csv", "name,city\nAlice,Seoul\n")
         try:
@@ -188,7 +188,7 @@ class TestBuiltinFormatRegistration:
         assert "Seoul" in docs[0].text
 
     def test_json_parses(self):
-        from rag_api.pipeline.step.parse import parse_local
+        from rag_api.pipeline.steps.parse import parse_local
 
         path = _write(".json", json.dumps({"name": "Alice", "city": "Seoul"}))
         try:
@@ -202,7 +202,7 @@ class TestBuiltinFormatRegistration:
     def test_epub_parses(self):
         from ebooklib import epub
 
-        from rag_api.pipeline.step.parse import parse_local
+        from rag_api.pipeline.steps.parse import parse_local
 
         book = epub.EpubBook()
         book.set_identifier("id1")
@@ -228,7 +228,7 @@ class TestBuiltinFormatRegistration:
     def test_xlsx_parses(self):
         import openpyxl
 
-        from rag_api.pipeline.step.parse import parse_local
+        from rag_api.pipeline.steps.parse import parse_local
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -248,7 +248,7 @@ class TestBuiltinFormatRegistration:
     def test_xls_parses(self):
         """Legacy .xls fixture — generated once via xlwt (not a project dependency, only used
         offline to produce this binary fixture) and checked in as fixtures/sample.xls."""
-        from rag_api.pipeline.step.parse import parse_local
+        from rag_api.pipeline.steps.parse import parse_local
 
         docs = parse_local(FIXTURES_DIR / "sample.xls")
 
@@ -260,7 +260,7 @@ class TestBuiltinFormatRegistration:
         formats, unlike .doc/.ppt below which need a real antiword/catdoc binary."""
         from pptx import Presentation
 
-        from rag_api.pipeline.step.parse import parse_local
+        from rag_api.pipeline.steps.parse import parse_local
 
         prs = Presentation()
         slide = prs.slides.add_slide(prs.slide_layouts[1])
@@ -292,7 +292,7 @@ def _mock_completed_process(returncode: int, stdout: bytes = b"", stderr: bytes 
 
 class TestDocReader:
     def test_extracts_text_on_success(self):
-        from rag_api.pipeline.step.parser.doc import DocReader
+        from rag_api.pipeline.steps.parser.doc import DocReader
 
         with patch("subprocess.run", return_value=_mock_completed_process(0, stdout=b"Hello from doc")):
             docs = DocReader().load_data(Path("/fake/path.doc"))
@@ -300,7 +300,7 @@ class TestDocReader:
         assert docs[0].text == "Hello from doc"
 
     def test_calls_antiword_with_file_path(self):
-        from rag_api.pipeline.step.parser.doc import DocReader
+        from rag_api.pipeline.steps.parser.doc import DocReader
 
         with patch("subprocess.run", return_value=_mock_completed_process(0)) as mock_run:
             DocReader().load_data(Path("/fake/path.doc"))
@@ -308,14 +308,14 @@ class TestDocReader:
         assert mock_run.call_args.args[0] == ["antiword", "/fake/path.doc"]
 
     def test_nonzero_exit_raises_ingest_validation_error(self):
-        from rag_api.pipeline.step.parser.doc import DocReader
+        from rag_api.pipeline.steps.parser.doc import DocReader
 
         with patch("subprocess.run", return_value=_mock_completed_process(1, stderr=b"bad format")):
             with pytest.raises(IngestValidationError):
                 DocReader().load_data(Path("/fake/path.doc"))
 
     def test_missing_binary_raises_config_error(self):
-        from rag_api.pipeline.step.parser.doc import DocReader
+        from rag_api.pipeline.steps.parser.doc import DocReader
 
         with patch("subprocess.run", side_effect=FileNotFoundError()):
             with pytest.raises(ConfigError):
@@ -323,7 +323,7 @@ class TestDocReader:
 
     def test_registered_as_default_for_doc(self):
         parsers = parser_registry.get_parsers()
-        from rag_api.pipeline.step.parser.doc import DocReader
+        from rag_api.pipeline.steps.parser.doc import DocReader
 
         assert isinstance(parsers[".doc"], DocReader)
 
@@ -342,7 +342,7 @@ class TestPptReader:
     def test_extracts_real_content_from_fixture(self):
         """fixtures/sample.ppt is a genuine legacy OLE .ppt (LibreOffice `MS PowerPoint 97`
         export of a python-pptx-authored deck) — not a mock."""
-        from rag_api.pipeline.step.parser.ppt import PptReader
+        from rag_api.pipeline.steps.parser.ppt import PptReader
 
         docs = PptReader().load_data(FIXTURES_DIR / "sample.ppt")
 
@@ -350,7 +350,7 @@ class TestPptReader:
         assert "Hello from a legacy PPT fixture." in docs[0].text
 
     def test_not_an_ole_file_raises_ingest_validation_error(self):
-        from rag_api.pipeline.step.parser.ppt import PptReader
+        from rag_api.pipeline.steps.parser.ppt import PptReader
 
         path = _write(".ppt", "not an OLE file, just plain text")
         try:
@@ -361,7 +361,7 @@ class TestPptReader:
 
     def test_registered_as_default_for_ppt(self):
         parsers = parser_registry.get_parsers()
-        from rag_api.pipeline.step.parser.ppt import PptReader
+        from rag_api.pipeline.steps.parser.ppt import PptReader
 
         assert isinstance(parsers[".ppt"], PptReader)
 
@@ -372,7 +372,7 @@ class TestPptTextRecordExtraction:
     off-by-one this replaced)."""
 
     def test_extracts_text_bytes_atom(self):
-        from rag_api.pipeline.step.parser.ppt import PptReader
+        from rag_api.pipeline.steps.parser.ppt import PptReader
 
         text = "Hi"
         payload = text.encode("utf-16-le")
@@ -380,7 +380,7 @@ class TestPptTextRecordExtraction:
         assert PptReader._extract_text_records(record) == [text]
 
     def test_ignores_bytes_before_first_marker(self):
-        from rag_api.pipeline.step.parser.ppt import PptReader
+        from rag_api.pipeline.steps.parser.ppt import PptReader
 
         text = "Hi"
         payload = text.encode("utf-16-le")
@@ -388,6 +388,6 @@ class TestPptTextRecordExtraction:
         assert PptReader._extract_text_records(b"garbage" + record) == [text]
 
     def test_no_marker_returns_empty(self):
-        from rag_api.pipeline.step.parser.ppt import PptReader
+        from rag_api.pipeline.steps.parser.ppt import PptReader
 
         assert PptReader._extract_text_records(b"no markers here") == []

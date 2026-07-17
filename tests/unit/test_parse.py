@@ -10,7 +10,7 @@ import pytest
 from llama_index.core import Document
 
 from rag_api.exceptions import IngestValidationError
-from rag_api.pipeline.step import parser as parser_registry
+from rag_api.pipeline.steps import parser as parser_registry
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +31,7 @@ def txt_file():
 
 
 def test_parse_local_default_behavior_unchanged(txt_file):
-    from rag_api.pipeline.step.parse import parse_local
+    from rag_api.pipeline.steps.parse import parse_local
 
     docs = parse_local(txt_file)
 
@@ -41,7 +41,7 @@ def test_parse_local_default_behavior_unchanged(txt_file):
 
 
 def test_parse_applies_registered_post_processor(txt_file):
-    from rag_api.pipeline.step.parse import parse_local
+    from rag_api.pipeline.steps.parse import parse_local
 
     def add_caption(documents: list[Document], file_path: Path, suffix: str) -> list[Document]:
         return [Document(text=f"caption for {file_path.name}", metadata={"type": "image_caption"})]
@@ -59,7 +59,7 @@ def test_parse_applies_registered_post_processor(txt_file):
 
 
 def test_parse_rejects_unregistered_extension(txt_file):
-    from rag_api.pipeline.step.parse import parse_local
+    from rag_api.pipeline.steps.parse import parse_local
 
     parser_registry.get_parsers()  # trigger default load
     parser_registry.unregister_parser(".txt")

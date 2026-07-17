@@ -11,7 +11,7 @@ from llama_index.core import Document
 from llama_index.core.readers.base import BaseReader
 
 from rag_api.exceptions import ConfigError
-from rag_api.pipeline.step.parser import registry as parser_registry
+from rag_api.pipeline.steps.parser import registry as parser_registry
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +46,7 @@ class TestDefaults:
             assert ext in parsers
 
     def test_register_defaults_covers_code_extensions(self):
-        from rag_api.pipeline.step.parser.extensions import CODE_EXTENSIONS
+        from rag_api.pipeline.steps.parser.extensions import CODE_EXTENSIONS
 
         parsers = parser_registry.get_parsers()
 
