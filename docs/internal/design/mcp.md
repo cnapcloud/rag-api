@@ -59,7 +59,7 @@ search(
 
 - Async tool. Calls `retriever.search()` then `reranker.rerank_async()`.
 - If `kb_ids` is omitted, searches all KBs defined in `settings.knowledge_bases`.
-- Each result item: `{text, score, rerank_score, kb_id, doc_key, page_num, chunk_idx}`.
+- Each result item: `{text, score, rerank_score, kb_id, doc_key, page_num, page_label, chunk_idx}`.
 - `rerank_score` is `null` when reranker is disabled or falls back to RRF.
 
 ### `list_knowledge_bases`

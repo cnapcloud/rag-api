@@ -23,7 +23,8 @@ PointStruct
     │                                   table_layout plugins)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document
-    ├── page_num           : str|null — original page number (PDF page_label; null if absent)
+    ├── page_num           : int|null — physical page number within the document (1-based; null if not paginated)
+    ├── page_label         : str|null — PDF page label (/PageLabels, e.g. "i", "A-1"; null if the PDF defines none)
     ├── text               : str      — chunk body text
     ├── embedding_model    : str      — embedding model name
     ├── embedding_provider : str      — ollama / openai

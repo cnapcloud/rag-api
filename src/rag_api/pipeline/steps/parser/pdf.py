@@ -24,7 +24,11 @@ class PyMuPDFReader(BaseReader):
         docs = []
         with fitz.open(str(file)) as pdf:
             for page_num, page in enumerate(pdf, start=1):
-                metadata = {"page_label": str(page_num), "file_name": Path(file).name}
+                metadata = {
+                    "page_num": page_num,
+                    "page_label": page.get_label() or None,
+                    "file_name": Path(file).name,
+                }
                 if extra_info:
                     metadata.update(extra_info)
                 docs.append(Document(text=page.get_text(), metadata=metadata))

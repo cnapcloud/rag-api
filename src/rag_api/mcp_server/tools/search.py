@@ -65,6 +65,7 @@ async def search(
                 "kb_id": r.kb_id,
                 "source": r.source,
                 "page_num": r.page_num,
+                "page_label": r.page_label,
                 "chunk_idx": r.chunk_index,
             }
             for r in final_results

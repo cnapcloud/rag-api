@@ -20,6 +20,7 @@ class SearchResult:
     title: str
     chunk_index: int
     page_num: int | None
+    page_label: str | None
     text: str
     score: float
     rerank_score: float | None
@@ -68,7 +69,8 @@ def _node_to_result(kb_id: str, node) -> SearchResult:
         source=source,
         doc_type=meta.get("doc_type", ""),
         chunk_index=int(meta.get("chunk_index", 0)),
-        page_num=meta.get("page_num") or meta.get("page_label"),
+        page_num=meta.get("page_num"),
+        page_label=meta.get("page_label"),
         text=node.get_content(),
         score=float(node.score or 0.0),
         rerank_score=None,

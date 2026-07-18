@@ -55,6 +55,7 @@ class SearchResultItem(BaseModel):
     doc_type: str
     chunk_index: int
     page_num: Any | None
+    page_label: str | None
     text: str
     score: float
     rerank_score: float | None
@@ -133,6 +134,7 @@ async def search(req: SearchRequest):
                 doc_type=r.doc_type,
                 chunk_index=r.chunk_index,
                 page_num=r.page_num,
+                page_label=r.page_label,
                 text=r.text,
                 score=r.score,
                 rerank_score=r.rerank_score,

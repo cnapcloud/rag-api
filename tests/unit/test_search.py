@@ -20,6 +20,7 @@ def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchR
         doc_type="pdf",
         chunk_index=0,
         page_num=None,
+        page_label=None,
         text="테스트 텍스트",
         score=score,
         rerank_score=None,

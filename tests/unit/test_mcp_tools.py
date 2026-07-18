@@ -103,6 +103,7 @@ def _make_result(text="hello", kb_id="kb-a", source="doc.pdf", score=0.9):
         doc_type="pdf",
         chunk_index=0,
         page_num=1,
+        page_label=None,
         text=text,
         score=score,
         rerank_score=None,

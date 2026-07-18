@@ -21,6 +21,7 @@ def _make_result(chunk_id: str) -> SearchResult:
         doc_type="pdf",
         chunk_index=0,
         page_num=1,
+        page_label="i",
         text="테스트 청크 내용",
         score=0.9,
         rerank_score=None,
@@ -63,6 +64,8 @@ def test_search_returns_results(client):
     data = resp.json()
     assert data["query"] == "Keycloak 설정"
     assert len(data["results"]) == 2
+    assert data["results"][0]["page_num"] == 1
+    assert data["results"][0]["page_label"] == "i"
     assert data["meta"]["reranked"] is True
     assert data["meta"]["rerank_provider"] == "jina"
     assert data["meta"]["score_threshold"] == 0.0
