@@ -32,6 +32,7 @@
   - [22. .ppt 레거시 파서(catppt)가 실제 파일에서 항상 빈 텍스트를 반환](#22-ppt-레거시-파서catppt가-실제-파일에서-항상-빈-텍스트를-반환)
   - [23. 삭제-인제스트 경합으로 남은 고아 Qdrant 청크가 검색 결과에 노출됨](#23-삭제-인제스트-경합으로-남은-고아-qdrant-청크가-검색-결과에-노출됨)
   - [24. 나무위키 /activity/ 페이지가 봇 User-Agent에만 404를 반환해 unrestricted 크롤링 문서가 failed로 남음](#24-나무위키-activity-페이지가-봇-user-agent에만-404를-반환해-unrestricted-크롤링-문서가-failed로-남음)
+  - [25. page_label이 PDF에 실제로 인쇄된 페이지 번호와 다를 수 있음 — /PageLabels 룰이 없는 문서는 항상 null](#25-page_label이-pdf에-실제로-인쇄된-페이지-번호와-다를-수-있음--pagelabels-룰이-없는-문서는-항상-null)
 
 ---
 
@@ -1208,3 +1209,42 @@ connector_id=`b94692af7e75444c`(namu.wiki "고양이", `unrestricted: true`)의 
 - `unrestricted: true` 크롤링이 나무위키류 위키 사이트의 유틸리티 링크(활동 이력/토론/최근변경/
   무작위 문서 등)를 계속 새로 발견해낼 때마다 매번 `exclude_patterns`를 수동으로 추가해야 한다 —
   사이트별 유틸리티 URL 패턴을 커넥터 프리셋으로 미리 알아두는 방안은 검토하지 않았다.
+
+---
+
+## 25. page_label이 PDF에 실제로 인쇄된 페이지 번호와 다를 수 있음 — /PageLabels 룰이 없는 문서는 항상 null
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-18 |
+| 심각도 | LOW |
+
+**증상**
+
+`ATD00005_2605.pdf`를 인제스트한 뒤 Qdrant에서 물리 2페이지(`page_num: 2`)의 청크를 보면
+`page_label: null`이다. 그런데 실제로 해당 페이지 하단에는 "1"이라는 번호가 인쇄되어 있다 —
+표지(물리 1페이지)는 번호 없이, 실제 본문 시작 페이지부터 "1"로 다시 세는 문서라 물리 페이지
+번호와 화면에 보이는 번호가 어긋난다.
+
+**원인**
+
+`page_label`은 `pipeline/steps/parser/pdf.py`의 `PyMuPDFReader`가 `fitz.Page.get_label()`로
+채우는데, 이 함수는 PDF 카탈로그의 `/PageLabels` 딕셔너리(PDF 스펙이 정의하는 구조적 페이지
+번호 매김 규칙)를 조회할 뿐이다. `ATD00005_2605.pdf`는 이 딕셔너리 자체가 없다
+(`fitz.open(...).get_page_labels()` → `[]`) — 페이지 하단의 "1"은 PDF 구조적 메타데이터가
+아니라 그냥 페이지 본문에 그려진 일반 텍스트다. `/PageLabels`가 없는 문서에서는
+`get_label()`이 항상 빈 문자열을 반환하므로, 화면에 어떤 숫자가 보이든 `page_label`은
+`null`로 남는다 — 버그가 아니라 애초에 추출할 PDF 레벨 레이블이 존재하지 않는 경우다.
+Word/한글 워드프로세서 등에서 export된 PDF는 `/PageLabels`를 아예 안 쓰는 경우가 흔하다.
+
+**현재 대안**
+
+`page_num`(물리 페이지, 항상 채워짐)만 신뢰하고 `page_label`은 있으면 보너스 정보로 취급한다.
+`data-schema.md`에도 `page_label`을 "null if the PDF defines none"으로 명시해뒀다.
+
+**미해결**
+
+화면에 실제로 보이는 페이지 번호까지 맞추려면 `/PageLabels` 조회가 아니라 페이지 하단
+텍스트에서 숫자 패턴을 휴리스틱/OCR로 추정해야 한다 — 문서마다 위치·포맷이 달라 오탐 위험이
+크고, 별도 설계가 필요해 보류. 검토하지 않았다.
