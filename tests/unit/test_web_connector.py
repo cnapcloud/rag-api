@@ -871,7 +871,10 @@ class TestDispatchSync:
             "config": {"seed_urls": ["https://example.com"]},
         }
 
-        with patch("rag_api.connectors.web.WebConnector.sync") as mock_sync:
+        with (
+            patch("rag_api.connectors.web.WebConnector.sync") as mock_sync,
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
+        ):
             _dispatch_sync(connector)
 
         mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID)

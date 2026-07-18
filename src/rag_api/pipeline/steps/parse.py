@@ -69,12 +69,18 @@ def _extract_doc_created_at(file_path: Path, suffix: str, storage_key: str) -> s
         return ""
 
 
-def parse(doc_id: str, storage_key: str, local_path: Path | None = None) -> list[Document]:
+def parse(
+    doc_id: str, storage_key: str, kb_id: str | None = None, local_path: Path | None = None
+) -> list[Document]:
     """Download a file from S3 and return a list of LlamaIndex Documents.
 
     Args:
         doc_id: UUID of the document row (used to tag metadata).
         storage_key: Full S3 object path (e.g. 'kb-01/report.pdf').
+        kb_id: KB the document belongs to — threaded to readers/post-processors via
+            SimpleDirectoryReader's file_metadata so KB-scoped settings overrides can be
+            resolved inside them (docs/internal/design/kb-settings-override.md §6.3). None for
+            CLI/local use, where only global settings apply.
         local_path: Pre-downloaded local file (for tests / CLI use).
     """
     from rag_api.pipeline.steps import parser
@@ -95,11 +101,12 @@ def parse(doc_id: str, storage_key: str, local_path: Path | None = None) -> list
         reader = SimpleDirectoryReader(
             input_files=[str(file_path)],
             file_extractor=parsers if parsers else None,
+            file_metadata=lambda _: {"kb_id": kb_id},
         )
         documents = reader.load_data()
 
         for post_process in parser.get_post_processors():
-            documents.extend(post_process(documents, file_path, suffix))
+            documents.extend(post_process(documents, file_path, suffix, kb_id))
 
         doc_created_at = _extract_doc_created_at(file_path, suffix, storage_key)
 

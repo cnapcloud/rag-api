@@ -62,6 +62,27 @@ knowledge_bases
 Indexes:
 - `idx_kb_tags` on `tags` using GIN
 
+### `kb_settings_overrides` table
+
+KB별로 `settings.yaml`의 `ingestion`/`chunking`/`dedup` 값을 오버라이드. 자세한 설계는
+[kb-settings-override.md](kb-settings-override.md) 참고 — 행 하나 = 오버라이드 키 하나(JSONB
+블롭이 아닌 이유는 §10 참고, PATCH의 lost update 회피).
+
+```
+kb_settings_overrides
+├── kb_id       TEXT        NOT NULL FK knowledge_bases (ON DELETE CASCADE)
+├── key         TEXT        NOT NULL   -- dot-notation, Settings 필드 경로 (예: "ingestion.max_file_size_mb")
+├── value       JSONB       NOT NULL   -- 스칼라/객체 어떤 JSON 값이든
+├── updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+└── PRIMARY KEY (kb_id, key)
+```
+
+`key`는 애플리케이션 레벨에서 두 단계로 검증됨(DB 제약 아님, [kb-settings-override.md §9.1](kb-settings-override.md#91-검증--allow-list가-먼저다)):
+1. `ingestion.`/`chunking.`/`dedup.` 접두사만 허용(allow-list) — `provider`/`redis`/`postgres`
+   등 인프라 자격증명 섹션은 애초에 저장 불가.
+2. 접두사를 통과해도 특정 leaf 키(`ingestion.parser_plugins`, `dedup.simhash.ngram`/`num_bands`/
+   `simhash_bits`, `dedup.minhash.user_words_path`)는 deny-list로 거부.
+
 ### `connectors` table
 
 ```
@@ -210,5 +231,6 @@ instead of being processed immediately. Delay/dedup mechanics are covered in
 | doc_created_at extraction | `src/pipeline/steps/parse.py` — `_extract_doc_created_at()` |
 | Postgres KB/doc CRUD | `src/infra/postgres.py` |
 | Document state transitions | `src/pipeline/steps/meta.py` |
-| Schema DDL | `migrations/001_initial_schema.sql` |
+| Schema DDL | `migrations/001_initial_schema.sql`, `migrations/002_kb_settings_overrides.sql` (design 완료, 구현 예정) |
 | Redis queue client | `src/infra/redis.py` |
+| KB 설정 오버라이드 리졸버 | `src/config/settings.py` — `resolve_settings(kb_id)` (design 완료, 구현 예정) |

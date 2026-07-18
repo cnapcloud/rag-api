@@ -26,12 +26,13 @@ class HTMLCleanReader(BaseReader):
     def load_data(self, file: Path, extra_info: dict | None = None) -> list[Document]:
         import trafilatura
 
-        from rag_api.config.settings import get_settings
+        from rag_api.config.settings import resolve_settings
 
         with open(file, encoding="utf-8") as f:
             html = f.read()
 
-        policy = get_settings().ingestion.html_extraction_policy
+        kb_id = (extra_info or {}).get("kb_id")
+        policy = resolve_settings(kb_id).ingestion.html_extraction_policy
         text = (
             trafilatura.extract(
                 html,

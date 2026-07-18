@@ -52,7 +52,7 @@ def run_ingest_pipeline(
         from rag_api.infra.postgres import update_doc_fields
         from rag_api.pipeline.steps.dedup import run_dedup_pipeline
 
-        documents = parse(doc_id=doc_id, storage_key=storage_key)
+        documents = parse(doc_id=doc_id, kb_id=kb_id, storage_key=storage_key)
 
         if documents:
             doc_created_at = documents[0].metadata.get("doc_created_at", "")
@@ -67,7 +67,7 @@ def run_ingest_pipeline(
             )
             return 0
 
-        nodes = chunk(documents)
+        nodes = chunk(documents, kb_id=kb_id)
         if not nodes:
             raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
         embedded_nodes = embed(nodes)

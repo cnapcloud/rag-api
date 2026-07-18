@@ -49,6 +49,31 @@ def test_chunk_single_short_document():
     assert len(nodes) == 1
 
 
+def test_chunk_applies_kb_scoped_min_chunk_chars_override():
+    """KB override for chunking.min_chunk_chars actually changes chunk() output end-to-end —
+    proves the resolve_settings(kb_id) wiring (docs/internal/design/kb-settings-override.md).
+    min_chunk_chars isn't an explicit chunk() parameter (unlike strategy/chunk_size/chunk_overlap),
+    so this only passes if kb_id correctly reaches resolve_settings() inside chunk()."""
+    from unittest.mock import patch
+
+    from rag_api.pipeline.steps.chunk import chunk
+
+    docs = [Document(text="word " * 10)]  # 50 chars: clears global default (30), not a KB override of 1000
+
+    with patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}):
+        nodes_global = chunk(docs, strategy="recursive", chunk_size=1024, chunk_overlap=128)
+    assert len(nodes_global) == 1
+
+    with patch(
+        "rag_api.infra.postgres.get_kb_settings_overrides",
+        return_value={"chunking.min_chunk_chars": 1000},
+    ):
+        nodes_override = chunk(
+            docs, kb_id="kb-01", strategy="recursive", chunk_size=1024, chunk_overlap=128
+        )
+    assert len(nodes_override) == 0
+
+
 def test_chunk_table_content_type_is_not_split():
     """content_type=table 문서는 chunk_size를 넘어도 분할되지 않고 1개 노드로 유지된다."""
     from rag_api.pipeline.steps.chunk import chunk

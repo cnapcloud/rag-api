@@ -43,7 +43,7 @@ def test_parse_local_default_behavior_unchanged(txt_file):
 def test_parse_applies_registered_post_processor(txt_file):
     from rag_api.pipeline.steps.parse import parse_local
 
-    def add_caption(documents: list[Document], file_path: Path, suffix: str) -> list[Document]:
+    def add_caption(documents: list[Document], file_path: Path, suffix: str, kb_id: str | None) -> list[Document]:
         return [Document(text=f"caption for {file_path.name}", metadata={"type": "image_caption"})]
 
     parser_registry.register_post_processor(add_caption)

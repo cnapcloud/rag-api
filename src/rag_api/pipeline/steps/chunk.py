@@ -8,7 +8,7 @@ from typing import Literal
 from llama_index.core import Document
 from llama_index.core.schema import BaseNode
 
-from rag_api.config.settings import get_settings
+from rag_api.config.settings import resolve_settings
 from rag_api.exceptions import ConfigError
 from rag_api.pipeline.steps.parser.extensions import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
 
@@ -64,6 +64,7 @@ def _group_by_language(docs: list[Document]) -> list[tuple[str, list[Document]]]
 
 def chunk(
     documents: list[Document],
+    kb_id: str | None = None,
     strategy: ChunkStrategy | None = None,
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
@@ -72,14 +73,16 @@ def chunk(
 
     Args:
         documents: LlamaIndex Document list
-        strategy: chunking strategy for non-code docs (None -> settings.yaml)
+        kb_id: KB the documents belong to — resolves KB-scoped settings overrides
+            (docs/internal/design/kb-settings-override.md). None -> global settings only.
+        strategy: chunking strategy for non-code docs (None -> resolved settings)
         chunk_size: chunk size override for non-code docs
         chunk_overlap: overlap override for non-code docs
 
     Returns:
         BaseNode list
     """
-    cfg = get_settings().chunking
+    cfg = resolve_settings(kb_id).chunking
     _strategy: ChunkStrategy = strategy or cfg.strategy  # type: ignore[assignment]
     _chunk_size = chunk_size or cfg.chunk_size
     _chunk_overlap = chunk_overlap or cfg.chunk_overlap

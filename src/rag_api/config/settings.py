@@ -9,6 +9,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from rag_api.exceptions import IngestValidationError
+
 # ──────────────────────────────────────────────
 # 하위 모델
 # ──────────────────────────────────────────────
@@ -296,3 +298,81 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings.from_yaml()
     return _settings
+
+
+# ──────────────────────────────────────────────
+# KB별 설정 오버라이드 — docs/internal/design/kb-settings-override.md
+# ──────────────────────────────────────────────
+
+# 오버라이드 가능한 top-level 섹션. allow-list를 deny-list보다 먼저 적용 — provider/redis/postgres/
+# qdrant 같은 인프라 자격증명 섹션은 이 목록에 없으므로 애초에 저장 시점에 거부된다.
+OVERRIDABLE_SETTINGS_PREFIXES = ("ingestion.", "chunking.", "dedup.")
+
+# allow-list를 통과해도 개별적으로 막는 필드. 이미 저장된 데이터(simhash_bands 등)와의 정합성,
+# 또는 프로세스 전역 리소스(Kiwi 토크나이저) 제약 때문 — kb-settings-override.md §5 참고.
+EXCLUDED_OVERRIDE_KEYS = frozenset({
+    "ingestion.parser_plugins",
+    "dedup.simhash.ngram",
+    "dedup.simhash.num_bands",
+    "dedup.simhash.simhash_bits",
+    "dedup.minhash.user_words_path",
+})
+
+
+def validate_override_key(settings_cls: type[BaseModel], dotted_key: str) -> None:
+    """dot-key가 오버라이드 가능한 실제 필드 경로인지 확인한다.
+
+    저장(PUT/PATCH) 시점에 반드시 호출해야 한다 — Settings는 model_config에서 extra를 지정하지
+    않아 Pydantic 기본값(extra="ignore")을 쓰므로, resolve_settings()의 재검증 경로
+    (type(base)(**merged))는 존재하지 않는 필드를 조용히 무시할 뿐 에러를 내지 않는다. 더 나쁜
+    경우 스칼라 필드를 한 단계 더 파고드는 키(예: "dedup.enabled.foo")는 _apply_dotted_overrides가
+    TypeError로 죽는다 — 그 KB는 이후 resolve_settings() 호출마다 예외가 나서 인제스트가 막힌다.
+    """
+    if not dotted_key.startswith(OVERRIDABLE_SETTINGS_PREFIXES):
+        raise IngestValidationError(f"Settings key not overridable: {dotted_key!r}")
+    if dotted_key in EXCLUDED_OVERRIDE_KEYS:
+        raise IngestValidationError(f"Settings key not overridable: {dotted_key!r}")
+
+    node: Any = settings_cls
+    for part in dotted_key.split("."):
+        if not (isinstance(node, type) and issubclass(node, BaseModel)):
+            raise IngestValidationError(f"Unknown settings key: {dotted_key!r}")
+        field = node.model_fields.get(part)
+        if field is None:
+            raise IngestValidationError(f"Unknown settings key: {dotted_key!r}")
+        node = field.annotation
+
+
+def _apply_dotted_overrides(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """{"ingestion.image_captioning.enabled": False} 같은 dot-key를 base(중첩 dict)에 적용한다.
+
+    base는 in-place로 수정되어 반환된다 — 호출부(resolve_settings)가 매번 새로 만든
+    base.model_dump() 결과를 넘기므로 공유 상태를 건드리지 않는다.
+    """
+    for dotted_key, value in overrides.items():
+        *path, leaf = dotted_key.split(".")
+        node = base
+        for part in path:
+            node = node.setdefault(part, {})
+        node[leaf] = value
+    return base
+
+
+def resolve_settings(kb_id: str | None) -> Settings:
+    """전역 Settings에 KB override(flat dot-key)를 병합해 반환한다.
+
+    kb_id가 None이거나 저장된 override가 없는 KB(대다수)는 전역 인스턴스를 그대로 반환한다 —
+    불필요한 객체 생성이 없다. rag-ent-api처럼 Settings를 상속해 필드를 추가해도 type(base)로
+    실제 서브클래스를 그대로 재구성하므로 이 함수는 그 필드들의 존재를 몰라도 된다.
+    """
+    base = get_settings()
+    if kb_id is None:
+        return base
+
+    from rag_api.infra.postgres import get_kb_settings_overrides
+
+    overrides = get_kb_settings_overrides(kb_id)
+    if not overrides:
+        return base
+    merged = _apply_dotted_overrides(base.model_dump(), overrides)
+    return type(base)(**merged)

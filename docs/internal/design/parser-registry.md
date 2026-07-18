@@ -64,9 +64,15 @@ _ensure_loaded()  ── idempotent, 프로세스당 1회
 ```python
 def register_parser(ext: str, reader: BaseReader) -> None: ...      # 있으면 교체, 없으면 추가
 def unregister_parser(ext: str) -> None: ...                        # 제거
-def register_post_processor(fn: Callable[[list[Document], Path, str], list[Document]]) -> None: ...
+def register_post_processor(fn: Callable[[list[Document], Path, str, str | None], list[Document]]) -> None: ...
 def supported_extensions() -> frozenset[str]: ...                   # _ensure_loaded() 포함
 ```
+
+`PostProcessor`의 네 번째 인자(`str | None`)는 `kb_id`다 — `parse()`가 `SimpleDirectoryReader`의
+`file_metadata` 콜백으로 리더에는 `extra_info`를 통해 kb_id를 전달하지만, post-processor는
+`extra_info`를 받지 않는 별도 호출 경로(`post_process(documents, file_path, suffix)`)라 리더
+구현에 따라 제각각인 `extra_info`→`metadata` 병합에 기대지 않고 명시적으로 kb_id를 넘긴다
+(KB별 설정 오버라이드 도입 — [kb-settings-override.md §6.3](kb-settings-override.md#63-kb_id를-리더후처리기까지-전달하는-배관)).
 
 ### 2.4 설정
 

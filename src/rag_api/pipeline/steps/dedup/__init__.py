@@ -45,9 +45,9 @@ def run_dedup_pipeline(
     Returns DedupResult; caller uses needs_indexing to decide whether to proceed to
     chunk/embed/upsert.
     """
-    from rag_api.config.settings import get_settings
+    from rag_api.config.settings import resolve_settings
 
-    cfg = get_settings()
+    cfg = resolve_settings(kb_id or None)
     if not cfg.dedup.enabled:
         logger.info("Dedup disabled: doc_id=%s", doc_id)
         return DedupResult(body_match="none", needs_indexing=True)
@@ -60,7 +60,7 @@ def run_dedup_pipeline(
         doc = get_doc_by_id(doc_id)
         if doc is None:
             raise IngestValidationError(f"Document not found: doc_id={doc_id}")
-        documents = parse(doc_id=doc_id, storage_key=doc.get("storage_key", ""))
+        documents = parse(doc_id=doc_id, kb_id=kb_id or None, storage_key=doc.get("storage_key", ""))
 
     if not is_document(documents):
         doc_type = documents[0].metadata.get("doc_type", "") if documents else ""

@@ -219,6 +219,62 @@ def delete_kb_meta(kb_id: str) -> None:
 
 
 # ──────────────────────────────────────────────
+# KB settings overrides — docs/internal/design/kb-settings-override.md
+# ──────────────────────────────────────────────
+
+def get_kb_settings_overrides(kb_id: str) -> dict[str, Any]:
+    """Return all override rows for a KB as a flat dot-key dict. Empty dict if none stored."""
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT key, value FROM kb_settings_overrides WHERE kb_id = %s",
+            [kb_id],
+        ).fetchall()
+    return {key: value for key, value in rows}
+
+
+def upsert_kb_settings_override(kb_id: str, key: str, value: Any) -> None:
+    """Insert or update a single override key. Independent row write — safe under concurrent
+    PATCH requests touching different keys (no read-modify-write on a shared blob)."""
+    with get_pool().connection() as conn:
+        conn.execute(
+            "INSERT INTO kb_settings_overrides (kb_id, key, value) VALUES (%s, %s, %s) "
+            "ON CONFLICT (kb_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+            [kb_id, key, Jsonb(value)],
+        )
+        conn.commit()
+
+
+def delete_kb_settings_override(kb_id: str, key: str) -> None:
+    """Remove a single override key. No-op if it doesn't exist."""
+    with get_pool().connection() as conn:
+        conn.execute(
+            "DELETE FROM kb_settings_overrides WHERE kb_id = %s AND key = %s",
+            [kb_id, key],
+        )
+        conn.commit()
+
+
+def replace_kb_settings_overrides(kb_id: str, overrides: dict[str, Any]) -> None:
+    """Replace all override rows for a KB in one transaction (PUT semantics)."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM kb_settings_overrides WHERE kb_id = %s", [kb_id])
+        if overrides:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO kb_settings_overrides (kb_id, key, value) VALUES (%s, %s, %s)",
+                    [(kb_id, key, Jsonb(value)) for key, value in overrides.items()],
+                )
+        conn.commit()
+
+
+def clear_kb_settings_overrides(kb_id: str) -> None:
+    """Delete every override row for a KB (full reset to global settings)."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM kb_settings_overrides WHERE kb_id = %s", [kb_id])
+        conn.commit()
+
+
+# ──────────────────────────────────────────────
 # Document metadata
 # ──────────────────────────────────────────────
 

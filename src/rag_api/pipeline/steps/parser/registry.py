@@ -20,7 +20,7 @@ from rag_api.exceptions import ConfigError
 
 logger = logging.getLogger(__name__)
 
-PostProcessor = Callable[[list[Document], Path, str], list[Document]]
+PostProcessor = Callable[[list[Document], Path, str, str | None], list[Document]]
 
 _parsers: dict[str, BaseReader] = {}
 _post_processors: list[PostProcessor] = []

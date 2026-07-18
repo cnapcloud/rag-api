@@ -45,3 +45,4 @@
 | [US-41](US-41-parser-extension-registry.md) | 파서 확장 레지스트리 (parse_op 확장자->리더 매핑을 등록 기반으로 전환) | done |
 | [US-42](US-42-parser-package-restructure.md) | 파서 패키지 구조화 + 신규 포맷 8종 지원 (CSV/TSV/JSON/EPUB/XLSX/XLS/RST/EML) | done |
 | [US-43](US-43-legacy-office-formats.md) | 레거시 .doc/.ppt + .pptx 지원 추가 | done |
+| [US-44](todo/US-44-kb-settings-override.md) | KB별 설정 오버라이드 (ingestion/chunking/dedup) | in-progress |

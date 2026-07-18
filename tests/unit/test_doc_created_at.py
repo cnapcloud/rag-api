@@ -225,7 +225,7 @@ class TestMetaDocCreatedAt:
 
             from rag_api.defs.ops.ingest_ops import parse_op
             ctx = build_op_context()
-            parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})
+            parse_op(ctx, {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb/x.md"})
 
         assert stored.get("doc_created_at") == "2023-05-15T10:30:00+00:00"
 
@@ -241,7 +241,7 @@ class TestMetaDocCreatedAt:
 
             from rag_api.defs.ops.ingest_ops import parse_op
             ctx = build_op_context()
-            parse_op(ctx, {"doc_id": DOC_ID, "storage_key": "kb/x.md"})
+            parse_op(ctx, {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb/x.md"})
 
         mock_udf.assert_not_called()
 

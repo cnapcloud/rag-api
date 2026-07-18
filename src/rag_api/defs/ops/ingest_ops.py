@@ -79,7 +79,7 @@ def parse_op(context: OpExecutionContext, valid_config: dict):
     from rag_api.pipeline.steps.parse import parse
 
     doc_id = valid_config["doc_id"]
-    documents = parse(doc_id=doc_id, storage_key=valid_config["storage_key"])
+    documents = parse(doc_id=doc_id, kb_id=valid_config["kb_id"], storage_key=valid_config["storage_key"])
 
     if documents:
         doc_created_at = documents[0].metadata.get("doc_created_at", "")
@@ -115,12 +115,12 @@ def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
 
 
 @op
-def chunk_op(context: OpExecutionContext, to_chunk):
+def chunk_op(context: OpExecutionContext, valid_config: dict, to_chunk):
     """Document -> Node chunking."""
     from rag_api.exceptions import IngestValidationError
     from rag_api.pipeline.steps.chunk import chunk
 
-    nodes = chunk(to_chunk)
+    nodes = chunk(to_chunk, kb_id=valid_config["kb_id"])
     if not nodes:
         raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
     context.log.info("Chunking done: %d nodes", len(nodes))

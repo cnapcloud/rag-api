@@ -20,6 +20,7 @@ class FakePostgresStore:
         self._kbs: dict[str, dict] = {}
         self._docs: dict[str, dict] = {}  # keyed by doc_id
         self._connectors: dict[str, dict] = {}  # keyed by connector_id
+        self._settings_overrides: dict[str, dict[str, Any]] = {}  # kb_id -> {dot-key: value}
 
     # -- KB --
 
@@ -61,6 +62,23 @@ class FakePostgresStore:
         to_del = [doc_id for doc_id, d in self._docs.items() if d["kb_id"] == kb_id]
         for doc_id in to_del:
             del self._docs[doc_id]
+
+    # -- KB settings overrides --
+
+    def get_kb_settings_overrides(self, kb_id: str) -> dict[str, Any]:
+        return dict(self._settings_overrides.get(kb_id, {}))
+
+    def upsert_kb_settings_override(self, kb_id: str, key: str, value: Any) -> None:
+        self._settings_overrides.setdefault(kb_id, {})[key] = value
+
+    def delete_kb_settings_override(self, kb_id: str, key: str) -> None:
+        self._settings_overrides.get(kb_id, {}).pop(key, None)
+
+    def replace_kb_settings_overrides(self, kb_id: str, overrides: dict[str, Any]) -> None:
+        self._settings_overrides[kb_id] = dict(overrides)
+
+    def clear_kb_settings_overrides(self, kb_id: str) -> None:
+        self._settings_overrides.pop(kb_id, None)
 
     # -- Document --
 
@@ -331,6 +349,11 @@ def mock_postgres(monkeypatch):
     monkeypatch.setattr("rag_api.infra.postgres.update_kb_meta", store.update_kb_meta)
     monkeypatch.setattr("rag_api.infra.postgres.update_kb_status", store.update_kb_status)
     monkeypatch.setattr("rag_api.infra.postgres.delete_kb_meta", store.delete_kb_meta)
+    monkeypatch.setattr("rag_api.infra.postgres.get_kb_settings_overrides", store.get_kb_settings_overrides)
+    monkeypatch.setattr("rag_api.infra.postgres.upsert_kb_settings_override", store.upsert_kb_settings_override)
+    monkeypatch.setattr("rag_api.infra.postgres.delete_kb_settings_override", store.delete_kb_settings_override)
+    monkeypatch.setattr("rag_api.infra.postgres.replace_kb_settings_overrides", store.replace_kb_settings_overrides)
+    monkeypatch.setattr("rag_api.infra.postgres.clear_kb_settings_overrides", store.clear_kb_settings_overrides)
     monkeypatch.setattr("rag_api.infra.postgres.create_doc", store.create_doc)
     monkeypatch.setattr("rag_api.infra.postgres.get_doc_by_id", store.get_doc_by_id)
     monkeypatch.setattr("rag_api.infra.postgres.get_existing_doc_ids", store.get_existing_doc_ids)

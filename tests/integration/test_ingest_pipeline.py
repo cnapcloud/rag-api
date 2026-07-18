@@ -62,6 +62,7 @@ def test_ingest_job_validate_passes(ingest_run_config):
 
     with (
         patch("rag_api.infra.postgres.get_doc_by_id", return_value=doc),
+        patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         patch("rag_api.infra.postgres.update_doc_fields"),
         patch("rag_api.pipeline.steps.parse.parse", return_value=[]),
         patch("rag_api.pipeline.steps.dedup.run_simhash_detection",
