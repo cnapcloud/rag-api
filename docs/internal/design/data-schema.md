@@ -18,8 +18,9 @@ PointStruct
     ├── source_type        : str      — s3 | web | confluence | github
     ├── source             : str      — canonical dedup key (mirrors documents.source)
     ├── doc_type           : str      — file extension (pdf, docx, txt, md, html, rst, …)
-    ├── content_type       : str      — text (default) | ocr_text | image_caption — how this
-    │                                   chunk's text was produced (rag-ent-api image_ocr plugin)
+    ├── content_type       : str      — text (default) | ocr_text | image_caption | table — how
+    │                                   this chunk's text was produced (rag-ent-api image_ocr /
+    │                                   table_layout plugins)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document
     ├── page_num           : str|null — original page number (PDF page_label; null if absent)
