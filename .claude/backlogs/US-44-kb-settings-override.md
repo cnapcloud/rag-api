@@ -1,6 +1,6 @@
 # US-44: KB별 설정 오버라이드 (ingestion/chunking/dedup)
 
-**상태**: in-progress
+**상태**: done
 
 > 설계: [kb-settings-override.md](../../../docs/internal/design/kb-settings-override.md)
 
