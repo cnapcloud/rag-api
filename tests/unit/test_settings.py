@@ -233,12 +233,14 @@ def test_chunking_strategy_rejects_invalid_value() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        Settings(chunking={"strategy": "typo"})
+        Settings.model_validate({"chunking": {"strategy": "typo"}})
 
 
 def test_chunking_strategy_accepts_known_values() -> None:
-    assert Settings(chunking={"strategy": "recursive"}).chunking.strategy == "recursive"
-    assert Settings(chunking={"strategy": "semantic"}).chunking.strategy == "semantic"
+    recursive = Settings.model_validate({"chunking": {"strategy": "recursive"}})
+    assert recursive.chunking.strategy == "recursive"
+    semantic = Settings.model_validate({"chunking": {"strategy": "semantic"}})
+    assert semantic.chunking.strategy == "semantic"
 
 
 # ──────────────────────────────────────────────
@@ -353,7 +355,7 @@ def test_describe_overridable_settings_computes_hamming_max_from_simhash_bits() 
     default_schema = describe_overridable_settings(Settings())
     assert default_schema["dedup.simhash.hamming_identical_threshold"]["max"] == 64
 
-    narrow = Settings(dedup={"simhash": {"simhash_bits": 32}})
+    narrow = Settings.model_validate({"dedup": {"simhash": {"simhash_bits": 32}}})
     narrow_schema = describe_overridable_settings(narrow)
     assert narrow_schema["dedup.simhash.hamming_identical_threshold"]["max"] == 32
     assert narrow_schema["dedup.simhash.hamming_similar_threshold"]["max"] == 32
