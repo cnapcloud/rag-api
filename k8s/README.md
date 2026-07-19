@@ -13,4 +13,4 @@ manifests/
 (`preview` / `diff` / `apply` / `delete` / `namespace`)을 가진다.
 
 자세한 설치 절차, 사전 준비, 환경 overlay 작성법, 시크릿 처리 방법은
-[rag-delivery/install/03-install-k8s.md](../../rag-delivery/install/03-install-k8s.md) 참조.
+[rag-docs/docs/install/03-install-k8s.md](../../rag-docs/docs/install/03-install-k8s.md) 참조.

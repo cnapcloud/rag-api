@@ -15,4 +15,4 @@ workspace.yaml        # Dagster workspace (code location 등록)
 "시작" 절 참조.
 
 자세한 설치 절차와 사전 준비는
-[rag-delivery/install/02-quickstart.md](../../rag-delivery/install/02-quickstart.md) 참조.
+[rag-docs/docs/install/02-quickstart.md](../../rag-docs/docs/install/02-quickstart.md) 참조.
