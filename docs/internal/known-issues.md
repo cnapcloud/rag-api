@@ -33,6 +33,7 @@
   - [23. 삭제-인제스트 경합으로 남은 고아 Qdrant 청크가 검색 결과에 노출됨](#23-삭제-인제스트-경합으로-남은-고아-qdrant-청크가-검색-결과에-노출됨)
   - [24. 나무위키 /activity/ 페이지가 봇 User-Agent에만 404를 반환해 unrestricted 크롤링 문서가 failed로 남음](#24-나무위키-activity-페이지가-봇-user-agent에만-404를-반환해-unrestricted-크롤링-문서가-failed로-남음)
   - [25. page_label이 PDF에 실제로 인쇄된 페이지 번호와 다를 수 있음 — /PageLabels 룰이 없는 문서는 항상 null](#25-page_label이-pdf에-실제로-인쇄된-페이지-번호와-다를-수-있음--pagelabels-룰이-없는-문서는-항상-null)
+  - [26. upsert 단계의 delete-then-insert 구조로 reindex 중 insert 실패 시 기존 Qdrant 청크가 유실됨](#26-upsert-단계의-delete-then-insert-구조로-reindex-중-insert-실패-시-기존-qdrant-청크가-유실됨)
 
 ---
 
@@ -1248,3 +1249,58 @@ Word/한글 워드프로세서 등에서 export된 PDF는 `/PageLabels`를 아�
 화면에 실제로 보이는 페이지 번호까지 맞추려면 `/PageLabels` 조회가 아니라 페이지 하단
 텍스트에서 숫자 패턴을 휴리스틱/OCR로 추정해야 한다 — 문서마다 위치·포맷이 달라 오탐 위험이
 크고, 별도 설계가 필요해 보류. 검토하지 않았다.
+
+---
+
+## 26. upsert 단계의 delete-then-insert 구조로 reindex 중 insert 실패 시 기존 Qdrant 청크가 유실됨
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-19 |
+| 심각도 | MED |
+
+**증상**
+
+reindex(재인제스트) 파이프라인 도중 실패가 나면, 실패 시점에 따라 기존에 Qdrant에 색인돼 있던
+문서의 청크가 그대로 유지되기도 하고 완전히 사라지기도 한다 — 일관되지 않다.
+
+**원인**
+
+`pipeline/steps/upsert.py:34-93`의 `upsert()`가 delete-then-insert 방식이다:
+`qdrant_infra.delete_chunks_by_doc_id(kb_id, doc_id, client)`(line 39)로 해당 `doc_id`의
+기존 청크를 먼저 전부 지운 뒤, 새로 파싱·청킹·임베딩한 결과를
+`qdrant_infra.upsert_chunks(kb_id, points, client)`(line 85)로 삽입한다. 이 두 호출 사이에는
+try/except나 rollback/보상 로직이 전혀 없다. Point ID도 `str(uuid.uuid4())`(line 72)로
+비결정적이라, 실패해도 이전 ID로 upsert가 덮어써지는 방식이 아니다. Collection alias swap 같은
+원자적 전환 장치도 없다.
+
+실패 시점별로 결과가 갈린다:
+- upsert 단계 이전(validate/parse/dedup/chunk/embed) 실패 — `delete_chunks_by_doc_id`가 아직
+  호출되지 않았으므로 기존 청크는 그대로 남는다. `ingest_ops.py:6-20`의
+  `ingest_failure_hook`(Dagster `@failure_hook`)이 Postgres에 `status=failed`만 기록해서
+  Qdrant(구 청크 남음)과 Postgres(`failed`) 상태가 불일치하지만, 데이터 손실은 없다.
+- delete(line 39) 성공 후 insert(line 85) 전/중 실패(Qdrant 네트워크 오류 등) — 기존 청크는
+  이미 삭제됐고 새 청크는 삽입되지 않아 **해당 문서의 청크가 전부 유실**된다. 이 구간을 감싸는
+  보상 로직이 없어 자동 복구되지 않는다.
+- upsert 성공 후 meta_op(Postgres 상태 갱신) 실패 — Qdrant엔 새 청크가 정상 반영됐지만
+  Postgres는 `indexed`로 갱신되지 못하고 `failed`로 남는 반대 방향 불일치가 생긴다.
+
+23번 항목(삭제-인제스트 경합으로 인한 고아 청크)과는 다른 계열의 문제다 — 23번은 서로 다른 두
+경로(cascade delete와 지연된 upsert)가 경합하며 생기는 유령 청크 문제이고, 이번 항목은 단일
+reindex 실행 안에서 delete와 insert 사이에 원자성이 없어 생기는 데이터 유실 문제다.
+
+**현재 대안**
+
+없음. 실패 시 Postgres `status`가 `failed`로 남으므로 사용자가 재인제스트를 다시 트리거하면
+복구는 되지만, 그 사이 검색 결과에서 해당 문서가 완전히 누락되는 공백이 생긴다.
+
+**미해결**
+
+- `delete_chunks_by_doc_id`와 `upsert_chunks` 순서를 insert-then-delete로 바꾸면(새 청크를
+  먼저 넣고 성공을 확인한 뒤 이전 청크를 지우는 방식) 이 구간의 유실 위험을 없앨 수 있어
+  보이지만, 그동안 잠깐 신구 청크가 공존해 중복 검색 결과가 나올 수 있어 트레이드오프 검토가
+  필요하다 — 검토하지 않았다.
+- Point ID를 `(doc_id, chunk_index)` 등 deterministic 값으로 바꿔 upsert 자체가 덮어쓰기가
+  되도록 하는 방안도 근본적인 대안이 될 수 있으나, 기존 point ID 체계 전반에 영향을 주는
+  변경이라 범위가 크다 — 검토하지 않았다.
