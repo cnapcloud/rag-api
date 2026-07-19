@@ -38,6 +38,11 @@ queue_poll:
   max_per_poll: 5
   retry_interval_sec: 10
 
+provider:
+  name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
+  ollama_url: "http://192.168.0.75:11434"
+  openai_api_key: ""
+
 ingestion:
   max_file_size_mb: 10
   min_content_chars: 200
@@ -72,11 +77,6 @@ chunking:
   chunk_overlap: 128
   min_chunk_chars: 30
   semantic_threshold: 0.8
-
-provider:
-  name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
-  ollama_url: "http://192.168.0.75:11434"
-  openai_api_key: ""
 
 embedding:
   model: "bge-m3"                # provider에 맞는 모델명 (ollama: bge-m3 / openai: text-embedding-3-small)
