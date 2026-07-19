@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 
 from rag_api.exceptions import ConfigError
-from rag_api.pipeline.ops.parse import SUPPORTED_EXTENSIONS
+from rag_api.pipeline.steps.parse import supported_extensions
 from rag_api.pipeline.utils.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
@@ -100,11 +100,12 @@ class GitHubConnector:
         )
         assert isinstance(data, dict)
         items: list[dict] = data.get("tree", [])
+        exts = supported_extensions()
         blobs = [
             item for item in items
             if item.get("type") == "blob"
             and (not self.path_prefix or item["path"].startswith(self.path_prefix))
-            and Path(item["path"]).suffix.lower() in SUPPORTED_EXTENSIONS
+            and Path(item["path"]).suffix.lower() in exts
         ]
         return blobs[: self.max_files]
 

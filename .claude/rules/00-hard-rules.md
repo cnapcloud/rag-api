@@ -52,7 +52,7 @@ grep -n "class\|def\|import" src/rag_api/infra/qdrant.py | head -20
 
 ---
 
-## 5. Op 함수에 Dagster context 주입 금지
+## 5. Step 함수에 Dagster context 주입 금지
 
 ```python
 # 금지
@@ -64,7 +64,7 @@ def chunk(documents, strategy, chunk_size, chunk_overlap) -> list[BaseNode]:
     ...
 ```
 
-Op은 순수 함수. Dagster 의존성은 `dagster_pipeline/ops/` 래퍼에서만.
+`pipeline/steps/`의 Step 함수는 순수 함수. Dagster 의존성은 `defs/ops/` 래퍼에서만.
 
 ---
 

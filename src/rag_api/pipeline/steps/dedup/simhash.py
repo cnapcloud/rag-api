@@ -6,7 +6,7 @@ import hashlib
 import logging
 from typing import TYPE_CHECKING
 
-from rag_api.pipeline.ops.dedup.types import BodyMatch, DedupResult, TitleMatch
+from rag_api.pipeline.steps.dedup.types import BodyMatch, DedupResult, TitleMatch
 
 if TYPE_CHECKING:
     from rag_api.config.settings import SimHashSettings

@@ -153,7 +153,7 @@ class WebConnector:
                                      bounded by depth/max_pages.
     """
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, kb_id: str | None = None) -> None:
         self.seed_urls: list[str] = config.get("seed_urls", [])
         if not self.seed_urls:
             raise ConfigError("WebConnector requires at least one seed_url in config")
@@ -165,9 +165,9 @@ class WebConnector:
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.skip_seed_pages: bool = bool(config.get("skip_seed_pages", True))
         self.unrestricted: bool = bool(config.get("unrestricted", False))
-        from rag_api.config.settings import get_settings
+        from rag_api.config.settings import resolve_settings
         self.min_content_chars: int = int(
-            config.get("min_content_chars", get_settings().ingestion.min_content_chars)
+            config.get("min_content_chars", resolve_settings(kb_id).ingestion.min_content_chars)
         )
         self.auth_headers: dict[str, str] = config.get("auth_headers") or {}
         self.auth_basic: tuple[str, str] | None = (

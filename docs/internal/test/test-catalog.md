@@ -597,7 +597,7 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/integration/ -v
 
 ### 18. 검증 Op (`tests/unit/test_validate.py`)
 
-`pipeline/ops/validate.py` — ETag 중복 체크 및 파일 크기 제한.
+`pipeline/steps/validate.py` — ETag 중복 체크 및 파일 크기 제한.
 
 | Test | 검증 내용 |
 |------|-----------|

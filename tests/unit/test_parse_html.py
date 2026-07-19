@@ -77,7 +77,7 @@ def html_only_boilerplate_file():
 
 
 def test_html_clean_reader_extracts_main_content_excludes_boilerplate(html_file):
-    from rag_api.pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file)
 
@@ -99,7 +99,7 @@ def test_html_clean_reader_extracts_main_content_excludes_boilerplate(html_file)
 
 
 def test_html_clean_reader_preserves_markdown_structure(html_file):
-    from rag_api.pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
 
     text = HTMLCleanReader().load_data(html_file)[0].text
 
@@ -110,7 +110,7 @@ def test_html_clean_reader_preserves_markdown_structure(html_file):
 
 
 def test_html_clean_reader_returns_single_document(html_file):
-    from rag_api.pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file)
 
@@ -119,7 +119,7 @@ def test_html_clean_reader_returns_single_document(html_file):
 
 
 def test_html_clean_reader_metadata_contains_file_path(html_file):
-    from rag_api.pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file)
 
@@ -127,7 +127,7 @@ def test_html_clean_reader_metadata_contains_file_path(html_file):
 
 
 def test_html_clean_reader_extra_info_merged(html_file):
-    from rag_api.pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_file, extra_info={"doc_id": "abc-123"})
 
@@ -146,7 +146,7 @@ def test_html_clean_reader_extra_info_merged(html_file):
 def test_html_clean_reader_maps_extraction_policy_to_trafilatura_kwargs(
     html_file, policy, expected_precision, expected_recall
 ):
-    from rag_api.pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
 
     with (
         patch("rag_api.config.settings.get_settings") as mock_get_settings,
@@ -164,7 +164,7 @@ def test_html_clean_reader_maps_extraction_policy_to_trafilatura_kwargs(
 def test_html_clean_reader_no_extractable_content_returns_empty_text(
     html_only_boilerplate_file,
 ):
-    from rag_api.pipeline.ops.parse import HTMLCleanReader
+    from rag_api.pipeline.steps.parser.html import HTMLCleanReader
 
     docs = HTMLCleanReader().load_data(html_only_boilerplate_file)
 

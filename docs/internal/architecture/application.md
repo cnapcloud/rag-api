@@ -15,7 +15,7 @@
 │  라우터: health, kb, docs, search, connectors │
 │  예외 핸들러, 미들웨어, 앱 팩토리               │
 ├──────────────────────────────────────────────┤
-│  Pipeline (Dagster Ops) src/pipeline/ops/    │
+│  Pipeline (Dagster Ops) src/pipeline/steps/    │
 │  validate → parse → dedup → chunk → embed    │
 │  → upsert → meta / delete                    │
 │  순수 함수. Dagster 래퍼는 src/defs/에 분리     │
@@ -48,15 +48,15 @@ CLI
  └─ pipeline/runner.py (로컬 직접 실행)
 
 API routers
- └─ pipeline/ops/ (ingest, delete 트리거)
+ └─ pipeline/steps/ (ingest, delete 트리거)
  └─ rag/ (search)
  └─ infra/ (kb/doc CRUD)
 
 Dagster defs/
- └─ pipeline/ops/ (op 래퍼)
+ └─ pipeline/steps/ (op 래퍼)
  └─ infra/ (redis 큐 소비)
 
-pipeline/ops/
+pipeline/steps/
  └─ infra/ (S3, Qdrant, Postgres)
  └─ (외부: LlamaIndex, Jina)
 
@@ -94,7 +94,7 @@ RAGError (base)
 | 레이어 | 규칙 |
 |--------|------|
 | `infra/` | 라이브러리 예외를 그대로 전파. `ping()`만 예외적으로 swallow |
-| `pipeline/ops/` | 사용자 오류 → `IngestValidationError`, 설정 오류 → `ConfigError` |
+| `pipeline/steps/` | 사용자 오류 → `IngestValidationError`, 설정 오류 → `ConfigError` |
 | `api/routers/` | 비즈니스 404/409 → `NotFoundError` / `ConflictError`. 광범위한 `except Exception` 금지 |
 | `api/app.py` | HTTP 상태코드 결정의 단일 지점 |
 
@@ -122,7 +122,7 @@ RAGError (base)
 | 방식 | Dagster UI 노출 | 사용 위치 |
 |------|----------------|-----------|
 | `context.log.info()` | 항상 | Dagster op 래퍼 (`defs/ops/`) |
-| `logging.getLogger(__name__)` | 기본 X | 순수 함수 (`pipeline/ops/`) |
+| `logging.getLogger(__name__)` | 기본 X | 순수 함수 (`pipeline/steps/`) |
 | `logging.getLogger(__name__)` + `managed_python_loggers` 설정 | O | `docker/dagster.yaml`에서 활성화 |
 
 ### 로그 레벨 기준
@@ -168,7 +168,8 @@ chunk_size = cfg.chunking.chunk_size
 | `dagster` | Dagster gRPC 주소 |
 | `ingestion` | 파일 크기 제한, 지원 확장자 |
 | `chunking` | 전략(recursive/semantic), chunk_size, chunk_overlap |
-| `embedding` | 모델 provider(ollama/openai), 모델명 |
+| `provider` | 임베딩 provider(ollama/openai), ollama_url, openai_api_key |
+| `embedding` | 모델명, vector_size |
 | `retrieval` | top_k, alpha(dense/sparse 가중치) |
 | `queue_worker` | enabled, poll_interval_sec, max_per_poll |
 | `security` | fernet_key |

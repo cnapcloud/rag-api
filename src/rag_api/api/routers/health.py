@@ -85,7 +85,7 @@ async def readiness():
     from rag_api.infra.redis import ping as redis_ping
 
     cfg = get_settings()
-    emb = cfg.embedding
+    provider = cfg.provider
 
     checks: dict[str, bool] = {
         "qdrant": await _ping_ok("qdrant", qdrant_ping),
@@ -94,10 +94,10 @@ async def readiness():
         "s3": await _s3_ok(),
     }
 
-    if emb.provider == "ollama":
-        checks["ollama"] = await _ollama_ok(emb.ollama_url)
-    elif emb.provider == "openai":
-        checks["openai"] = await _openai_ok(emb.openai_api_key)
+    if provider.name == "ollama":
+        checks["ollama"] = await _ollama_ok(provider.ollama_url)
+    elif provider.name == "openai":
+        checks["openai"] = await _openai_ok(provider.openai_api_key)
 
     for name in _PING_CHECKS:
         if not checks[name]:

@@ -1,4 +1,4 @@
-"""pipeline/ops/meta.py — Ingest pipeline's final stage: build indexed metadata from upsert result.
+"""pipeline/steps/meta.py — Ingest pipeline's final stage: build indexed metadata from upsert result.
 
 set_indexed is the only status transition specific to this stage (called once, after upsert
 succeeds). Other transitions (pending/processing/failed/deleting) are cross-cutting — used at

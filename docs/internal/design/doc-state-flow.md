@@ -238,6 +238,6 @@ HTTP 409 Conflict
 | force-fail / recover API | `src/api/routers/docs.py` |
 | 큐 push / dequeue | `src/pipeline/queue/enqueue.py` |
 | 큐 워커 (dequeue + delay) | `src/pipeline/queue/queue_worker.py` |
-| dedup 판정 후 상태 전이 | `src/pipeline/ops/dedup/verdict.py` |
-| 삭제 파이프라인 | `src/pipeline/ops/delete.py` |
+| dedup 판정 후 상태 전이 | `src/pipeline/steps/dedup/verdict.py` |
+| 삭제 파이프라인 | `src/pipeline/steps/delete.py` |
 | S3 업로드 경로 상태 전이 | `src/api/routers/docs.py` |

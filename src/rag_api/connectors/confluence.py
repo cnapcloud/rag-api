@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 
 from rag_api.exceptions import ConfigError
-from rag_api.pipeline.ops.parse import SUPPORTED_EXTENSIONS
+from rag_api.pipeline.steps.parse import supported_extensions
 from rag_api.pipeline.utils.source_uri import normalize_source_uri
 
 logger = logging.getLogger(__name__)
@@ -291,7 +291,7 @@ class ConfluenceConnector:
         title: str = attachment["title"]
         ext = Path(title).suffix.lower()
 
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in supported_extensions():
             logger.debug(
                 "Attachment skipped (unsupported format): title=%s ext=%s", title, ext
             )

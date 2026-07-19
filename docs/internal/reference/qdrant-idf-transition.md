@@ -11,7 +11,7 @@ index.
 
 ## Implementation
 
-### 1. `src/pipeline/ops/sparse.py` (new)
+### 1. `src/pipeline/steps/sparse.py` (new)
 
 Pure Python TF sparse encoder. Uses `zlib.crc32` for deterministic token-to-index
 mapping with no external dependencies.

@@ -13,3 +13,6 @@ Claude Code가 세션 간에 학습한 내용을 저장하는 공간. 코드/des
 - [dedup title_changed 청크 소유권 함정](dedup_title_changed_chunk_ownership_pitfall.md) — Qdrant payload doc_id 재태깅 누락 시 indexed 문서가 청크 0개로 남음 (2026-07-14)
 - [웹 커넥터 URL 인코딩 중복생성 함정](web_connector_url_encoding_dedup_pitfall.md) — path percent-encoding/NFC-NFD 미통일로 같은 페이지가 문서 2건으로 중복 생성 (2026-07-14)
 - [큐 이벤트가 soft-delete된 문서를 되살리는 함정](queue_resurrection_on_soft_delete_pitfall.md) — connector/KB 삭제 전 큐 정리 누락으로 삭제된 문서가 부활해 영구 404 재시도 (2026-07-14)
+- [파서 레지스트리(US-41) 도입 배경](parser_registry_design_rationale.md) — rag-api 공개 확정으로 비공개 파서(캡셔닝/OCR)를 rag-ent-api에서 주입해야 함; E-21로 완료, 관련 문서는 rag-ent-api에 있음 (2026-07-16)
+- [docutils RST 스타일시트 함정](docutils_rst_stylesheet_pitfall.md) — publish_string()은 CSS를 <style>로 임베드, 태그 제거만으론 안 지워짐 → publish_parts()['body'] 사용 (2026-07-16)
+- [config/settings.py ↔ pipeline/steps 순환 임포트 함정](config_settings_pipeline_circular_import_pitfall.md) — settings.py가 step 모듈 타입 재사용 시 step 쪽의 resolve_settings import를 함수 내부로 지연시켜야 함 (2026-07-19)

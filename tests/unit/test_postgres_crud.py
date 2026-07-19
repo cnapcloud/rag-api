@@ -293,3 +293,63 @@ def test_list_docs_paginated_include_deleted():
         pg.list_docs_paginated(_KB_ID, page=1, page_size=10, include_deleted=True)
     count_sql = conn.execute.call_args_list[0][0][0]
     assert "status != 'deleted'" not in count_sql
+
+
+# ──────────────────────────────────────────────
+# kb_settings_overrides — docs/internal/design/kb-settings-override.md
+# ──────────────────────────────────────────────
+
+def test_get_kb_settings_overrides_assembles_flat_dict():
+    rows = [("ingestion.max_file_size_mb", 50), ("chunking.chunk_size", 512)]
+    with _fake_pool(fetchall_rows=rows):
+        result = pg.get_kb_settings_overrides(_KB_ID)
+    assert result == {"ingestion.max_file_size_mb": 50, "chunking.chunk_size": 512}
+
+
+def test_get_kb_settings_overrides_empty_when_no_rows():
+    with _fake_pool(fetchall_rows=[]):
+        result = pg.get_kb_settings_overrides(_KB_ID)
+    assert result == {}
+
+
+def test_upsert_kb_settings_override_uses_on_conflict_upsert():
+    with _fake_pool() as (conn, _):
+        pg.upsert_kb_settings_override(_KB_ID, "chunking.chunk_size", 512)
+    sql = conn.execute.call_args_list[0][0][0]
+    assert "ON CONFLICT (kb_id, key) DO UPDATE" in sql
+    conn.commit.assert_called_once()
+
+
+def test_delete_kb_settings_override_deletes_single_key():
+    with _fake_pool() as (conn, _):
+        pg.delete_kb_settings_override(_KB_ID, "chunking.chunk_size")
+    sql, params = conn.execute.call_args_list[0][0]
+    assert "DELETE FROM kb_settings_overrides" in sql
+    assert params == [_KB_ID, "chunking.chunk_size"]
+    conn.commit.assert_called_once()
+
+
+def test_replace_kb_settings_overrides_deletes_then_bulk_inserts():
+    with _fake_pool() as (conn, _):
+        pg.replace_kb_settings_overrides(_KB_ID, {"chunking.chunk_size": 512, "dedup.enabled": False})
+    delete_sql = conn.execute.call_args_list[0][0][0]
+    assert "DELETE FROM kb_settings_overrides" in delete_sql
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.executemany.assert_called_once()
+    conn.commit.assert_called_once()
+
+
+def test_replace_kb_settings_overrides_empty_skips_bulk_insert():
+    with _fake_pool() as (conn, _):
+        pg.replace_kb_settings_overrides(_KB_ID, {})
+    conn.cursor.assert_not_called()
+    conn.commit.assert_called_once()
+
+
+def test_clear_kb_settings_overrides_deletes_all_rows_for_kb():
+    with _fake_pool() as (conn, _):
+        pg.clear_kb_settings_overrides(_KB_ID)
+    sql, params = conn.execute.call_args_list[0][0]
+    assert "DELETE FROM kb_settings_overrides" in sql
+    assert params == [_KB_ID]
+    conn.commit.assert_called_once()

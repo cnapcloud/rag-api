@@ -114,7 +114,7 @@ DB 초기화 후 재배포하면 신규 등록으로 처리되어 자동으로 R
 
 ## 5. 로깅 동작 원리
 
-`pipeline/ops/` 순수 함수들은 `logging.getLogger(__name__)`을 사용한다.
+`pipeline/steps/` 순수 함수들은 `logging.getLogger(__name__)`을 사용한다.
 Dagster는 기본적으로 이 로거를 감시하지 않으므로 Dagster UI에 로그가 나타나지 않는다.
 
 `dagster.yaml`의 `managed_python_loggers`에 등록하면 Dagster UI에서도 볼 수 있다.
@@ -122,7 +122,7 @@ Dagster는 기본적으로 이 로거를 감시하지 않으므로 Dagster UI에
 | 방식 | Dagster UI 노출 | 사용 위치 |
 |------|----------------|-----------|
 | `context.log.info()` | 항상 | Dagster op 래퍼 (`defs/ops/`) |
-| `logging.getLogger(__name__)` 기본 | X | 순수 함수 (`pipeline/ops/`) |
+| `logging.getLogger(__name__)` 기본 | X | 순수 함수 (`pipeline/steps/`) |
 | `logging.getLogger(__name__)` + `managed_python_loggers` | O | 순수 함수, 설정 후 |
 
 ---

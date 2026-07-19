@@ -257,7 +257,7 @@ Request body mapped from UI:
 }
 ```
 
-Result card shows: rank, score / rerank_score, kb_id, doc_source (human-readable path), page_num (if present), text excerpt.
+Result card shows: rank, score / rerank_score, kb_id, doc_source (human-readable path), page_num / page_label (if present), text excerpt.
 `doc_key` (`{kb_id}___{doc_source}`) is available in the response but should not be displayed raw — use `doc_source` for display.
 
 Meta bar shows: `total_candidates`, `returned`, `latency_ms`, `reranked`, `search_mode`, `rerank_fallback`.

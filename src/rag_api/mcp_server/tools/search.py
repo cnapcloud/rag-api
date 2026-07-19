@@ -63,8 +63,9 @@ async def search(
                 "score": round(r.score, 6),
                 "rerank_score": round(r.rerank_score, 6) if r.rerank_score is not None else None,
                 "kb_id": r.kb_id,
-                "doc_key": r.doc_key,
+                "source": r.source,
                 "page_num": r.page_num,
+                "page_label": r.page_label,
                 "chunk_idx": r.chunk_index,
             }
             for r in final_results

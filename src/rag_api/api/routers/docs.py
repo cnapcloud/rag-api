@@ -14,17 +14,16 @@ from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from rag_api.exceptions import ConflictError, IngestValidationError, NotFoundError
+from rag_api.pipeline.steps.parse import supported_extensions
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".pdf", ".md", ".docx", ".txt", ".hwp", ".html", ".htm", ".rst"}
-
 
 def _check_ext(filename: str) -> str:
     ext = Path(filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    if ext not in supported_extensions():
         raise IngestValidationError(f"Unsupported file format: {ext}")
     return ext
 
@@ -194,6 +193,10 @@ async def upload_docs_batch(
                 "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
             })
         except (IngestValidationError, ClientError) as e:
+            logger.warning(
+                "Batch upload item rejected: kb=%s file=%s err=%s",
+                kb_id, file.filename, e,
+            )
             results.append({"title": file.filename or "unknown", "error": str(e), "status": "error"})
 
     return {"results": results}

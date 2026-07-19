@@ -1,10 +1,10 @@
-"""Unit tests for pipeline/ops/dedup/simhash.py."""
+"""Unit tests for pipeline/steps/dedup/simhash.py."""
 
 from __future__ import annotations
 
 from unittest.mock import patch
 
-from rag_api.pipeline.ops.dedup.simhash import (
+from rag_api.pipeline.steps.dedup.simhash import (
     compute_simhash,
     compute_title_hash,
     get_bands,

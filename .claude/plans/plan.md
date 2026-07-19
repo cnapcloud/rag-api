@@ -36,3 +36,8 @@
 | 37 | WebConnector — unrestricted 도메인 스코프 옵션 (백엔드) | US-37 | 통합(backlog 참고) — done |
 | 38 | WebConnector Admin UI — seed page 포함 / unrestricted 체크박스 노출 | US-38 | 통합(backlog 참고) — done |
 | 39 | HTML 추출 정책(strict/lenient/balanced) 설정화 + 기본값 lenient 전환 | US-39 | 통합(backlog 참고) — done |
+| 41 | 파서 확장 레지스트리 (parse_op 확장자->리더 매핑을 등록 기반으로 전환) | US-41 | 통합(backlog 참고) — done |
+| 42 | 파서 패키지 구조화 + 신규 포맷 8종 지원 (CSV/TSV/JSON/EPUB/XLSX/XLS/RST/EML) | US-42 | 통합(backlog 참고) — done |
+| 43 | 레거시 .doc/.ppt + .pptx 지원 추가 | US-43 | 통합(backlog 참고) — done |
+| 44 | KB별 설정 오버라이드 (ingestion/chunking/dedup) | US-44 | 통합(backlog 참고) — done |
+| 45 | KB 설정 오버라이드 필드 스키마 — 값 검증/description/override 메타데이터 + `/settings/schema` | US-45 | 통합(backlog 참고) — done |

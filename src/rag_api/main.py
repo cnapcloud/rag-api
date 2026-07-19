@@ -192,7 +192,7 @@ def search(
 
     typer.echo(f"\nSearch results ({len(results)} of {total}):\n")
     for i, r in enumerate(results, 1):
-        typer.echo(f"[{i}] score={r.score:.4f} | {r.doc_key} | chunk={r.chunk_index}")
+        typer.echo(f"[{i}] score={r.score:.4f} | {r.source} | chunk={r.chunk_index}")
         typer.echo(f"    {r.text[:200]}")
         typer.echo()
 

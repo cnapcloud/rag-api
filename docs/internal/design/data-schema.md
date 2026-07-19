@@ -18,9 +18,13 @@ PointStruct
     ├── source_type        : str      — s3 | web | confluence | github
     ├── source             : str      — canonical dedup key (mirrors documents.source)
     ├── doc_type           : str      — file extension (pdf, docx, txt, md, html, rst, …)
+    ├── content_type       : str      — text (default) | ocr_text | image_caption | table — how
+    │                                   this chunk's text was produced (rag-ent-api image_ocr /
+    │                                   table_layout plugins)
     ├── chunk_index        : int      — chunk sequence number within document (0-based)
     ├── total_chunks       : int      — total chunk count for this document
-    ├── page_num           : str|null — original page number (PDF page_label; null if absent)
+    ├── page_num           : int|null — physical page number within the document (1-based; null if not paginated)
+    ├── page_label         : str|null — PDF page label (/PageLabels, e.g. "i", "A-1"; null if the PDF defines none)
     ├── text               : str      — chunk body text
     ├── embedding_model    : str      — embedding model name
     ├── embedding_provider : str      — ollama / openai
@@ -57,6 +61,27 @@ knowledge_bases
 
 Indexes:
 - `idx_kb_tags` on `tags` using GIN
+
+### `kb_settings_overrides` table
+
+KB별로 `settings.yaml`의 `ingestion`/`chunking`/`dedup` 값을 오버라이드. 자세한 설계는
+[kb-settings-override.md](kb-settings-override.md) 참고 — 행 하나 = 오버라이드 키 하나(JSONB
+블롭이 아닌 이유는 §10 참고, PATCH의 lost update 회피).
+
+```
+kb_settings_overrides
+├── kb_id       TEXT        NOT NULL FK knowledge_bases (ON DELETE CASCADE)
+├── key         TEXT        NOT NULL   -- dot-notation, Settings 필드 경로 (예: "ingestion.max_file_size_mb")
+├── value       JSONB       NOT NULL   -- 스칼라/객체 어떤 JSON 값이든
+├── updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+└── PRIMARY KEY (kb_id, key)
+```
+
+`key`는 애플리케이션 레벨에서 두 단계로 검증됨(DB 제약 아님, [kb-settings-override.md §9.1](kb-settings-override.md#91-검증--allow-list가-먼저다)):
+1. `ingestion.`/`chunking.`/`dedup.` 접두사만 허용(allow-list) — `provider`/`redis`/`postgres`
+   등 인프라 자격증명 섹션은 애초에 저장 불가.
+2. 접두사를 통과해도 특정 leaf 키(`ingestion.parser_plugins`, `dedup.simhash.ngram`/`num_bands`/
+   `simhash_bits`, `dedup.minhash.user_words_path`)는 deny-list로 거부.
 
 ### `connectors` table
 
@@ -202,9 +227,10 @@ instead of being processed immediately. Delay/dedup mechanics are covered in
 
 | Item | File |
 |------|------|
-| Qdrant payload assembly | `src/pipeline/ops/upsert.py` |
-| doc_created_at extraction | `src/pipeline/ops/parse.py` — `_extract_doc_created_at()` |
+| Qdrant payload assembly | `src/pipeline/steps/upsert.py` |
+| doc_created_at extraction | `src/pipeline/steps/parse.py` — `_extract_doc_created_at()` |
 | Postgres KB/doc CRUD | `src/infra/postgres.py` |
-| Document state transitions | `src/pipeline/ops/meta.py` |
-| Schema DDL | `migrations/001_initial_schema.sql` |
+| Document state transitions | `src/pipeline/steps/meta.py` |
+| Schema DDL | `migrations/001_initial_schema.sql`, `migrations/002_kb_settings_overrides.sql` (design 완료, 구현 예정) |
 | Redis queue client | `src/infra/redis.py` |
+| KB 설정 오버라이드 리졸버 | `src/config/settings.py` — `resolve_settings(kb_id)` (design 완료, 구현 예정) |

@@ -45,6 +45,7 @@ ingestion:
   max_file_size_mb: 10
   min_content_chars: 200
   html_extraction_policy: "lenient"
+  parser_plugins: []
 
 dedup:
   enabled: true
@@ -74,13 +75,14 @@ chunking:
   chunk_overlap: 128
   semantic_threshold: 0.8
 
-embedding:
-  provider: "ollama"            # ollama / openai
-  model: "bge-m3"
-  vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
+provider:
+  name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
   ollama_url: "http://ollama.llm.svc.cluster.local:11434"
   openai_api_key: ""
-  openai_model: "text-embedding-3-small"
+
+embedding:
+  model: "bge-m3"                # provider에 맞는 모델명 (ollama: bge-m3 / openai: text-embedding-3-small)
+  vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
 
 retrieval:
   mode: "hybrid"

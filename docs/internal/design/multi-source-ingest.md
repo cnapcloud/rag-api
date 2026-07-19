@@ -476,9 +476,9 @@ Cascade delete order ensures Qdrant and object storage are cleaned before Postgr
 | `api/routers/connectors.py` | new — connector CRUD + sync trigger endpoint |
 | `infra/postgres.py` | doc_id-based CRUD, connectors CRUD |
 | `pipeline/enqueue.py` | queue event structure changed to `{doc_id, force}` |
-| `pipeline/ops/validate.py` | lookup documents by doc_id, retrieve storage_key |
-| `pipeline/ops/upsert.py` | Qdrant delete filter: `doc_key` -> `doc_id` |
-| `pipeline/ops/meta.py` | status updates by doc_id |
+| `pipeline/steps/validate.py` | lookup documents by doc_id, retrieve storage_key |
+| `pipeline/steps/upsert.py` | Qdrant delete filter: `doc_key` -> `doc_id` |
+| `pipeline/steps/meta.py` | status updates by doc_id |
 | Webhook handler | removed entirely (`/internal/s3-event` endpoint deleted — object storage webhook no longer used) |
 | Qdrant payload | add `doc_id` field, remove `doc_key` |
 | `connectors/` (new) | WebConnector, ConfluenceConnector, GitHubConnector |

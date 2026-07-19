@@ -48,13 +48,14 @@ class SearchRequest(BaseModel):
 class SearchResultItem(BaseModel):
     chunk_id: str
     kb_id: str
-    doc_key: str
+    doc_id: str
     title: str
     source_type: str
     source: str
     doc_type: str
     chunk_index: int
     page_num: Any | None
+    page_label: str | None
     text: str
     score: float
     rerank_score: float | None
@@ -126,13 +127,14 @@ async def search(req: SearchRequest):
             SearchResultItem(
                 chunk_id=r.chunk_id,
                 kb_id=r.kb_id,
-                doc_key=r.doc_key,
+                doc_id=r.doc_id,
                 title=r.title,
                 source_type=r.source_type,
                 source=r.source,
                 doc_type=r.doc_type,
                 chunk_index=r.chunk_index,
                 page_num=r.page_num,
+                page_label=r.page_label,
                 text=r.text,
                 score=r.score,
                 rerank_score=r.rerank_score,

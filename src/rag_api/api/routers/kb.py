@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -25,6 +26,11 @@ class KBUpdateRequest(BaseModel):
     kb_name: str | None = None
     description: str | None = None
     tags: list[str] | None = None
+
+
+class KBSettingsOverrideRequest(BaseModel):
+    # dot-key -> value, e.g. {"ingestion.max_file_size_mb": 50, "chunking.chunk_size": 512}
+    overrides: dict[str, Any]
 
 
 @router.get("/kb")
@@ -121,3 +127,116 @@ async def delete_kb(kb_id: str):
         reload_code_location()
 
     return {"kb_id": kb_id, "status": "deleted", "s3_objects_deleted": deleted_count}
+
+
+def _validate_overrides(overrides: dict[str, Any]) -> None:
+    """Allow-list + override-metadata + field-path check for every key, then value-range check —
+    see docs/internal/design/kb-settings-override.md §9.1 and
+    kb-settings-override-schema.md §4. Must run before any write."""
+    from rag_api.config.settings import (
+        get_settings,
+        validate_override_key,
+        validate_override_values,
+    )
+
+    settings = get_settings()
+    settings_cls = type(settings)
+    for key in overrides:
+        validate_override_key(settings_cls, key)
+    # PATCH treats a null value as "clear this override" (see KBSettingsOverrideRequest), not an
+    # actual field value — skip those, no typed field in Settings ever accepts None.
+    non_null_overrides = {k: v for k, v in overrides.items() if v is not None}
+    validate_override_values(settings, non_null_overrides)
+
+
+@router.get("/kb/{kb_id}/settings")
+async def get_kb_effective_settings(kb_id: str):
+    """Effective settings (global + KB override merged) — ingestion/chunking/dedup only.
+
+    Never returns the full Settings object: it also holds provider/redis/postgres/qdrant
+    credentials that must not leak through a KB-scoped read endpoint.
+    """
+    from rag_api.config.settings import resolve_settings
+    from rag_api.infra.postgres import get_kb_meta
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    cfg = resolve_settings(kb_id)
+    return {
+        "ingestion": cfg.ingestion.model_dump(),
+        "chunking": cfg.chunking.model_dump(),
+        "dedup": cfg.dedup.model_dump(),
+    }
+
+
+@router.get("/kb/{kb_id}/settings/schema")
+async def get_kb_settings_schema(kb_id: str):
+    """dot-key별 type/enum/default/overridable/min/max/description/group — rag-admin이 폼을
+    하드코딩 없이 동적으로 그리기 위한 스키마(kb-settings-override-schema.md §5).
+    """
+    from rag_api.config.settings import describe_overridable_settings, get_settings
+    from rag_api.infra.postgres import get_kb_meta
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    return {"schema": describe_overridable_settings(get_settings())}
+
+
+@router.get("/kb/{kb_id}/settings/overrides")
+async def get_kb_settings_overrides_endpoint(kb_id: str):
+    from rag_api.infra.postgres import get_kb_meta, get_kb_settings_overrides
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    return {"overrides": get_kb_settings_overrides(kb_id)}
+
+
+@router.put("/kb/{kb_id}/settings/overrides", status_code=200)
+async def replace_kb_settings_overrides_endpoint(kb_id: str, req: KBSettingsOverrideRequest):
+    """Full replace — keys not present in the body are reset to the global value."""
+    from rag_api.infra.postgres import get_kb_meta, replace_kb_settings_overrides
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    _validate_overrides(req.overrides)
+    replace_kb_settings_overrides(kb_id, req.overrides)
+    return {"kb_id": kb_id, "overrides": req.overrides}
+
+
+@router.patch("/kb/{kb_id}/settings/overrides", status_code=200)
+async def merge_kb_settings_overrides(kb_id: str, req: KBSettingsOverrideRequest):
+    """Per-key upsert — a value of null clears that key (reset to global). Keys not present in
+    the body are left untouched. Independent row writes, no read-modify-write race."""
+    from rag_api.infra.postgres import (
+        delete_kb_settings_override,
+        get_kb_meta,
+        get_kb_settings_overrides,
+        upsert_kb_settings_override,
+    )
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    _validate_overrides(req.overrides)
+    for key, value in req.overrides.items():
+        if value is None:
+            delete_kb_settings_override(kb_id, key)
+        else:
+            upsert_kb_settings_override(kb_id, key, value)
+
+    return {"kb_id": kb_id, "overrides": get_kb_settings_overrides(kb_id)}
+
+
+@router.delete("/kb/{kb_id}/settings/overrides", status_code=200)
+async def clear_kb_settings_overrides_endpoint(kb_id: str):
+    from rag_api.infra.postgres import clear_kb_settings_overrides, get_kb_meta
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    clear_kb_settings_overrides(kb_id)
+    return {"kb_id": kb_id, "status": "overrides_cleared"}

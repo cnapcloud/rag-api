@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from qdrant_client.http import models as qmodels
 
 from rag_api.infra import qdrant as qdrant_infra
-from rag_api.pipeline.ops.embed import EmbeddedNode
+from rag_api.pipeline.steps.embed import EmbeddedNode
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,10 @@ def upsert(
             "source_type": source_type,
             "source": source,
             "doc_type": meta.get("doc_type", ""),
+            "content_type": meta.get("content_type", "text"),
             "chunk_index": meta.get("chunk_index", 0),
-            "page_num": meta.get("page_label", None),
+            "page_num": meta.get("page_num", None),
+            "page_label": meta.get("page_label", None),
             "total_chunks": meta.get("total_chunks", len(embedded_nodes)),
             "text": node.get_content(),
             "embedding_model": meta.get("embedding_model", ""),

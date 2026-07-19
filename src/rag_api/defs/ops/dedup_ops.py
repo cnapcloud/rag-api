@@ -10,7 +10,7 @@ def parse_op(context: OpExecutionContext, config: IngestConfig):
     """Fetch doc metadata from Postgres and parse document from MinIO."""
     from rag_api.exceptions import IngestValidationError
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.ops.parse import parse
+    from rag_api.pipeline.steps.parse import parse
 
     doc = get_doc_by_id(config.doc_id)
     if doc is None:
@@ -18,7 +18,7 @@ def parse_op(context: OpExecutionContext, config: IngestConfig):
 
     storage_key = doc.get("storage_key", "")
     kb_id = doc.get("kb_id", "")
-    documents = parse(doc_id=config.doc_id, storage_key=storage_key)
+    documents = parse(doc_id=config.doc_id, kb_id=kb_id or None, storage_key=storage_key)
     context.log.info("Parse done: %d documents doc_id=%s", len(documents), config.doc_id)
 
     yield Output({"doc_id": config.doc_id, "kb_id": kb_id, "storage_key": storage_key}, "valid_config")
@@ -28,13 +28,13 @@ def parse_op(context: OpExecutionContext, config: IngestConfig):
 @op
 def simhash_op(context: OpExecutionContext, valid_config: dict, documents):
     """Simhash step detection: compute SHA-256 title + SimHash body from pre-parsed documents."""
-    from rag_api.config.settings import get_settings
-    from rag_api.pipeline.ops.dedup import is_document, run_simhash_detection
-    from rag_api.pipeline.ops.dedup.types import DedupResult
+    from rag_api.config.settings import resolve_settings
+    from rag_api.pipeline.steps.dedup import is_document, run_simhash_detection
+    from rag_api.pipeline.steps.dedup.types import DedupResult
 
     doc_id = valid_config["doc_id"]
     kb_id = valid_config["kb_id"]
-    cfg = get_settings()
+    cfg = resolve_settings(kb_id or None)
     if not cfg.dedup.enabled:
         context.log.info("Dedup disabled: doc_id=%s", doc_id)
         return DedupResult(needs_indexing=True)
@@ -69,10 +69,10 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
     Runs only when the simhash step returned 'proceed'. Otherwise passes the simhash
     step result through.
     """
-    from rag_api.config.settings import get_settings
-    from rag_api.pipeline.ops.dedup import is_document
-    from rag_api.pipeline.ops.dedup.minhash import run_minhash_detection
-    from rag_api.pipeline.ops.dedup.types import DedupResult
+    from rag_api.config.settings import resolve_settings
+    from rag_api.pipeline.steps.dedup import is_document
+    from rag_api.pipeline.steps.dedup.minhash import run_minhash_detection
+    from rag_api.pipeline.steps.dedup.types import DedupResult
 
     doc_id = valid_config["doc_id"]
     kb_id = valid_config["kb_id"]
@@ -83,7 +83,7 @@ def minhash_op(context: OpExecutionContext, valid_config: dict, documents, simha
         )
         return simhash_result
 
-    cfg = get_settings()
+    cfg = resolve_settings(kb_id or None)
     if not cfg.dedup.enabled:
         context.log.info("Dedup disabled: doc_id=%s", doc_id)
         return DedupResult(needs_indexing=True)
@@ -110,8 +110,8 @@ def chunk_compare_op(context: OpExecutionContext, valid_config: dict, documents,
 
     Runs only when minhash_result.body_match == 'similar'. Otherwise passes the result through.
     """
-    from rag_api.config.settings import get_settings
-    from rag_api.pipeline.ops.dedup.chunk_compare import run_chunk_compare
+    from rag_api.config.settings import resolve_settings
+    from rag_api.pipeline.steps.dedup.chunk_compare import run_chunk_compare
 
     doc_id = valid_config["doc_id"]
     kb_id = valid_config["kb_id"]
@@ -122,7 +122,7 @@ def chunk_compare_op(context: OpExecutionContext, valid_config: dict, documents,
         )
         return minhash_result
 
-    cfg = get_settings()
+    cfg = resolve_settings(kb_id or None)
     result = run_chunk_compare(
         doc_id=doc_id, kb_id=kb_id, documents=documents, result=minhash_result, cfg=cfg.dedup.chunk_compare
     )
@@ -136,7 +136,7 @@ def chunk_compare_op(context: OpExecutionContext, valid_config: dict, documents,
 @op
 def verdict_op(context: OpExecutionContext, valid_config: dict, chunk_compare_result):
     """Apply verdict-specific post-processing for the final result from the detection stages."""
-    from rag_api.pipeline.ops.dedup.verdict import run_verdict
+    from rag_api.pipeline.steps.dedup.verdict import run_verdict
 
     doc_id = valid_config["doc_id"]
     run_verdict(

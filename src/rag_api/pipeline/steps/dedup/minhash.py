@@ -23,8 +23,8 @@ import random
 import struct
 from typing import TYPE_CHECKING
 
-from rag_api.pipeline.ops.dedup.tokenizer import get_kiwi
-from rag_api.pipeline.ops.dedup.types import DedupResult
+from rag_api.pipeline.steps.dedup.tokenizer import get_kiwi
+from rag_api.pipeline.steps.dedup.types import DedupResult
 
 if TYPE_CHECKING:
     from rag_api.config.settings import MinHashSettings

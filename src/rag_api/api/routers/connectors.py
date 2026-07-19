@@ -305,7 +305,7 @@ def _dispatch_sync(connector: dict) -> None:
     if source_type == "web":
         from rag_api.connectors.web import WebConnector
 
-        WebConnector(config).sync(connector["kb_id"], connector["connector_id"])
+        WebConnector(config, kb_id=connector["kb_id"]).sync(connector["kb_id"], connector["connector_id"])
     elif source_type == "confluence":
         from rag_api.connectors.confluence import ConfluenceConnector
 

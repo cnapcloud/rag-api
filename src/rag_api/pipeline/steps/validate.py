@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from rag_api.config.settings import get_settings
+from rag_api.config.settings import resolve_settings
 from rag_api.exceptions import IngestValidationError
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def validate(doc_id: str, force: bool = False) -> bool:
     if doc is None:
         raise IngestValidationError(f"Document not found: doc_id={doc_id}")
 
-    cfg = get_settings()
+    cfg = resolve_settings(doc.get("kb_id"))
     max_bytes = cfg.ingestion.max_file_size_mb * 1024 * 1024
     file_size = doc.get("file_size") or 0
     if file_size > 0 and file_size > max_bytes:

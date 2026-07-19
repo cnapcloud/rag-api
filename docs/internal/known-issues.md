@@ -29,6 +29,11 @@
   - [19. unrestricted 웹 크롤링이 사이트 유틸리티 페이지(랜덤/최근변경 등)까지 크롤링해 매 sync마다 재인덱싱](#19-unrestricted-웹-크롤링이-사이트-유틸리티-페이지랜덤최근변경-등까지-크롤링해-매-sync마다-재인덱싱)
   - [20. 카테고리/목록형 페이지가 trafilatura 추출 후 사이트 공통 푸터만 남아 서로 다른 문서인데도 dedup에서 중복 판정](#20-카테고리목록형-페이지가-trafilatura-추출-후-사이트-공통-푸터만-남아-서로-다른-문서인데도-dedup에서-중복-판정)
   - [21. Qdrant가 GET에도 408 Request Timeout을 반환해 ensure\_collection이 409로 실패](#21-qdrant가-get에도-408-request-timeout을-반환해-ensure_collection이-409로-실패)
+  - [22. .ppt 레거시 파서(catppt)가 실제 파일에서 항상 빈 텍스트를 반환](#22-ppt-레거시-파서catppt가-실제-파일에서-항상-빈-텍스트를-반환)
+  - [23. 삭제-인제스트 경합으로 남은 고아 Qdrant 청크가 검색 결과에 노출됨](#23-삭제-인제스트-경합으로-남은-고아-qdrant-청크가-검색-결과에-노출됨)
+  - [24. 나무위키 /activity/ 페이지가 봇 User-Agent에만 404를 반환해 unrestricted 크롤링 문서가 failed로 남음](#24-나무위키-activity-페이지가-봇-user-agent에만-404를-반환해-unrestricted-크롤링-문서가-failed로-남음)
+  - [25. page_label이 PDF에 실제로 인쇄된 페이지 번호와 다를 수 있음 — /PageLabels 룰이 없는 문서는 항상 null](#25-page_label이-pdf에-실제로-인쇄된-페이지-번호와-다를-수-있음--pagelabels-룰이-없는-문서는-항상-null)
+  - [26. upsert 단계의 delete-then-insert 구조로 reindex 중 insert 실패 시 기존 Qdrant 청크가 유실됨](#26-upsert-단계의-delete-then-insert-구조로-reindex-중-insert-실패-시-기존-qdrant-청크가-유실됨)
 
 ---
 
@@ -232,7 +237,7 @@ SimHash/MinHash 탐지-저장 구간을 Redis 분산 락(예: `SET NX PX` 또는
 
 ```
 dagster._core.errors.DagsterExecutionInterruptedError
-  File "pipeline/ops/dedup/minhash.py", line 161, in run_minhash_detection
+  File "pipeline/steps/dedup/minhash.py", line 161, in run_minhash_detection
       logger.info("no candidates doc_id=%s", doc_id)
   ...
   File "dagster/_utils/interrupts.py", line 81, in _new_signal_handler
@@ -284,7 +289,7 @@ dagster._core.errors.DagsterExecutionInterruptedError
 
 **원인**
 
-1. `rag-api`는 코드 청킹에 [`chunk.py`](../../src/rag_api/pipeline/ops/chunk.py)의
+1. `rag-api`는 코드 청킹에 [`chunk.py`](../../src/rag_api/pipeline/steps/chunk.py)의
    `_build_code_parser()`를 통해 `llama_index.core.node_parser.CodeSplitter`를 사용한다.
 2. `CodeSplitter`는 내부적으로 `tree-sitter-languages` 패키지에 의존한다
    ([pyproject.toml:37-38](../../pyproject.toml#L37-L38)).
@@ -588,20 +593,20 @@ executor)에서 50×3개 ping이 경합하기 때문으로 추정되며, 이는 
 
 **원인**
 
-`run_dedup_pipeline`([dedup/**init**.py:79-82](../../src/rag_api/pipeline/ops/dedup/__init__.py#L79-L82))은
+`run_dedup_pipeline`([dedup/**init**.py:79-82](../../src/rag_api/pipeline/steps/dedup/__init__.py#L79-L82))은
 stage 1 결과 `body_match == "none"`일 때만 stage 2(MinHash)를 실행한다. `"similar"`
 (Hamming distance가 identical_threshold~similar_threshold 사이)와 `"identical_level"`
 둘 다 stage 2 확인 없이 즉시 `run_verdict`로 넘어가며, `"similar"`는
-`handle_similar()`([verdict.py:109-143](../../src/rag_api/pipeline/ops/dedup/verdict.py#L109-L143))를
+`handle_similar()`([verdict.py:109-143](../../src/rag_api/pipeline/steps/dedup/verdict.py#L109-L143))를
 통해 파괴적 액션(청크 삭제/색인 스킵)을 수행한다.
 
-SimHash([simhash.py:26-48](../../src/rag_api/pipeline/ops/dedup/simhash.py#L26-L48), 문자
+SimHash([simhash.py:26-48](../../src/rag_api/pipeline/steps/dedup/simhash.py#L26-L48), 문자
 3-gram, 64bit)는 텍스트 길이·어휘 중복에 민감한 성긴(coarse) 신호라, 같은
 카테고리/주제의 문서끼리는 실제 중복이 아니어도 "similar" 밴드에 쉽게 들어갈 수 있다.
 
 **모의 테스트로 확인한 사실**
 
-처음에는 `HTMLCleanReader`(`pipeline/ops/parse.py`)가 사이트 공통 boilerplate(`#pre-footer`
+처음에는 `HTMLCleanReader`(`pipeline/steps/parser/html.py`)가 사이트 공통 boilerplate(`#pre-footer`
 Feedback 블록 등, nav/header/footer/aside 태그로 감싸지지 않아 stripping 대상에서 빠짐)를
 제거하지 못해 생기는 파싱 문제로 의심했으나, 실제 프로젝트 코드(`compute_simhash`,
 `hamming_distance`, `compute_minhash`, `compute_jaccard`)로 두 문서의 `<main>` 본문에 대해
@@ -630,10 +635,10 @@ boilerplate를 제거해도 Hamming distance는 오히려 늘었고(8→10) 여�
 
 당초 제안(stage 2 MinHash로 재확인)은 US-35(chunk_compare, dedup 3단계) 구현으로 대체되어
 해소되었다. `body_match == "similar"`(simhash 또는 minhash 단계 산출)는 이제 즉시 verdict로
-커밋되지 않고, `run_chunk_compare()`([chunk_compare.py](../../src/rag_api/pipeline/ops/dedup/chunk_compare.py))가
+커밋되지 않고, `run_chunk_compare()`([chunk_compare.py](../../src/rag_api/pipeline/steps/dedup/chunk_compare.py))가
 청크 단위 임베딩 코사인 유사도로 문서 레벨 집계 점수를 산출해 `body_identical_threshold`(0.95)/
 `body_similar_threshold`(0.75) 임계값으로 body(identical_level/similar/none)를 재확정한 뒤에야
-`run_verdict()`로 넘어간다(`pipeline/ops/dedup/__init__.py`의 `run_dedup_pipeline()` 라우팅 참고).
+`run_verdict()`로 넘어간다(`pipeline/steps/dedup/__init__.py`의 `run_dedup_pipeline()` 라우팅 참고).
 MinHash(stage 2)가 아닌 더 정밀한 임베딩 비교로 재확인이 이뤄지므로 원래 제안보다 강한 형태로
 해결되었다고 판단.
 
@@ -824,7 +829,7 @@ kb-02 doc_id=`b950892c61d1463c`(namu.wiki "고양이" 문서)를 "최고령 고�
 
 **원인**
 
-`HTMLCleanReader`(`pipeline/ops/parse.py`)가 쓰는 trafilatura의 `favor_precision=True`(당시
+`HTMLCleanReader`(`pipeline/steps/parser/html.py`)가 쓰는 trafilatura의 `favor_precision=True`(당시
 기본값)는 "본문인지 애매한 블록"을 공격적으로 제외하는데, namu.wiki 특유의 각주/목차/접기박스
 밀집 구조에서 실제 본문의 93% 이상을 "애매한 블록"으로 오판해 통째로 버렸다. 원문을
 `favor_recall=True`로 재추출하면 104,952자가 나오는데, 실제 인제스트분은 7,813자뿐이었다.
@@ -1033,3 +1038,269 @@ optimizers` 경고가 반복 관찰되어, 세그먼트 optimization으로 인�
   임계치만 늦추는 임시방편.
 - `ensure_collection` 호출 자체를 줄이기 — 프로세스 내에서 이미 확인된 kb_id는 캐싱해 재확인
   생략, Qdrant에 걸리는 요청 수 자체를 줄임.
+
+---
+
+## 22. .ppt 레거시 파서(catppt)가 실제 파일에서 항상 빈 텍스트를 반환
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved |
+| 발견일 | 2026-07-16 |
+| 해결일 | 2026-07-16 |
+| 심각도 | MED |
+
+**증상**
+
+US-43에서 `DocReader`(`.doc`, antiword CLI)와 `PptReader`(`.ppt`, catppt CLI)를 추가했으나, 둘 다
+`subprocess.run`을 mock한 단위 테스트로만 검증됐고 실제 antiword/catdoc 바이너리로 실제
+`.doc`/`.ppt` 파일을 파싱해본 적이 로컬 개발 환경에서도 CI에서도 없었다. 실제 프로덕션
+`Dockerfile`을 빌드하고 진짜 레거시 `.doc`/`.ppt` 샘플(macOS `textutil`로 만든 `.doc`, 1회성
+LibreOffice 컨테이너로 `python-pptx` 문서를 `MS PowerPoint 97` 필터로 변환한 `.ppt` — 총 3가지
+생성 경로)로 직접 검증한 결과:
+
+- `antiword`(`.doc`)는 정상 동작 — 텍스트를 정확히 추출.
+- `catppt`(`.ppt`)는 **세 샘플 모두에서 exit code 0(성공)인데 stdout이 항상 빈 문자열**이었다.
+  charset 옵션(`-s`/`-d`)을 바꿔도 동일. `PptReader`는 이 빈 문자열을 그대로 `Document(text="")`로
+  반환해 에러 없이 조용히 내용을 통째로 날린다.
+
+**원인**
+
+catdoc 0.95(패키지 최종 릴리스가 2000년대 초반)의 `.ppt` 파서가 LibreOffice의
+`MS PowerPoint 97` export 필터가 만드는 텍스트 레코드 구조를 인식하지 못하는 것으로 보인다 —
+실제 Microsoft PowerPoint가 만든 `.ppt`에서는 다를 수 있으나 그 환경이 없어 확인 불가. 실무에서
+마주치는 "레거시 .ppt"의 상당수가 한 번쯤 LibreOffice를 거쳤을 가능성이 높아, 드문 엣지케이스가
+아니라 흔히 재현될 문제로 판단했다.
+
+**해결**
+
+`PptReader`(`pipeline/steps/parser/ppt.py`)를 `catppt` 서브프로세스 방식에서 `olefile`(순수
+Python, 시스템 바이너리 불필요) 기반으로 교체했다. OLE 컨테이너의 `PowerPoint Document`
+스트림을 직접 열어 `TextBytesAtom`/`TextCharsAtom` 레코드(타입 `0x0fa0`/`0x0fd0`)를 스캔해
+UTF-16-LE 텍스트를 추출한다 — R2R(`core/parsers/media/ppt_parser.py`)의 동일한 접근을 참고했으나,
+그 코드는 레코드 헤더 오프셋 계산에 off-by-one이 있어(마커가 매칭되는 지점이 레코드 시작이
+아니라 8바이트 헤더 중 `recType` 필드 위치라 실제 데이터는 마커+6부터 시작하는데, `data[8:]`로
+슬라이싱해 각 레코드 텍스트의 첫 글자가 항상 잘려나갔다 — "Hello" -> "ello") 그대로 포팅하지
+않고 바로잡았다. 같은 샘플 3종으로 재검증해 정상 추출 확인.
+
+`.doc`/antiword는 실물 검증에서 문제없이 동작해 그대로 유지한다. `Dockerfile`에서는 더 이상
+쓰지 않는 `catdoc` apt 패키지를 제거했다(`antiword`만 유지) — 결과적으로 이미지 의존성이
+줄었다. `tests/unit/test_parse_formats.py::TestPptReader`도 subprocess mock 대신 실제 `.ppt`
+바이너리 픽스처(`tests/unit/fixtures/sample.ppt`, LibreOffice로 생성)를 검증하도록 재작성했다 —
+이번 결함 자체가 "mock만으로는 못 잡는다"는 것을 보여준 사례라서.
+
+**비고**
+
+관련 설계: [parser-registry.md §2.5](design/parser-registry.md).
+
+---
+
+## 23. 삭제-인제스트 경합으로 남은 고아 Qdrant 청크가 검색 결과에 노출됨
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open (증상은 완화됨, 근본 원인은 미해결) |
+| 발견일 | 2026-07-16 |
+| 심각도 | LOW |
+
+**증상**
+
+검색 결과에 `title`/`source`/`source_type`가 전부 빈 문자열인 청크가 섞여 나온다.
+Query Playground 카드 헤드에 파일명 없이 다운로드 아이콘만 표시되는 형태로 드러났다. 해당
+`doc_id`로 `/api/kb/{kb_id}/docs/{doc_id}/status`를 조회하면 404 — Qdrant에는 청크가 남아있지만
+Postgres 문서 row는 이미 없는 "고아 청크"다.
+
+**원인**
+
+단일 문서 삭제(`DELETE /api/kb/{kb_id}/docs/{doc_id}`)는 `is_active(status)`면 409로 막아서
+(`api/routers/docs.py:267`) 처리 중인 문서를 지울 수 없다 — 이 경로에서는 경합이 나지 않는다.
+
+실제 원인은 **KB/커넥터 통삭제(cascade delete)** 경로다. `api/routers/kb.py`(KB 삭제)와
+`connectors.py`(커넥터 삭제)는 개별 문서 상태를 확인하지 않고
+`abort_active_ingest()`(`pipeline/utils/abort_ingest.py`)로 진행 중인 Dagster run에 종료
+**신호**만 보낸 뒤 바로 `drop_collection()`/purge를 실행한다. `terminate_dagster_run()` 호출은
+실패해도 `logger.warning`만 남기고 진행하는 best-effort이고(`abort_ingest.py:48-52`), Dagster
+종료 자체도 즉시 반영되지 않는 비동기 신호라서, 이미 실행 중이던 `upsert_op`이 신호를 받기 전에
+Qdrant 쓰기를 끝낼 수 있다. 더 나쁜 경우는 `upsert()`(`pipeline/steps/upsert.py`)가 쓰기 전
+`ensure_collection()`을 호출한다는 점이다 — `drop_collection()` 직후에 지연된 upsert가 뒤늦게
+실행되면 **컬렉션을 재생성하면서까지** 청크를 써서, KB를 통째로 지웠는데도 유령 컬렉션/청크가
+다시 생길 수 있다
+([queue_resurrection_on_soft_delete_pitfall.md](../../.claude/memory/queue_resurrection_on_soft_delete_pitfall.md)와
+같은 계열의 원인). `8178dfd`가 이 경합의 상당 부분을 줄였지만 `abort_active_ingest` 자체가
+"신호를 보낸다"까지만 보장하고 "실제로 멈췄다"를 기다리지 않으므로, 좁은 타이밍 윈도우는
+이론적으로 여전히 남아있다. 그 수정 이전에 생긴 데이터도 물론 그대로 남아있다.
+
+**현재 대안**
+
+`rag/retriever.py`의 `_filter_orphaned_chunks`가 RRF 병합 직후(rerank 전) 결과에 나온 모든
+`doc_id`를 Postgres에 배치 조회(`infra/postgres.get_existing_doc_ids`)해서, 존재하지 않는
+`doc_id`(빈 문자열 포함)의 청크는 결과에서 제외하고 `logger.warning`으로 `kb_id`/`doc_id`/
+`chunk_id`를 남긴다. 검색 응답에서 제외하는 데 그치지 않고 발견 즉시
+`qdrant.delete_chunks_by_doc_id(kb_id, doc_id)`로 실제 삭제까지 수행한다(같은 `doc_id`의 청크가
+결과에 여러 개 섞여 있어도 doc_id당 1회만 호출). 삭제 자체가 실패해도 `logger.warning`만 남기고
+검색 응답은 정상 반환한다(best-effort, self-healing). 즉 한 번이라도 검색에 걸린 고아 청크는
+그 요청에서 바로 정리된다.
+
+**미해결**
+
+- 자가 치유는 "검색에 한 번이라도 걸려야" 작동한다 — 아무도 검색하지 않는 고아 청크(드물게
+  조회되는 kb, 혹은 순위가 낮아 top_k 밖으로 밀리는 청크)는 영원히 안 걸리고 Qdrant에 남는다.
+  Qdrant 컬렉션 전체를 스캔해 Postgres에 없는 `doc_id`를 찾아 지우는 주기적 정리 배치가 없다 —
+  Dagster 스케줄(`defs/schedules/` 기존 패턴 참고)로 주기 실행하는 것이 유력한 대안.
+- `_delete_qdrant_chunks`의 best-effort 삼킴 정책 자체를 좁히는 방안(예: 실패 시 재시도 큐에
+  적재)은 검토하지 않았다 — 항목 4번(Delete + Reindex race condition)과 마찬가지로 복잡도 대비
+  이득을 아직 판단하지 못해 보류.
+
+---
+
+## 24. 나무위키 /activity/ 페이지가 봇 User-Agent에만 404를 반환해 unrestricted 크롤링 문서가 failed로 남음
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-16 |
+| 심각도 | LOW |
+
+**증상**
+
+connector_id=`b94692af7e75444c`(namu.wiki "고양이", `unrestricted: true`)의 docs 목록에
+`https://namu.wiki/activity/고양이`가 `failed` 상태로 남는다. 에러 메시지:
+`Client error '404 Not Found' for url 'https://namu.wiki/activity/%EA%B3%A0%EC%96%91%EC%9D%B4'`.
+같은 페이지를 브라우저로 열면 정상적으로 보인다.
+
+**원인**
+
+인코딩 문제가 아니다 — 정확히 같은 percent-encoded URL로 UA만 바꿔 비교하면 원인이 명확히
+드러난다.
+
+| User-Agent | `/activity/고양이` | `/discuss/고양이` | `/w/고양이` |
+|---|---|---|---|
+| 브라우저(Chrome) | 200 | - | - |
+| 커넥터 실제 UA(`RAG-WebConnector/1.0`, `connectors/web.py:20`) | **404** | 200 | 200 |
+
+같은 봇 UA로도 `/discuss/`, `/w/`는 정상 응답하는데 `/activity/`(문서 편집 이력 페이지)만
+404가 난다 — 나무위키가 이 엔드포인트에만 선택적으로 봇 차단(또는 더 엄격한 UA/JS 챌린지)을
+걸어둔 것으로 보인다. `connectors/web.py`나 rag-api 쪽 문제가 아니라 나무위키 서버 정책이다.
+[이슈 19](#19-unrestricted-웹-크롤링이-사이트-유틸리티-페이지랜덤최근변경-등까지-크롤링해-매-sync마다-재인덱싱)와
+같은 근본 원인(`unrestricted: true`로 시드 페이지 바깥의 사이트 유틸리티 링크까지 크롤 대상에
+포함)의 변형이다 — 이슈 19는 "내용이 매번 달라져 매 sync 재인덱싱"이었다면, 이건 "애초에 봇
+요청 자체가 거부되어 항상 failed"라는 차이가 있다.
+
+**현재 대안**
+
+`/activity/`는 편집 이력 페이지라 지식베이스에 넣을 콘텐츠도 아니므로, 브라우저 UA로 위장해
+우회하기보다 커넥터 `config.exclude_patterns`에 추가해 크롤 대상에서 제외한다. `/discuss/`도
+같은 성격의 사이트 유틸리티 페이지라 함께 제외하는 것을 권장.
+
+```json
+{
+  "config": {
+    "exclude_patterns": [
+      "*/random", "*/RecentChanges", "*/RecentDiscuss",
+      "*/activity/*", "*/discuss/*"
+    ]
+  }
+}
+```
+
+`PATCH /api/connectors/{connector_id}`로 적용.
+
+**미해결**
+
+- `unrestricted: true` 크롤링이 나무위키류 위키 사이트의 유틸리티 링크(활동 이력/토론/최근변경/
+  무작위 문서 등)를 계속 새로 발견해낼 때마다 매번 `exclude_patterns`를 수동으로 추가해야 한다 —
+  사이트별 유틸리티 URL 패턴을 커넥터 프리셋으로 미리 알아두는 방안은 검토하지 않았다.
+
+---
+
+## 25. page_label이 PDF에 실제로 인쇄된 페이지 번호와 다를 수 있음 — /PageLabels 룰이 없는 문서는 항상 null
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-18 |
+| 심각도 | LOW |
+
+**증상**
+
+`ATD00005_2605.pdf`를 인제스트한 뒤 Qdrant에서 물리 2페이지(`page_num: 2`)의 청크를 보면
+`page_label: null`이다. 그런데 실제로 해당 페이지 하단에는 "1"이라는 번호가 인쇄되어 있다 —
+표지(물리 1페이지)는 번호 없이, 실제 본문 시작 페이지부터 "1"로 다시 세는 문서라 물리 페이지
+번호와 화면에 보이는 번호가 어긋난다.
+
+**원인**
+
+`page_label`은 `pipeline/steps/parser/pdf.py`의 `PyMuPDFReader`가 `fitz.Page.get_label()`로
+채우는데, 이 함수는 PDF 카탈로그의 `/PageLabels` 딕셔너리(PDF 스펙이 정의하는 구조적 페이지
+번호 매김 규칙)를 조회할 뿐이다. `ATD00005_2605.pdf`는 이 딕셔너리 자체가 없다
+(`fitz.open(...).get_page_labels()` → `[]`) — 페이지 하단의 "1"은 PDF 구조적 메타데이터가
+아니라 그냥 페이지 본문에 그려진 일반 텍스트다. `/PageLabels`가 없는 문서에서는
+`get_label()`이 항상 빈 문자열을 반환하므로, 화면에 어떤 숫자가 보이든 `page_label`은
+`null`로 남는다 — 버그가 아니라 애초에 추출할 PDF 레벨 레이블이 존재하지 않는 경우다.
+Word/한글 워드프로세서 등에서 export된 PDF는 `/PageLabels`를 아예 안 쓰는 경우가 흔하다.
+
+**현재 대안**
+
+`page_num`(물리 페이지, 항상 채워짐)만 신뢰하고 `page_label`은 있으면 보너스 정보로 취급한다.
+`data-schema.md`에도 `page_label`을 "null if the PDF defines none"으로 명시해뒀다.
+
+**미해결**
+
+화면에 실제로 보이는 페이지 번호까지 맞추려면 `/PageLabels` 조회가 아니라 페이지 하단
+텍스트에서 숫자 패턴을 휴리스틱/OCR로 추정해야 한다 — 문서마다 위치·포맷이 달라 오탐 위험이
+크고, 별도 설계가 필요해 보류. 검토하지 않았다.
+
+---
+
+## 26. upsert 단계의 delete-then-insert 구조로 reindex 중 insert 실패 시 기존 Qdrant 청크가 유실됨
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open |
+| 발견일 | 2026-07-19 |
+| 심각도 | MED |
+
+**증상**
+
+reindex(재인제스트) 파이프라인 도중 실패가 나면, 실패 시점에 따라 기존에 Qdrant에 색인돼 있던
+문서의 청크가 그대로 유지되기도 하고 완전히 사라지기도 한다 — 일관되지 않다.
+
+**원인**
+
+`pipeline/steps/upsert.py:34-93`의 `upsert()`가 delete-then-insert 방식이다:
+`qdrant_infra.delete_chunks_by_doc_id(kb_id, doc_id, client)`(line 39)로 해당 `doc_id`의
+기존 청크를 먼저 전부 지운 뒤, 새로 파싱·청킹·임베딩한 결과를
+`qdrant_infra.upsert_chunks(kb_id, points, client)`(line 85)로 삽입한다. 이 두 호출 사이에는
+try/except나 rollback/보상 로직이 전혀 없다. Point ID도 `str(uuid.uuid4())`(line 72)로
+비결정적이라, 실패해도 이전 ID로 upsert가 덮어써지는 방식이 아니다. Collection alias swap 같은
+원자적 전환 장치도 없다.
+
+실패 시점별로 결과가 갈린다:
+- upsert 단계 이전(validate/parse/dedup/chunk/embed) 실패 — `delete_chunks_by_doc_id`가 아직
+  호출되지 않았으므로 기존 청크는 그대로 남는다. `ingest_ops.py:6-20`의
+  `ingest_failure_hook`(Dagster `@failure_hook`)이 Postgres에 `status=failed`만 기록해서
+  Qdrant(구 청크 남음)과 Postgres(`failed`) 상태가 불일치하지만, 데이터 손실은 없다.
+- delete(line 39) 성공 후 insert(line 85) 전/중 실패(Qdrant 네트워크 오류 등) — 기존 청크는
+  이미 삭제됐고 새 청크는 삽입되지 않아 **해당 문서의 청크가 전부 유실**된다. 이 구간을 감싸는
+  보상 로직이 없어 자동 복구되지 않는다.
+- upsert 성공 후 meta_op(Postgres 상태 갱신) 실패 — Qdrant엔 새 청크가 정상 반영됐지만
+  Postgres는 `indexed`로 갱신되지 못하고 `failed`로 남는 반대 방향 불일치가 생긴다.
+
+23번 항목(삭제-인제스트 경합으로 인한 고아 청크)과는 다른 계열의 문제다 — 23번은 서로 다른 두
+경로(cascade delete와 지연된 upsert)가 경합하며 생기는 유령 청크 문제이고, 이번 항목은 단일
+reindex 실행 안에서 delete와 insert 사이에 원자성이 없어 생기는 데이터 유실 문제다.
+
+**현재 대안**
+
+없음. 실패 시 Postgres `status`가 `failed`로 남으므로 사용자가 재인제스트를 다시 트리거하면
+복구는 되지만, 그 사이 검색 결과에서 해당 문서가 완전히 누락되는 공백이 생긴다.
+
+**미해결**
+
+- `delete_chunks_by_doc_id`와 `upsert_chunks` 순서를 insert-then-delete로 바꾸면(새 청크를
+  먼저 넣고 성공을 확인한 뒤 이전 청크를 지우는 방식) 이 구간의 유실 위험을 없앨 수 있어
+  보이지만, 그동안 잠깐 신구 청크가 공존해 중복 검색 결과가 나올 수 있어 트레이드오프 검토가
+  필요하다 — 검토하지 않았다.
+- Point ID를 `(doc_id, chunk_index)` 등 deterministic 값으로 바꿔 upsert 자체가 덮어쓰기가
+  되도록 하는 방안도 근본적인 대안이 될 수 있으나, 기존 point ID 체계 전반에 영향을 주는
+  변경이라 범위가 크다 — 검토하지 않았다.

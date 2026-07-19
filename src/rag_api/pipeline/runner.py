@@ -21,12 +21,12 @@ def run_ingest_pipeline(
     """
     from rag_api.exceptions import IngestValidationError
     from rag_api.infra.postgres import get_doc_by_id
-    from rag_api.pipeline.ops.chunk import chunk
-    from rag_api.pipeline.ops.embed import embed
-    from rag_api.pipeline.ops.meta import set_indexed
-    from rag_api.pipeline.ops.parse import parse
-    from rag_api.pipeline.ops.upsert import upsert
-    from rag_api.pipeline.ops.validate import validate
+    from rag_api.pipeline.steps.chunk import chunk
+    from rag_api.pipeline.steps.embed import embed
+    from rag_api.pipeline.steps.meta import set_indexed
+    from rag_api.pipeline.steps.parse import parse
+    from rag_api.pipeline.steps.upsert import upsert
+    from rag_api.pipeline.steps.validate import validate
     from rag_api.pipeline.utils.doc_state import set_failed, set_processing
 
     doc = get_doc_by_id(doc_id)
@@ -50,9 +50,9 @@ def run_ingest_pipeline(
 
     try:
         from rag_api.infra.postgres import update_doc_fields
-        from rag_api.pipeline.ops.dedup import run_dedup_pipeline
+        from rag_api.pipeline.steps.dedup import run_dedup_pipeline
 
-        documents = parse(doc_id=doc_id, storage_key=storage_key)
+        documents = parse(doc_id=doc_id, kb_id=kb_id, storage_key=storage_key)
 
         if documents:
             doc_created_at = documents[0].metadata.get("doc_created_at", "")
@@ -67,7 +67,7 @@ def run_ingest_pipeline(
             )
             return 0
 
-        nodes = chunk(documents)
+        nodes = chunk(documents, kb_id=kb_id)
         if not nodes:
             raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
         embedded_nodes = embed(nodes)
@@ -96,7 +96,7 @@ def run_ingest_pipeline(
 
 def run_delete_pipeline(doc_id: str, force: bool = False) -> None:
     """Delete a document. Delegates to delete_doc() for status-based soft/hard delete logic."""
-    from rag_api.pipeline.ops.delete import delete_doc
+    from rag_api.pipeline.steps.delete import delete_doc
     from rag_api.pipeline.utils.doc_state import set_failed
 
     try:
