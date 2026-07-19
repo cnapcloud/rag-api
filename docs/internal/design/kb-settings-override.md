@@ -146,22 +146,21 @@ def clear_kb_settings_overrides(kb_id: str) -> None:
 | dedup | `dedup.simhash.ngram`/`num_bands`/`simhash_bits` | **배제** | 이미 Postgres `simhash_bands`에 저장된 기존 문서의 지문과 계산 방식이 달라져 비교 불가능해짐(재인덱싱 없이는 위험) |
 | dedup | `dedup.minhash.user_words_path` | **배제** | Kiwi 토크나이저가 프로세스 전역 싱글턴(`dedup/tokenizer.py`)으로 1회 로드 — KB별 경로를 지원하려면 경로 키 캐시가 별도로 필요, 이번 범위 밖 |
 
-flat dot-key 구조라 배제 목록은 리터럴 문자열 집합으로 그대로 구현된다(`config/settings.py`):
+**(US-45로 갱신)** 배제 목록은 더 이상 별도 리터럴 문자열 집합(`EXCLUDED_OVERRIDE_KEYS`)이
+아니다 — 각 필드 선언 옆 `json_schema_extra={"override": False}`로 이관되었다. 상세 설계와
+값 검증(`Field(ge=/le=)`)·description·`GET /kb/{kb_id}/settings/schema`는
+[`kb-settings-override-schema.md`](kb-settings-override-schema.md)를 참고한다. 위 표의 "배제"
+필드는 여전히 유효하며, 구현 위치만 바뀌었다:
 
 ```python
-EXCLUDED_OVERRIDE_KEYS = {
-    "ingestion.parser_plugins",
-    "dedup.simhash.ngram",
-    "dedup.simhash.num_bands",
-    "dedup.simhash.simhash_bits",
-    "dedup.minhash.user_words_path",
-}
+# config/settings.py — 필드 선언 옆
+class MinHashSettings(BaseModel):
+    ...
+    user_words_path: str = Field(default="", json_schema_extra={"override": False})
 ```
 
-오버라이드 저장 API(§9)는 요청 body의 키 중 이 집합과 교집합이 있으면 명시적으로 거부한다(무시하지
-않음 — 사용자가 "됐다"고 착각하는 걸 방지). `dedup.simhash.*`/`dedup.minhash.*` 처럼 그룹 전체를
-배제하고 싶은 필드는 위처럼 개별 leaf 키를 나열한다 — flat dict에는 "그룹" 개념이 없으므로 접두사
-매칭이 아니라 정확한 키 목록으로 관리한다.
+오버라이드 저장 API(§9)는 요청 body의 키 중 `override: False`로 표시된 필드가 있으면 명시적으로
+거부한다(무시하지 않음 — 사용자가 "됐다"고 착각하는 걸 방지).
 
 ## 6. 파서 레지스트리 재설계
 
@@ -362,6 +361,7 @@ class KBSettingsOverrideRequest(BaseModel):
 | 메서드 | 경로 | 동작 |
 |---|---|---|
 | `GET` | `/kb/{kb_id}/settings` | 유효 설정 조회 — `resolve_settings(kb_id)`의 `ingestion`/`chunking`/`dedup` **세 섹션만** 직렬화(§9.1) |
+| `GET` | `/kb/{kb_id}/settings/schema` | **(US-45)** dot-key별 `type`/`enum`/`default`/`overridable`/`min`/`max`/`description`/그룹 — 필드 메타데이터 그대로 직렬화. 상세는 [`kb-settings-override-schema.md`](kb-settings-override-schema.md) §5 |
 | `GET` | `/kb/{kb_id}/settings/overrides` | 이 KB에 저장된 override 원본 flat dict만 조회 (없으면 `{}`) |
 | `PUT` | `/kb/{kb_id}/settings/overrides` | override flat dict **전체 교체** — body에 없는 기존 키는 사라짐(=전역으로 리셋) |
 | `PATCH` | `/kb/{kb_id}/settings/overrides` | 기존 flat dict에 **키 단위 upsert** — body의 각 dot-key만 갱신/추가, 값이 `null`이면 그 키를 dict에서 제거(전역으로 리셋), body에 없는 기존 키는 그대로 유지 |
@@ -375,42 +375,55 @@ bulk insert) 하나로 끝난다.
 
 ### 9.1 검증 — allow-list가 먼저다
 
-**`EXCLUDED_OVERRIDE_KEYS`는 deny-list다 — 이것만으로는 안전하지 않다.** `Settings`에는
-`ingestion`/`chunking`/`dedup` 말고도 `provider`(임베딩/LLM API 키), `redis`, `postgres`,
-`qdrant` 같은 인프라 자격증명 섹션이 있다. deny-list만 검사하면 `overrides["provider.openai_api_key"]`나
-`overrides["redis.host"]`처럼 §5가 다루지 않는 필드가 "배제 목록에 없다"는 이유로 그대로
-통과해 KB별로 인프라 자격증명/접속 정보를 덮어쓸 수 있게 된다. 그래서 **`ingestion.`/`chunking.`/
-`dedup.` 접두사로 시작하는 키만 애초에 허용하는 allow-list를 deny-list보다 먼저** 적용한다.
+**allow-list만으로는 안전하지 않다.** `Settings`에는 `ingestion`/`chunking`/`dedup` 말고도
+`provider`(임베딩/LLM API 키), `redis`, `postgres`, `qdrant` 같은 인프라 자격증명 섹션이 있다.
+deny 판정이 없으면 `overrides["provider.openai_api_key"]`나 `overrides["redis.host"]`처럼 §5가
+다루지 않는 필드가 그대로 통과해 KB별로 인프라 자격증명/접속 정보를 덮어쓸 수 있게 된다. 그래서
+**`ingestion.`/`chunking.`/`dedup.` 접두사로 시작하는 키만 애초에 허용하는 allow-list를 필드
+단위 배제 판정보다 먼저** 적용한다.
+
+**(US-45로 갱신)** 필드 단위 배제는 더 이상 별도 deny-list 조회 단계가 아니다 — §5에서 설명한
+대로 `json_schema_extra={"override": False}`가 필드 선언 옆으로 옮겨지면서, 아래 3번(필드 경로
+존재 확인)의 `model_fields` 순회 중 리프 필드에서 그 플래그까지 함께 확인하는 방식으로
+합쳐졌다(2번이었던 별도 단계가 사라짐). 값 자체의 범위/타입 검증(구 4번)도 이제 인제스트
+시점(`resolve_settings`)뿐 아니라 저장(PUT/PATCH) 시점에도 `validate_override_values`로
+동일하게 수행된다 — 상세 설계는 [`kb-settings-override-schema.md`](kb-settings-override-schema.md)
+§4를 참고.
 
 `PUT`/`PATCH` 공통 검증 (순서대로):
 
 1. **접두사 allow-list**: dot-key가 `ingestion.`/`chunking.`/`dedup.` 중 하나로 시작하지 않으면
    즉시 거부.
-2. **deny-list**: §5의 `EXCLUDED_OVERRIDE_KEYS`와 일치하면 거부 — 조용히 무시하지 않는다.
-3. **필드 경로 존재 확인**(§3의 주의사항 — Pydantic 기본 `extra="ignore"`에 기대면 안 됨):
-   `type(base).model_fields`를 dot-key의 각 segment를 따라 내려가며 존재 여부를 확인하고,
-   마지막 segment가 실제 leaf 필드가 아니면(예: 스칼라 필드를 더 파고드는 경우) 거부한다.
+2. **필드 경로 존재 확인 + override 메타데이터 확인**(§3의 주의사항 — Pydantic 기본
+   `extra="ignore"`에 기대면 안 됨): `type(base).model_fields`를 dot-key의 각 segment를 따라
+   내려가며 존재 여부를 확인하고, 마지막 segment가 실제 leaf 필드가 아니면(예: 스칼라 필드를
+   더 파고드는 경우) 거부한다. 그 리프 필드의 `json_schema_extra`에 `override: False`가 있으면
+   거부한다 — 조용히 무시하지 않는다.
    ```python
    OVERRIDABLE_SETTINGS_PREFIXES = ("ingestion.", "chunking.", "dedup.")
 
    def validate_override_key(settings_cls: type[BaseModel], dotted_key: str) -> None:
        if not dotted_key.startswith(OVERRIDABLE_SETTINGS_PREFIXES):
            raise IngestValidationError(f"Settings key not overridable: {dotted_key!r}")
-       if dotted_key in EXCLUDED_OVERRIDE_KEYS:
-           raise IngestValidationError(f"Settings key not overridable: {dotted_key!r}")
        node = settings_cls
+       field = None
        for part in dotted_key.split("."):
            field = node.model_fields.get(part) if hasattr(node, "model_fields") else None
            if field is None:
                raise IngestValidationError(f"Unknown settings key: {dotted_key!r}")
            node = field.annotation
+       if not (field.json_schema_extra or {}).get("override", True):
+           raise IngestValidationError(f"Settings key not overridable: {dotted_key!r}")
    ```
-4. 앞의 세 검증을 통과한 키만 `_apply_dotted_overrides` + `type(get_settings())(**merged)`
-   재검증 경로를 태운다 — 여기서는 타입/범위(예: `Literal` 값, 음수 불가 등)만 걸러진다.
+3. 앞의 두 검증을 통과한 키만 `_apply_dotted_overrides` + `type(get_settings())(**merged)`
+   재검증 경로를 태운다(`validate_override_values`) — 여기서는 타입/범위(`Field(ge=/le=)`,
+   `Literal` 값 등)만 걸러진다. 이 경로는 저장 시점과 `resolve_settings()` 인제스트 시점 둘 다
+   탄다.
 
 값이 `null`인 경우는 "이 필드를 override 해제"로 해석한다(§9 표) — 이번 오버라이드 가능
 필드셋(§5)에는 의미상 `None`을 허용하는 필드가 없으므로("비활성화"는 항상 `enabled: false`로
-표현) 이 해석과 실제 값 사이의 충돌은 없다.
+표현) 이 해석과 실제 값 사이의 충돌은 없다. `validate_override_values`는 `null` 키를 값 검증
+대상에서 제외한다(호출부가 미리 걸러서 넘긴다).
 
 ### 9.2 `GET /kb/{kb_id}/settings` 응답 범위 제한
 

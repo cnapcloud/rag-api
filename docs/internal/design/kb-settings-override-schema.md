@@ -63,8 +63,8 @@ min/max가 있는 필드는 전부 Pydantic `Field(ge=, le=)`로 구현 가능�
 | `dedup.minhash.title_fuzzy_threshold` | float | 0.85 | - | 0.0 | 1.0 | 가능 | Title Fuzzy Threshold | |
 | `dedup.minhash.title_only_min_jaccard_floor` | float | 0.25 | - | 0.0 | 1.0 | 가능 | Title-Only Min Jaccard Floor | `jaccard_threshold`와의 대소 관계가 cross-field 후보로 보이나 확정하지 않음 — §3 참고 |
 | `dedup.minhash.user_words_path` | str | `""` | - | - | - | **배제** | User Words Path | base 문서 §5 — Kiwi 토크나이저 프로세스 전역 싱글턴 |
-| `dedup.simhash.hamming_identical_threshold` | int | 3 | - | 0 | (동적) | 가능 | Hamming Identical Threshold | 정적 상한 없음 — 그 배포의 현재 `simhash_bits` 값을 상한으로 사용(§5 예외 항목) |
-| `dedup.simhash.hamming_similar_threshold` | int | 10 | - | 0 | (동적) | 가능 | Hamming Similar Threshold | cross-field: `hamming_identical_threshold <= hamming_similar_threshold`(§3) + 위와 동일한 `simhash_bits` 종속 |
+| `dedup.simhash.hamming_identical_threshold` | int | 3 | - | 0 | 19 (구현 시 le=19 sanity cap 추가) / `/settings/schema` 응답 `max`는 여전히 `simhash_bits` 기준 동적값 | 가능 | Hamming Identical Threshold | 구현 시 반영(2026-07-19): Field 자체엔 정적 `le=19`를 둬 저장 시점에 무의미하게 큰 값을 막고, 표시용 `max`는 원래 설계대로 그 배포의 `simhash_bits`로 동적 계산(§5 예외 항목 그대로 유지) |
+| `dedup.simhash.hamming_similar_threshold` | int | 10 | - | 0 | 19 (위와 동일) | 가능 | Hamming Similar Threshold | cross-field: `hamming_identical_threshold <= hamming_similar_threshold`(§3) + 위와 동일한 `simhash_bits` 종속 및 le=19 cap |
 | `dedup.simhash.ngram` | int | 3 | - | - | - | **배제** | N-gram Size | base 문서 §5 — 기존 `simhash_bands` 지문과 계산 방식 불일치 위험 |
 | `dedup.simhash.num_bands` | int | 4 | - | - | - | **배제** | Number of Bands | 위와 동일 |
 | `dedup.simhash.simhash_bits` | int | 64 | - | - | - | **배제** | SimHash Bits | 위와 동일 — `hamming_*_threshold` 상한의 근거값이기도 함 |

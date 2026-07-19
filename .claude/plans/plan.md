@@ -40,3 +40,4 @@
 | 42 | 파서 패키지 구조화 + 신규 포맷 8종 지원 (CSV/TSV/JSON/EPUB/XLSX/XLS/RST/EML) | US-42 | 통합(backlog 참고) — done |
 | 43 | 레거시 .doc/.ppt + .pptx 지원 추가 | US-43 | 통합(backlog 참고) — done |
 | 44 | KB별 설정 오버라이드 (ingestion/chunking/dedup) | US-44 | 통합(backlog 참고) — done |
+| 45 | KB 설정 오버라이드 필드 스키마 — 값 검증/description/override 메타데이터 + `/settings/schema` | US-45 | 통합(backlog 참고) — done |

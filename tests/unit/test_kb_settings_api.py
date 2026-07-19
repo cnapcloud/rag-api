@@ -66,6 +66,44 @@ class TestGetEffectiveSettings:
         assert resp.json()["chunking"]["chunk_size"] == 512
 
 
+class TestGetSettingsSchema:
+    def test_returns_404_for_unknown_kb(self, client):
+        with patch("rag_api.infra.postgres.get_kb_meta", return_value=None):
+            resp = client.get(f"/api/kb/{KB_ID}/settings/schema")
+        assert resp.status_code == 404
+
+    def test_returns_only_ingestion_chunking_dedup_keys(self, client):
+        with patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB):
+            resp = client.get(f"/api/kb/{KB_ID}/settings/schema")
+
+        assert resp.status_code == 200
+        schema = resp.json()["schema"]
+        assert all(key.startswith(("ingestion.", "chunking.", "dedup.")) for key in schema)
+
+    def test_field_entry_shape(self, client):
+        with patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB):
+            resp = client.get(f"/api/kb/{KB_ID}/settings/schema")
+
+        entry = resp.json()["schema"]["chunking.chunk_size"]
+        assert entry == {
+            "type": "int",
+            "enum": None,
+            "default": 1024,
+            "overridable": True,
+            "min": 64,
+            "max": 8192,
+            "description": "Chunk Size",
+            "group": "chunking",
+        }
+
+    def test_deny_listed_field_marked_not_overridable(self, client):
+        with patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB):
+            resp = client.get(f"/api/kb/{KB_ID}/settings/schema")
+
+        schema = resp.json()["schema"]
+        assert schema["ingestion.parser_plugins"]["overridable"] is False
+
+
 class TestGetOverrides:
     def test_returns_404_for_unknown_kb(self, client):
         with patch("rag_api.infra.postgres.get_kb_meta", return_value=None):
@@ -138,6 +176,21 @@ class TestPutOverrides:
             resp = client.put(
                 f"/api/kb/{KB_ID}/settings/overrides",
                 json={"overrides": {"ingestion.does_not_exist": 1}},
+            )
+
+        assert resp.status_code == 422
+        mock_replace.assert_not_called()
+
+    def test_rejects_out_of_range_value(self, client):
+        """US-45 — Field(ge=/le=) constraints now enforced at save time, not just at
+        resolve_settings() ingest time (kb-settings-override-schema.md)."""
+        with (
+            patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
+            patch("rag_api.infra.postgres.replace_kb_settings_overrides") as mock_replace,
+        ):
+            resp = client.put(
+                f"/api/kb/{KB_ID}/settings/overrides",
+                json={"overrides": {"dedup.minhash.jaccard_threshold": 5.0}},
             )
 
         assert resp.status_code == 422

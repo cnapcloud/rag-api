@@ -172,10 +172,19 @@ def test_validate_override_key_rejects_keys_outside_allowed_sections() -> None:
 
 
 def test_validate_override_key_rejects_deny_listed_keys() -> None:
-    from rag_api.config.settings import EXCLUDED_OVERRIDE_KEYS, validate_override_key
+    """Deny-by-field metadata (json_schema_extra={"override": False}) — replaces the old
+    EXCLUDED_OVERRIDE_KEYS frozenset (kb-settings-override-schema.md §4)."""
+    from rag_api.config.settings import validate_override_key
     from rag_api.exceptions import IngestValidationError
 
-    for key in EXCLUDED_OVERRIDE_KEYS:
+    deny_listed_keys = (
+        "ingestion.parser_plugins",
+        "dedup.simhash.ngram",
+        "dedup.simhash.num_bands",
+        "dedup.simhash.simhash_bits",
+        "dedup.minhash.user_words_path",
+    )
+    for key in deny_listed_keys:
         with pytest.raises(IngestValidationError, match="not overridable"):
             validate_override_key(Settings, key)
 
@@ -214,3 +223,137 @@ def test_apply_dotted_overrides_merges_into_nested_dict() -> None:
     assert merged["ingestion"]["max_file_size_mb"] == 50
     assert merged["chunking"]["chunk_size"] == 1024
     assert merged["dedup"]["enabled"] is False
+
+
+# ──────────────────────────────────────────────
+# chunking.strategy — Literal promotion (kb-settings-override-schema.md §4.1)
+# ──────────────────────────────────────────────
+
+def test_chunking_strategy_rejects_invalid_value() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Settings(chunking={"strategy": "typo"})
+
+
+def test_chunking_strategy_accepts_known_values() -> None:
+    assert Settings(chunking={"strategy": "recursive"}).chunking.strategy == "recursive"
+    assert Settings(chunking={"strategy": "semantic"}).chunking.strategy == "semantic"
+
+
+# ──────────────────────────────────────────────
+# validate_override_values — save-time range/enum check (kb-settings-override-schema.md §4)
+# ──────────────────────────────────────────────
+
+def test_validate_override_values_accepts_in_range_value() -> None:
+    from rag_api.config.settings import validate_override_values
+
+    validate_override_values(Settings(), {"dedup.minhash.jaccard_threshold": 0.9})
+
+
+def test_validate_override_values_rejects_out_of_range_value() -> None:
+    from rag_api.config.settings import validate_override_values
+    from rag_api.exceptions import IngestValidationError
+
+    with pytest.raises(IngestValidationError):
+        validate_override_values(Settings(), {"dedup.minhash.jaccard_threshold": 5.0})
+
+
+def test_validate_override_values_rejects_hamming_threshold_at_or_above_20() -> None:
+    """hamming_identical/similar_threshold has a static le=19 sanity cap independent of the
+    deployment's simhash_bits (the dynamic max in describe_overridable_settings is a display
+    hint only, not a save-time bound)."""
+    from rag_api.config.settings import validate_override_values
+    from rag_api.exceptions import IngestValidationError
+
+    with pytest.raises(IngestValidationError):
+        validate_override_values(Settings(), {"dedup.simhash.hamming_identical_threshold": 20})
+
+    validate_override_values(Settings(), {"dedup.simhash.hamming_identical_threshold": 19})
+
+
+def test_validate_override_values_rejects_invalid_enum_value() -> None:
+    from rag_api.config.settings import validate_override_values
+    from rag_api.exceptions import IngestValidationError
+
+    with pytest.raises(IngestValidationError):
+        validate_override_values(Settings(), {"chunking.strategy": "document_aware"})
+
+
+def test_validate_override_values_ignores_null_placeholder() -> None:
+    """PATCH's null-means-clear sentinel must not be fed into value validation by callers —
+    covered at the router layer (test_kb_settings_api.py); here we only check that a valid
+    non-null override in the same call still passes."""
+    from rag_api.config.settings import validate_override_values
+
+    validate_override_values(Settings(), {"chunking.chunk_size": 512})
+
+
+# ──────────────────────────────────────────────
+# describe_overridable_settings — GET /settings/schema source (kb-settings-override-schema.md §5)
+# ──────────────────────────────────────────────
+
+def test_describe_overridable_settings_covers_only_allowed_sections() -> None:
+    from rag_api.config.settings import describe_overridable_settings
+
+    schema = describe_overridable_settings(Settings())
+
+    assert all(key.startswith(("ingestion.", "chunking.", "dedup.")) for key in schema)
+    assert "chunking.chunk_size" in schema
+    assert "dedup.simhash.hamming_identical_threshold" in schema
+
+
+def test_describe_overridable_settings_marks_deny_listed_fields_not_overridable() -> None:
+    from rag_api.config.settings import describe_overridable_settings
+
+    schema = describe_overridable_settings(Settings())
+
+    assert schema["ingestion.parser_plugins"]["overridable"] is False
+    assert schema["dedup.simhash.simhash_bits"]["overridable"] is False
+    assert schema["chunking.chunk_size"]["overridable"] is True
+
+
+def test_describe_overridable_settings_reports_enum_and_range() -> None:
+    from rag_api.config.settings import describe_overridable_settings
+
+    schema = describe_overridable_settings(Settings())
+
+    strategy = schema["chunking.strategy"]
+    assert strategy["type"] == "enum"
+    assert set(strategy["enum"]) == {"recursive", "semantic"}
+
+    chunk_size = schema["chunking.chunk_size"]
+    assert chunk_size["type"] == "int"
+    assert chunk_size["min"] == 64
+    assert chunk_size["max"] == 8192
+
+
+def test_describe_overridable_settings_walks_subclass_extended_sections() -> None:
+    """A vendoring app (e.g. rag-ent-api) that subclasses Settings and redeclares `ingestion`
+    with an extended IngestionSettings must have its extra fields show up too — the walk must
+    use type(current), not the module-level Settings class (kb-settings-override-schema.md §5,
+    same reasoning as resolve_settings' type(base) reconstruction)."""
+    from rag_api.config.settings import describe_overridable_settings
+
+    class ExtraIngestionSettings(Settings.model_fields["ingestion"].annotation):  # type: ignore[misc]
+        extra_flag: bool = False
+
+    class ExtendedSettings(Settings):
+        ingestion: ExtraIngestionSettings = ExtraIngestionSettings()  # type: ignore[assignment]
+
+    schema = describe_overridable_settings(ExtendedSettings())
+    assert "ingestion.extra_flag" in schema
+
+
+def test_describe_overridable_settings_computes_hamming_max_from_simhash_bits() -> None:
+    """hamming_identical/similar_threshold max isn't a static constant — it must reflect this
+    deployment's actual dedup.simhash.simhash_bits (kb-settings-override-schema.md §5)."""
+    from rag_api.config.settings import describe_overridable_settings
+
+    default_schema = describe_overridable_settings(Settings())
+    assert default_schema["dedup.simhash.hamming_identical_threshold"]["max"] == 64
+
+    narrow = Settings(dedup={"simhash": {"simhash_bits": 32}})
+    narrow_schema = describe_overridable_settings(narrow)
+    assert narrow_schema["dedup.simhash.hamming_identical_threshold"]["max"] == 32
+    assert narrow_schema["dedup.simhash.hamming_similar_threshold"]["max"] == 32

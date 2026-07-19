@@ -46,3 +46,4 @@
 | [US-42](US-42-parser-package-restructure.md) | 파서 패키지 구조화 + 신규 포맷 8종 지원 (CSV/TSV/JSON/EPUB/XLSX/XLS/RST/EML) | done |
 | [US-43](US-43-legacy-office-formats.md) | 레거시 .doc/.ppt + .pptx 지원 추가 | done |
 | [US-44](US-44-kb-settings-override.md) | KB별 설정 오버라이드 (ingestion/chunking/dedup) | done |
+| [US-45](US-45-kb-settings-field-schema.md) | KB 설정 오버라이드 필드 스키마 — 값 검증/description/override 메타데이터 + `/settings/schema` | done |

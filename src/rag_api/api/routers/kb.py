@@ -130,13 +130,23 @@ async def delete_kb(kb_id: str):
 
 
 def _validate_overrides(overrides: dict[str, Any]) -> None:
-    """Allow-list + deny-list + field-path check for every key — see
-    docs/internal/design/kb-settings-override.md §9.1. Must run before any write."""
-    from rag_api.config.settings import get_settings, validate_override_key
+    """Allow-list + override-metadata + field-path check for every key, then value-range check —
+    see docs/internal/design/kb-settings-override.md §9.1 and
+    kb-settings-override-schema.md §4. Must run before any write."""
+    from rag_api.config.settings import (
+        get_settings,
+        validate_override_key,
+        validate_override_values,
+    )
 
-    settings_cls = type(get_settings())
+    settings = get_settings()
+    settings_cls = type(settings)
     for key in overrides:
         validate_override_key(settings_cls, key)
+    # PATCH treats a null value as "clear this override" (see KBSettingsOverrideRequest), not an
+    # actual field value — skip those, no typed field in Settings ever accepts None.
+    non_null_overrides = {k: v for k, v in overrides.items() if v is not None}
+    validate_override_values(settings, non_null_overrides)
 
 
 @router.get("/kb/{kb_id}/settings")
@@ -158,6 +168,20 @@ async def get_kb_effective_settings(kb_id: str):
         "chunking": cfg.chunking.model_dump(),
         "dedup": cfg.dedup.model_dump(),
     }
+
+
+@router.get("/kb/{kb_id}/settings/schema")
+async def get_kb_settings_schema(kb_id: str):
+    """dot-key별 type/enum/default/overridable/min/max/description/group — rag-admin이 폼을
+    하드코딩 없이 동적으로 그리기 위한 스키마(kb-settings-override-schema.md §5).
+    """
+    from rag_api.config.settings import describe_overridable_settings, get_settings
+    from rag_api.infra.postgres import get_kb_meta
+
+    if get_kb_meta(kb_id) is None:
+        raise NotFoundError(f"KB not found: {kb_id}")
+
+    return {"schema": describe_overridable_settings(get_settings())}
 
 
 @router.get("/kb/{kb_id}/settings/overrides")

@@ -8,7 +8,6 @@ from typing import Literal
 from llama_index.core import Document
 from llama_index.core.schema import BaseNode
 
-from rag_api.config.settings import resolve_settings
 from rag_api.exceptions import ConfigError
 from rag_api.pipeline.steps.parser.extensions import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
 
@@ -82,6 +81,8 @@ def chunk(
     Returns:
         BaseNode list
     """
+    from rag_api.config.settings import resolve_settings
+
     cfg = resolve_settings(kb_id).chunking
     _strategy: ChunkStrategy = strategy or cfg.strategy  # type: ignore[assignment]
     _chunk_size = chunk_size or cfg.chunk_size
