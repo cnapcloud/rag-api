@@ -7,7 +7,10 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import rag_api.infra.postgres as pg
+from rag_api.exceptions import ConfigError
 
 # ──────────────────────────────────────────────
 # Helpers
@@ -353,3 +356,15 @@ def test_clear_kb_settings_overrides_deletes_all_rows_for_kb():
     assert "DELETE FROM kb_settings_overrides" in sql
     assert params == [_KB_ID]
     conn.commit.assert_called_once()
+
+
+def test_run_migrations_missing_dir_raises_config_error():
+    """A downstream image copying src/ without the sibling migrations/ dir must fail loudly,
+    not silently apply zero migrations (Path.glob() on a missing dir yields no error)."""
+    with (
+        patch("rag_api.infra.postgres.Path.is_dir", return_value=False),
+        patch("rag_api.infra.postgres.get_pool") as mock_get_pool,
+    ):
+        with pytest.raises(ConfigError, match="Migrations directory not found"):
+            pg.run_migrations()
+    mock_get_pool.assert_not_called()

@@ -12,6 +12,7 @@ import psycopg_pool
 from psycopg.types.json import Jsonb
 
 from rag_api.config.settings import get_settings
+from rag_api.exceptions import ConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,12 @@ def ping() -> bool:
 def run_migrations() -> None:
     """Apply pending SQL migration files (migrations/*.sql) in alphabetical order."""
     migration_dir = Path(__file__).parents[3] / "migrations"
+    if not migration_dir.is_dir():
+        # A missing dir silently glob()s to zero files (no error), which used to let the
+        # base schema go uncreated with no signal -- e.g. a downstream image (rag-ent-api)
+        # copying src/ from this repo without also copying the sibling migrations/ dir.
+        raise ConfigError(f"Migrations directory not found: {migration_dir}")
+
     with get_pool().connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
