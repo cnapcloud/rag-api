@@ -92,8 +92,9 @@ retrieval:
     min_score: 0.0
   rerank:
     enabled: true
-    provider: "jina"
+    provider: "jina"              # jina | local (자체 호스팅 Cohere-compatible rerank 서버)
     model: "jina-reranker-v2-base-multilingual"
+    base_url: ""                  # provider=local일 때만 사용 (예: http://reranker:8080/rerank)
     top_n: 3
     timeout_sec: 5
     fallback_on_error: true

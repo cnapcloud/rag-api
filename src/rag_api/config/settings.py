@@ -121,9 +121,10 @@ class EmbeddingSettings(BaseModel):
 
 class RerankerSettings(BaseModel):
     enabled: bool = True
-    provider: str = "jina"
+    provider: str = "jina"      # jina | local (자체 호스팅 Cohere-compatible rerank 서버, base_url 필요)
     api_key: str = ""
     model: str = "jina-reranker-v2-base-multilingual"
+    base_url: str = ""          # provider=local일 때만 사용 (예: http://reranker:8080/rerank)
     top_n: int = 3
     timeout_sec: int = 5
     fallback_on_error: bool = True

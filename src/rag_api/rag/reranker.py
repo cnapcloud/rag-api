@@ -1,4 +1,4 @@
-"""reranker.py — Jina/Cohere/Voyage 리랭커 + fallback(RRF 스코어 순)."""
+"""reranker.py — Jina/자체 호스팅(Cohere-compatible) 리랭커 + fallback(RRF 스코어 순)."""
 
 from __future__ import annotations
 
@@ -7,16 +7,20 @@ import logging
 import httpx
 
 from rag_api.config.settings import get_settings
+from rag_api.exceptions import ConfigError
 from rag_api.rag.retriever import SearchResult
 
 logger = logging.getLogger(__name__)
+
+JINA_URL = "https://api.jina.ai/v1/rerank"
 
 
 # ──────────────────────────────────────────────
 # 리랭커 엔진
 # ──────────────────────────────────────────────
 
-async def _rerank_jina(
+async def _rerank_http(
+    url: str,
     query: str,
     results: list[SearchResult],
     top_n: int,
@@ -24,8 +28,14 @@ async def _rerank_jina(
     model: str,
     timeout_sec: int,
 ) -> list[SearchResult]:
-    url = "https://api.jina.ai/v1/rerank"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    """Cohere-compatible rerank API 호출 (Jina, 그리고 같은 스키마의 자체 호스팅 서버 공용).
+
+    request:  {"model", "query", "documents", "top_n"}
+    response: {"results": [{"index", "relevance_score"}, ...]}
+    """
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     payload = {
         "model": model,
         "query": query,
@@ -75,21 +85,24 @@ async def rerank_async(
         return top, "none", False
 
     _top_n = top_n or cfg.top_n
+    url = {"jina": JINA_URL, "local": cfg.base_url}.get(cfg.provider)
 
     try:
-        if cfg.provider == "jina":
-            reranked = await _rerank_jina(
-                query=query,
-                results=results,
-                top_n=_top_n,
-                api_key=cfg.api_key,
-                model=cfg.model,
-                timeout_sec=cfg.timeout_sec,
-            )
-            return reranked, "jina", False
+        if url is None:
+            raise NotImplementedError(f"Unsupported rerank provider: {cfg.provider}")
+        if not url:
+            raise ConfigError("retrieval.rerank.base_url is required for provider=local")
 
-        else:
-            raise NotImplementedError(f"provider={cfg.provider} 미지원")
+        reranked = await _rerank_http(
+            url=url,
+            query=query,
+            results=results,
+            top_n=_top_n,
+            api_key=cfg.api_key,
+            model=cfg.model,
+            timeout_sec=cfg.timeout_sec,
+        )
+        return reranked, cfg.provider, False
 
     except Exception as e:
         logger.warning("Reranker failed (provider=%s), applying fallback: %s", cfg.provider, e)
