@@ -18,6 +18,8 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import psycopg
+
 from rag_api.pipeline.queue.enqueue import (
     DELETE_DELAY_KEY,
     DELETE_QUEUE_KEY,
@@ -69,7 +71,11 @@ class QueueWorker:
         self._running = True
         logger.info("QueueWorker started: max_workers=%d max_per_poll=%d", self._max_workers, self._max_per_poll)
         while self._running:
-            more_work = await self._poll()
+            try:
+                more_work = await self._poll()
+            except Exception as e:
+                logger.error("QueueWorker: poll failed, retrying after interval: %s", e)
+                more_work = False
             if not more_work:
                 await asyncio.sleep(self._poll_interval_sec)
 
@@ -116,19 +122,27 @@ class QueueWorker:
             from rag_api.infra.postgres import get_doc_by_id
             from rag_api.pipeline.utils.doc_state import set_processing
 
-            doc = get_doc_by_id(doc_id)
-            if doc:
-                s = doc.get("status", "")
-                if s == "deleting":
-                    r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
-                    logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
-                    continue
-                if s == "running":
-                    r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
-                    logger.info("Upload event delayed (running): doc_id=%s", doc_id)
-                    continue
+            try:
+                doc = get_doc_by_id(doc_id)
+                if doc:
+                    s = doc.get("status", "")
+                    if s == "deleting":
+                        r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+                        logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
+                        continue
+                    if s == "running":
+                        r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+                        logger.info("Upload event delayed (running): doc_id=%s", doc_id)
+                        continue
+                set_processing(doc_id)
+            except psycopg.OperationalError as e:
+                logger.error(
+                    "QueueWorker: DB error processing upload event, re-queued: doc_id=%s err=%s",
+                    doc_id, e,
+                )
+                r.lpush(UPLOAD_QUEUE_KEY, raw)
+                break
 
-            set_processing(doc_id)
             logger.info("Dequeued upload event, scheduling ingest: doc_id=%s", doc_id)
             asyncio.create_task(self._run_ingest(event))
             upload_count += 1
@@ -156,13 +170,21 @@ class QueueWorker:
 
             from rag_api.infra.postgres import get_doc_by_id
 
-            doc = get_doc_by_id(doc_id)
-            if doc:
-                s = doc.get("status", "")
-                if s == "running":
-                    r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
-                    logger.info("Delete event delayed (running): doc_id=%s", doc_id)
-                    continue
+            try:
+                doc = get_doc_by_id(doc_id)
+                if doc:
+                    s = doc.get("status", "")
+                    if s == "running":
+                        r.zadd(DELETE_DELAY_KEY, {raw: time.time() + delay_sec})
+                        logger.info("Delete event delayed (running): doc_id=%s", doc_id)
+                        continue
+            except psycopg.OperationalError as e:
+                logger.error(
+                    "QueueWorker: DB error processing delete event, re-queued: doc_id=%s err=%s",
+                    doc_id, e,
+                )
+                r.lpush(DELETE_QUEUE_KEY, raw)
+                break
 
             logger.info("Dequeued delete event, scheduling delete: doc_id=%s", doc_id)
             asyncio.create_task(self._run_delete(event))

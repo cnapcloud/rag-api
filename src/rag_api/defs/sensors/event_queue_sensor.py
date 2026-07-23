@@ -7,6 +7,7 @@ import logging
 import time
 from uuid import uuid4
 
+import psycopg
 from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, SkipReason, sensor
 
 from rag_api.config.settings import get_settings as _get_settings
@@ -140,15 +141,23 @@ def event_queue_sensor(context: SensorEvaluationContext):
         from rag_api.infra.postgres import get_doc_by_id
         from rag_api.pipeline.utils.doc_state import set_processing
 
-        doc = get_doc_by_id(doc_id)
-        if doc and doc.get("status") == "deleting":
-            r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
-            logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
-            continue
-        if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, doc_id):
-            continue
-
-        set_processing(doc_id)
+        try:
+            doc = get_doc_by_id(doc_id)
+            if doc and doc.get("status") == "deleting":
+                r.zadd(UPLOAD_DELAY_KEY, {raw: time.time() + delay_sec})
+                logger.info("Upload event delayed (deleting): doc_id=%s", doc_id)
+                continue
+            if doc and _is_blocked_by_active_run(context, r, doc, UPLOAD_DELAY_KEY, delay_sec, raw, doc_id):
+                continue
+            set_processing(doc_id)
+        except psycopg.OperationalError as e:
+            logger.error(
+                "event_queue_sensor: DB error processing upload event, re-queued: doc_id=%s err=%s",
+                doc_id, e,
+            )
+            r.lpush(UPLOAD_QUEUE_KEY, raw)
+            break
+        
         kb_id = doc["kb_id"] if doc else ""
         logger.info("Dispatching ingest_job from queue: doc_id=%s kb=%s", doc_id, kb_id)
         yield RunRequest(
@@ -192,9 +201,17 @@ def event_queue_sensor(context: SensorEvaluationContext):
 
         from rag_api.infra.postgres import get_doc_by_id
 
-        doc = get_doc_by_id(doc_id)
-        if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, doc_id):
-            continue
+        try:
+            doc = get_doc_by_id(doc_id)
+            if doc and _is_blocked_by_active_run(context, r, doc, DELETE_DELAY_KEY, delay_sec, raw, doc_id):
+                continue
+        except psycopg.OperationalError as e:
+            logger.error(
+                "event_queue_sensor: DB error processing delete event, re-queued: doc_id=%s err=%s",
+                doc_id, e,
+            )
+            r.lpush(DELETE_QUEUE_KEY, raw)
+            break
 
         kb_id = doc["kb_id"] if doc else ""
         logger.info("Dispatching delete_job from queue: doc_id=%s kb=%s force=%s", doc_id, kb_id, force)

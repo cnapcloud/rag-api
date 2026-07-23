@@ -69,8 +69,9 @@ def get_pool() -> psycopg_pool.ConnectionPool:
             f"user={cfg.user} password={cfg.password} "
             f"connect_timeout={cfg.connect_timeout}"
         )
-        _pool = psycopg_pool.ConnectionPool(conninfo, min_size=1, max_size=cfg.pool_size, open=False)
-        _pool.open(wait=True, timeout=cfg.connect_timeout)
+        pool = psycopg_pool.ConnectionPool(conninfo, min_size=1, max_size=cfg.pool_size, open=False)
+        pool.open(wait=True, timeout=cfg.connect_timeout)
+        _pool = pool
     return _pool
 
 
