@@ -17,8 +17,8 @@ resources:
     memory: 512Mi
 
 # One entry per app database/role. secretName must have "username"/"password" keys —
-# provide the values via a separate, untracked values file (see values-secrets.yaml.example
-# at the chart root); this chart only creates the Secret objects, never hardcodes credentials.
+# provide the values via a separate, untracked values file (see k8s/values.yaml.example);
+# this chart only creates the Secret objects, never hardcodes credentials.
 #
 # Named cnpg-<role>-role, distinct from the app-level "rag-api-credentials" secret
 # (an envFrom bag with different keys) — same namespace, so they must stay distinctly named.

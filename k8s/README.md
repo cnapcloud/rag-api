@@ -4,16 +4,18 @@ Umbrella Helm chart for the whole stack. `rag-api`/`rag-admin` are this chart's 
 templates; everything else is a dependency.
 
 ```
-k8s/helm/
-  Chart.yaml              # this chart's own metadata + dependency list
-  values.yaml             # the single environment currently deployed
-  values-secrets.yaml.example  # copy to values-secrets.yaml (gitignored) and fill in
-  templates/               # rag-api + rag-admin resources
-  charts/
-    cnpg-cluster/           # local subchart — Cluster CR + backup/restore CronJobs
-    minio-jobs/             # local subchart — bucket bootstrap Job + mirror CronJob
-    ollama/                 # local subchart — Service + EndpointSlice to an external Ollama host
-    *.tgz                   # fetched by `helm dependency update`, gitignored
+k8s/
+  README.md
+  values.yaml.example      # copy to values.yaml (gitignored) and fill in — secrets override
+  helm/
+    Chart.yaml              # this chart's own metadata + dependency list
+    values.yaml             # the single environment currently deployed — base/parent values
+    templates/               # rag-api + rag-admin resources
+    charts/
+      cnpg-cluster/           # local subchart — Cluster CR + backup/restore CronJobs
+      minio-jobs/             # local subchart — bucket bootstrap Job + mirror CronJob
+      ollama/                 # local subchart — Service + EndpointSlice to an external Ollama host
+      *.tgz                   # fetched by `helm dependency update`, gitignored
 ```
 
 ## Dependencies
@@ -36,6 +38,24 @@ elsewhere instead of installing it again.
 
 Everything installs into a single namespace (`--namespace rag`).
 
+## Platform requirements (arm64 / Apple Silicon)
+
+1. **Image**: this chart's own images (`rag-api`, `rag-admin`) are built for arm64.
+
+2. **Parsing**: depends on `onnxruntime` correctly detecting the host CPU's features.
+   - Running the cluster on a Mac inside a VM: use **UTM** with the **Apple
+     Virtualization** backend, not Multipass. UTM's Apple Virtualization framework passes
+     Apple Silicon CPU capabilities through to the guest VM, letting `onnxruntime` detect
+     CPU features correctly — this eliminates the `SIGILL` crash (and the related
+     document-loader `SIGKILL`) seen under other virtualization backends.
+   - At least one node needs the `node-role.kubernetes.io/onnx` label
+     (`kubectl label node <node> node-role.kubernetes.io/onnx=`) so the ingest pipeline's
+     parsing pods get scheduled there (see the `runLauncher` node affinity in
+     `helm/values.yaml`).
+
+3. **Embedding** (when using Ollama): set Ollama's address via `ollama.externalIP` in
+   `helm/values.yaml`.
+
 ## Prerequisites
 
 **`cnpg-operator` is not a dependency of this chart at all.** Install it separately, once
@@ -57,18 +77,19 @@ clean state.
 ## Usage
 
 ```bash
-cp values-secrets.yaml.example values-secrets.yaml   # fill in real credentials
+cp values.yaml.example values.yaml   # fill in real credentials
 
-helm dependency update .
-helm lint . -f values.yaml -f values-secrets.yaml
-helm template rag-api . -n rag -f values.yaml -f values-secrets.yaml    # dry run
-helm upgrade --install rag-api . -n rag --create-namespace --atomic \
-  -f values.yaml -f values-secrets.yaml
-helm uninstall rag-api -n rag
+helm dependency update ./helm
+helm lint ./helm -f helm/values.yaml -f values.yaml
+helm template rag ./helm -n rag -f helm/values.yaml -f values.yaml    # dry run
+helm upgrade --install rag ./helm -n rag --create-namespace --atomic \
+  -f helm/values.yaml -f values.yaml
+helm uninstall rag -n rag
 ```
 
-Add `-f values-prod.yaml` once one exists, layered after `values.yaml`, for a second
-environment.
+`helm/values.yaml` is the base (checked in); `values.yaml` (gitignored, at `k8s/`) layers
+secrets on top. Add `-f values-prod.yaml` (also at `k8s/`) once one exists, layered after
+`values.yaml`, for a second environment.
 
 ## Troubleshooting
 
@@ -86,7 +107,7 @@ kubectl delete rolebinding dagster-rolebinding -n rag
 
 Helm subchart resource names are normally derived from the *release* name, not the
 subchart alias (`<release>-<chart>` unless the release name already contains the chart
-name). `fullnameOverride` is set per subchart in `values.yaml` to pin `minio`, `qdrant`,
+name). `fullnameOverride` is set per subchart in `helm/values.yaml` to pin `minio`, `qdrant`,
 `redis-ha` (`-haproxy`), `mailpit`, `reloader` to fixed names regardless of the release
 name this chart is installed under.
 
@@ -97,11 +118,11 @@ dynamically instead of a fixed string — this is the one config value that depe
 whatever release name you install under.
 
 `rag-api`/`rag-admin` (this chart's own resources) use the same `fullnameOverride`/
-`nameOverride` convention (see `templates/_helpers.tpl`, `values.yaml`).
+`nameOverride` convention (see `templates/_helpers.tpl`, `helm/values.yaml`).
 
 ## Secrets
 
-9 required Secrets: `rag-api-credentials`, `redis-auth`, `minio-root-secret`,
+8 required Secrets: `rag-api-credentials`, `redis-auth`, `minio-root-secret`,
 `mailpit-smtp-auth`, `dagster-postgresql-secret`, and the three `cnpg-cluster` role
 secrets (`cnpg-rag-api-role`/`cnpg-dagster-role`/`cnpg-langfuse-role`).
 
@@ -112,13 +133,13 @@ secrets (`cnpg-rag-api-role`/`cnpg-dagster-role`/`cnpg-langfuse-role`).
   MinIO itself is up.
 
 **Chart-managed (default)**
-- Copy `values-secrets.yaml.example` to `values-secrets.yaml` (gitignored), fill in real
-  values, layer it in with `-f values-secrets.yaml` (see Usage above).
+- Copy `values.yaml.example` to `values.yaml` (gitignored, at `k8s/`), fill in real
+  values, layer it in with `-f values.yaml` (see Usage above).
 - `templates/secrets.yaml` and `charts/cnpg-cluster/templates/secrets.yaml` create/update a
   `Secret` for every key present in `.Values.secrets` / `.Values.cnpg-cluster.secrets`.
 
 **Pre-created / existing secret.** Leave the corresponding key out of those maps (or don't
-layer `values-secrets.yaml` at all) and create the Secret yourself once, e.g.:
+layer `values.yaml` at all) and create the Secret yourself once, e.g.:
 
 ```bash
 kubectl create secret generic rag-api-credentials -n rag \
@@ -150,9 +171,9 @@ name regardless of who created them — Helm never touches or claims ownership o
 you pre-create this way.
 
 `rag-api-credentials` is also referenced by the dagster subchart's code-server deployment
-(same app, same env vars — no separate copy) via `credentialsSecretName` in `values.yaml`;
-change that value directly in the file if you rename it (see the comment there for why
-`--set`/`-f` overrides don't fully propagate).
+(same app, same env vars — no separate copy) via `credentialsSecretName` in
+`helm/values.yaml`; change that value directly in the file if you rename it (see the
+comment there for why `--set`/`-f` overrides don't fully propagate).
 
 ## Other notes
 
@@ -163,4 +184,3 @@ change that value directly in the file if you rename it (see the comment there f
   postgres role's actual password — every dagster component injects `DAGSTER_PG_PASSWORD`
   from it unconditionally (not gated by `generatePostgresqlPasswordSecret`, which only
   controls whether the *dagster chart itself* creates this secret).
-d

@@ -1,7 +1,7 @@
-# DEMO ONLY — placeholder credentials, not for real deployment. Copy to values-secrets.yaml
-# (gitignored) and layer it last:
-#   helm upgrade --install rag-api . -n rag --create-namespace \
-#     -f values.yaml -f values-secrets.yaml
+# DEMO ONLY — placeholder credentials, not for real deployment. Copy to values.yaml
+# (gitignored), run from k8s/, layered after the chart's own helm/values.yaml:
+#   helm upgrade --install rag ./helm -n rag --create-namespace \
+#     -f helm/values.yaml -f values.yaml
 #
 # Mirrors the secretGenerator .env files that used to live under each component's
 # kustomize/overlays/<env>/secrets/*.env — one Secret per top-level key.

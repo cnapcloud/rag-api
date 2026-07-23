@@ -1,6 +1,2 @@
 # Fetched by `helm dependency update` — not committed, rebuilt from Chart.lock + Chart.yaml.
 charts/*.tgz
-
-# Never commit real credentials.
-values-secrets*.yaml
-!values-secrets.yaml.example

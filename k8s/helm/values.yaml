@@ -225,7 +225,7 @@ kiwiUserWords: |
   Ollama	NNP	15.0
 
 # Secret-name -> {key: value} map (see templates/secrets.yaml). Never populate here —
-# use values-secrets.yaml instead (see README.md > Secrets).
+# use k8s/values.yaml instead (see README.md > Secrets).
 secrets: {}
 
 # ─────────────────────────────────────────
@@ -626,7 +626,7 @@ dagster:
                   - weight: 100
                     preference:
                       matchExpressions:
-                        - key: node-role.kubernetes.io/av
+                        - key: node-role.kubernetes.io/onnx
                           operator: Exists
   ingress:
     enabled: true
