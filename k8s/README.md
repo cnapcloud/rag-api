@@ -1,21 +1,23 @@
-# rag-api Helm chart
+# rag-platform Helm chart
 
 Umbrella Helm chart for the whole stack. `rag-api`/`rag-admin` are this chart's own
-templates; everything else is a dependency.
+templates; everything else is a dependency. Published as the public OCI package
+`oci://ghcr.io/cnapcloud/charts/rag-platform`.
 
 ```
 k8s/
   README.md
+  Makefile                  # install/upgrade/uninstall + chart packaging/publishing targets
   values.yaml.example      # copy to values.yaml (gitignored) and fill in — secrets override
   helm/
-    Chart.yaml              # this chart's own metadata + dependency list
+    Chart.yaml              # this chart's own metadata (name: rag-platform) + dependency list
     values.yaml             # the single environment currently deployed — base/parent values
     templates/               # rag-api + rag-admin resources
     charts/
       cnpg-cluster/           # local subchart — Cluster CR + backup/restore CronJobs
       minio-jobs/             # local subchart — bucket bootstrap Job + mirror CronJob
       ollama/                 # local subchart — Service + EndpointSlice to an external Ollama host
-      *.tgz                   # fetched by `helm dependency update`, gitignored
+      *.tgz                   # fetched by `helm dependency build`/`make deps`, gitignored
 ```
 
 ## Dependencies
@@ -67,37 +69,67 @@ helm install cnpg-operator cnpg/cloudnative-pg -n cnpg-system --create-namespace
 ```
 
 If the `Cluster` CR is deployed in the same release before the operator is fully up, CR
-creation fails (no webhook yet) and the whole install fails. `--atomic` tears down the
-entire release on failure, including the operator Deployment itself. So the operator must
-always be installed as a separate release first.
-
-Note: `--atomic` makes Helm clean up any partially-created resources on failure, leaving a
-clean state.
+creation fails (no webhook yet) and the whole install fails. So the operator must always be
+installed as a separate release first. `install`/`upgrade` (below) run a `check-cnpg` target
+first that fails fast with a clear message if the `cnpg-system` namespace isn't there yet,
+instead of letting it fail deep inside `Cluster` CR creation.
 
 ## Usage
 
 ```bash
 cp values.yaml.example values.yaml   # fill in real credentials
 
+make install     # first install
+make upgrade      # subsequent upgrades
+make uninstall    # remove
+```
+
+`install`/`upgrade` pull the chart from `oci://ghcr.io/cnapcloud/charts/rag-platform` at the
+version pinned in `helm/Chart.yaml` (`CHART_VERSION` in the Makefile, read via
+`helm show chart`) — the package is public, so no registry login is needed to install. Both
+targets layer `helm/values.yaml` (base, checked in) then `values.yaml` (gitignored, at
+`k8s/`, secrets) on top. For a second environment, add a `values-prod.yaml` (also at `k8s/`)
+and extend the `-f` list in the Makefile's `install`/`upgrade` recipes to include it.
+
+Neither target passes `--atomic` — a failed install/upgrade leaves the release in
+`pending-install`/`failed` instead of rolling back automatically. A common cause is running
+`make install` before `values.yaml` has real secrets in it: with `secrets: {}` the rendered
+Secrets are empty, several pods sit in `CreateContainerConfigError`, and the `minio-jobs`
+post-install hook waits on a MinIO pod that never becomes ready — which in turn blocks the
+`helm upgrade --install` command itself from returning. If that happens: fix `values.yaml`,
+`make uninstall`, then `make install` again.
+
+To work with the chart directly instead of through the Makefile (e.g. `helm template`/
+`helm lint` against local edits, or installing without the OCI package):
+```bash
 helm dependency update ./helm
 helm lint ./helm -f helm/values.yaml -f values.yaml
 helm template rag ./helm -n rag -f helm/values.yaml -f values.yaml    # dry run
-helm upgrade --install rag ./helm -n rag --create-namespace --atomic \
+helm upgrade --install rag ./helm -n rag --create-namespace \
   -f helm/values.yaml -f values.yaml
-helm uninstall rag -n rag
 ```
 
-`helm/values.yaml` is the base (checked in); `values.yaml` (gitignored, at `k8s/`) layers
-secrets on top. Add `-f values-prod.yaml` (also at `k8s/`) once one exists, layered after
-`values.yaml`, for a second environment.
+## Publishing new chart versions
+
+Only needed when you've changed something under `helm/` and need to publish a new chart
+version — not part of a normal install.
+
+```bash
+cd k8s
+make lint       # includes deps (fetches subcharts), then helm lint
+make push       # package + login (gh CLI token auth to ghcr.io) + helm push
+```
+
+`push` uses `helm/Chart.yaml`'s `version` as the OCI tag — bump `version` there before
+publishing a new one. `login` authenticates to `ghcr.io` via `gh auth token`, so it needs a
+GitHub account with the `write:packages` scope.
 
 ## Troubleshooting
 
 **`<resource> already exists` on install/upgrade, for a release that "does not exist"
 yet.** A previous attempt failed partway through and left resources behind without a
-recorded release (this is why the install command above passes `--atomic`, so a failed
-attempt rolls itself back instead of leaving orphans for the next retry to collide with).
-Fix: delete the conflicting objects and retry, e.g.:
+recorded release (since neither `install` nor `upgrade` uses `--atomic`, a failed attempt
+does not roll itself back). Fix: delete the conflicting objects and retry, e.g.:
 ```bash
 kubectl delete role dagster-role -n rag
 kubectl delete rolebinding dagster-rolebinding -n rag

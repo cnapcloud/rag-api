@@ -1,6 +1,6 @@
 apiVersion: v2
-name: rag-api
-description: RAG API stack — rag-api/rag-admin (this chart) plus the full dependency stack as subcharts
+name: rag-platform
+description: rag-platform stack — rag-api/rag-admin (this chart) plus the full dependency stack as subcharts
 version: 0.1.0
 appVersion: latest
 
