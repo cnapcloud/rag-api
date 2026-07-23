@@ -237,9 +237,17 @@ cnpg-cluster:
   enabled: true
   podMonitor:
     enabled: false
+  # Nightly pg_dump -> MinIO upload. restore CronJob stays subchart-default (manual
+  # trigger only, suspend: true) and is intentionally not exposed here.
+  backup:
+    enabled: false
+    schedule: "0 3 * * *" # daily 03:00, evaluated in the cluster's local time
 
 minio-jobs:
   enabled: true
+  mirror:
+    enabled: false
+    schedule: "30 3 * * *" # daily 03:30, evaluated in the cluster's local time
 
 ollama:
   enabled: true
@@ -415,6 +423,10 @@ mailpit:
     hostname: mailpit.cnapcloud.com
     path: /
     pathType: Prefix
+    extraTls:
+      - hosts:
+          - mailpit.cnapcloud.com
+        secretName: cnapcloud.com-tls
   mailpit:
     smtp:
       authFile:
@@ -637,7 +649,8 @@ dagster:
       path: "/"
       pathType: Prefix
       tls:
-        enabled: false
+        enabled: true
+        secretName: cnapcloud.com-tls
   postgresql:
     enabled: false
     postgresqlHost: "cnpg-postgres-rw.rag.svc"
