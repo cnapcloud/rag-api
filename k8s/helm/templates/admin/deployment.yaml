@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rag-api.admin.fullname" . }}
+spec:
+  replicas: {{ .Values.admin.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "rag-api.admin.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "rag-api.admin.fullname" . }}
+      annotations:
+        configmap.reloader.stakater.com/reload: "admin-ui-config"
+    spec:
+      {{- if $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml $.Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: rag-admin
+          image: "{{ .Values.admin.image.repository }}:{{ .Values.admin.image.tag }}"
+          imagePullPolicy: {{ .Values.admin.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+          env:
+            - name: TZ
+              value: Asia/Seoul
+          envFrom:
+            - configMapRef:
+                name: admin-ui-config
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.admin.resources | nindent 12 }}

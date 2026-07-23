@@ -1,0 +1,74 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Values.clusterName }}-backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          initContainers:
+            - name: pg-dump
+              image: {{ .Values.backup.image }}
+              env:
+                - name: PGHOST
+                  value: {{ .Values.clusterName }}-rw
+                - name: PGDATABASE
+                  value: {{ .Values.backup.database }}
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.credentialsSecretName }}
+                      key: username
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.credentialsSecretName }}
+                      key: password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  pg_dump -Fc -f /backup/{{ .Values.backup.database }}_$(date +%Y%m%d).dump
+                  echo "pg_dump done: $(ls -la /backup)"
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: minio/mc:latest
+              env:
+                - name: MINIO_ENDPOINT
+                  value: {{ .Values.backup.minio.endpoint }}
+                - name: MINIO_ROOT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.minio.existingSecret }}
+                      key: rootUser
+                - name: MINIO_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.minio.existingSecret }}
+                      key: rootPassword
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  mc alias set local "${MINIO_ENDPOINT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
+                  mc cp /backup/{{ .Values.backup.database }}_*.dump local/{{ .Values.backup.minio.bucket }}/
+                  echo "Upload done"
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              emptyDir: {}
+{{- end }}

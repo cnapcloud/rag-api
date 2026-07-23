@@ -1,0 +1,705 @@
+# Single environment, installed into one namespace (rag). A second environment gets its
+# own values-prod.yaml layered on top (see README.md).
+
+# ─────────────────────────────────────────
+# rag-api / rag-admin (this chart's own templates)
+# ─────────────────────────────────────────
+# Same fullnameOverride convention as every subchart below (see templates/_helpers.tpl).
+nameOverride: rag-api
+fullnameOverride: rag-api
+
+# The one name every consumer of rag-api's credentials points at (this chart's Deployment,
+# dagster's runLauncher/user-deployment, reloader annotations). Point it at a pre-existing
+# Secret instead of letting this chart create one (see README.md > Secrets).
+# Edit the value directly here — the *credentialsSecretName aliases below resolve at
+# YAML-parse time, so --set/-f overrides won't reach the dagster: block copies.
+credentialsSecretName: &credentialsSecretName rag-api-credentials
+
+image:
+  repository: ghcr.io/cnapcloud/rag-api
+  tag: latest
+  pullPolicy: Always
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Not created by this chart — create it yourself first: kubectl create secret
+# docker-registry ghcr-pull-token --docker-server=ghcr.io ... -n rag
+# Then set: imagePullSecrets: [{name: ghcr-pull-token}]
+imagePullSecrets: []
+
+admin:
+  fullnameOverride: rag-admin
+  image:
+    repository: ghcr.io/cnapcloud/rag-admin
+    tag: latest
+    pullPolicy: Always
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  env:
+    API_URL: "http://{{ include \"rag-api.fullname\" . }}:8000"
+    OIDC_ISSUER: ""
+    OIDC_CLIENT_ID: ""
+    DOC_REFRESH_INTERVAL: "20"
+    DOC_FAST_INTERVAL: "5"
+    DOC_POLL_ENABLED: "true"
+    PAGE_SIZE: "10"
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    host: rag-admin.cnapcloud.com
+    tlsSecretName: cnapcloud-com-tls
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+# rag-api's settings.yaml, rendered with `tpl` so {{ .Release.Name }} below resolves at
+# install time — needed because dagster's webserver Service name can't be pinned via
+# fullnameOverride (see README.md > Naming). Keep in sync with src/rag_api/config/ schema.
+settings: |
+  server:
+    production: true
+    workers: 1
+
+  dagster:
+    endpoint: "http://{{ .Release.Name }}-webserver.{{ .Release.Namespace }}.svc.cluster.local:3000"
+
+  s3:
+    endpoint: "http://minio.{{ .Release.Namespace }}.svc.cluster.local:9000"
+    rag_bucket: "rag-api"
+    dagster_bucket: "dagster"
+    region: "us-east-1"
+    poll_interval_sec: 10
+    insecure: true
+
+  postgres:
+    host: "cnpg-postgres-rw.{{ .Release.Namespace }}.svc.cluster.local"
+    port: 5432
+    dbname: "rag-api"
+    user: "rag-api"
+    password: "password"
+    pool_size: 5
+    connect_timeout: 30
+
+  qdrant:
+    host: "qdrant.{{ .Release.Namespace }}.svc.cluster.local"
+    port: 6333
+    insecure: true
+
+  redis:
+    host: "redis-ha-haproxy.{{ .Release.Namespace }}.svc.cluster.local"
+    port: 6379
+    db: 0
+
+  queue_worker:
+    enabled: false # true disables dagster
+    max_workers: 4
+
+  queue_poll:
+    poll_interval_sec: 5
+    max_per_poll: 5
+    retry_interval_sec: 10
+
+  ingestion:
+    max_file_size_mb: 20
+    min_content_chars: 200
+    html_extraction_policy: "lenient"
+    parser_plugins: []
+
+  dedup:
+    enabled: true
+    simhash:
+      ngram: 3
+      num_bands: 4
+      simhash_bits: 64
+      hamming_identical_threshold: 2
+      hamming_similar_threshold: 5
+    minhash:
+      jaccard_threshold: 0.65
+      title_fuzzy_threshold: 0.85
+      title_only_min_jaccard_floor: 0.25
+      user_words_path: "/app/data/kiwi_user_words.tsv"
+    chunk_compare:
+      chunk_match_threshold: 0.50
+      body_identical_threshold: 0.95
+      body_similar_threshold: 0.75
+      compare_all_candidates: false
+
+  chunking:
+    strategy: "recursive"
+    chunk_size: 1024
+    chunk_overlap: 128
+    semantic_threshold: 0.8
+
+  provider:
+    name: "ollama"
+    ollama_url: "http://ollama.{{ .Release.Namespace }}.svc.cluster.local:11434"
+    openai_api_key: ""
+
+  embedding:
+    model: "bge-m3"
+    vector_size: 1024
+
+  retrieval:
+    mode: "hybrid"
+    top_k: 10
+    hybrid:
+      alpha: 0.5
+      rrf_k: 60
+    similarity:
+      min_score: 0.0
+    rerank:
+      enabled: true
+      provider: "jina"
+      model: "jina-reranker-v2-base-multilingual"
+      top_n: 3
+      timeout_sec: 5
+      fallback_on_error: true
+
+  knowledge_bases:
+    - id: "kb-01"
+      name: "지식베이스 01"
+      tags: ["general", "default"]
+      description: "첫 번째 지식베이스입니다."
+    - id: "kb-02"
+      name: "지식베이스 02"
+      description: "두 번째 지식베이스입니다."
+
+  mcp:
+    enabled: true
+    transport: streamable-http
+    host: "0.0.0.0"
+    port: 8001
+
+  tracing:
+    enabled: false
+    langfuse_baseurl: "http://langfuse-web.{{ .Release.Namespace }}.svc.cluster.local:3000"
+    service_name: "rag-api"
+
+  logging:
+    level: INFO
+    names: [rag_api, rag_ent]
+
+# Kiwi tokenizer user dictionary, mounted into the dagster code-server (see
+# templates/dagster-code-server-config.yaml). Format: word<TAB>POS_tag[<TAB>score].
+# POS tags: NNG (일반명사), NNP (고유명사), SL (외래어/영어). Default score: 10.0 (higher =
+# higher priority).
+kiwiUserWords: |
+  # --- AI / ML 용어 ---
+  임베딩	NNG	15.0
+  벡터	NNG	15.0
+  토크나이저	NNG	12.0
+  파인튜닝	NNG	12.0
+  프롬프트	NNG	12.0
+  청킹	NNG	12.0
+  리랭킹	NNG	12.0
+  인제스트	NNG	12.0
+  허깅페이스	NNP	12.0
+
+  # --- 시스템 / 인프라 ---
+  컨테이너	NNG	12.0
+  오케스트레이션	NNG	12.0
+  파이프라인	NNG	12.0
+  엔드포인트	NNG	12.0
+  페이로드	NNG	12.0
+  백엔드	NNG	12.0
+  스케줄러	NNG	12.0
+
+  # --- 이 프로젝트 고유명사 ---
+  Qdrant	NNP	15.0
+  MinIO	NNP	15.0
+  Dagster	NNP	15.0
+  LlamaIndex	NNP	15.0
+  FastEmbed	NNP	12.0
+  Ollama	NNP	15.0
+
+# Secret-name -> {key: value} map (see templates/secrets.yaml). Never populate here —
+# use values-secrets.yaml instead (see README.md > Secrets).
+secrets: {}
+
+# ─────────────────────────────────────────
+# Subchart toggles — set enabled: false to reuse existing infra instead of deploying it.
+# ServiceMonitor/PodMonitor blocks assume a Prometheus Operator is present; flip those
+# enabled: false too if not.
+# ─────────────────────────────────────────
+cnpg-cluster:
+  enabled: true
+  podMonitor:
+    enabled: false
+
+minio-jobs:
+  enabled: true
+
+ollama:
+  enabled: true
+  externalIP: "192.168.0.75"
+
+# cnpg-operator is not a dependency of this chart at all — install it separately, once
+# per cluster, before installing this chart. See README.md > Prerequisites for the install
+# command and why bundling it here doesn't work.
+
+redis-ha:
+  enabled: true
+  fullnameOverride: redis-ha
+  image:
+    repository: public.ecr.aws/docker/library/redis
+    tag: 8.2.2-alpine
+  replicas: 3
+  hardAntiAffinity: false
+  affinity: |
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - redis-ha
+            topologyKey: kubernetes.io/hostname
+  haproxy:
+    enabled: true
+    replicas: 1
+    image:
+      repository: public.ecr.aws/docker/library/haproxy
+      tag: 3.0.8-alpine
+    servicePort: 6379
+    readOnly:
+      port: 6380
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: false
+        disableAPICheck: true
+        labels:
+          prometheus: main
+  auth: true
+  existingSecret: redis-auth
+  authKey: REDIS_PASSWORD
+  redis:
+    port: 6379
+    masterGroupName: "mymaster"
+    disableCommands: [FLUSHDB, FLUSHALL]
+    resources:
+      limits:
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  sentinel:
+    port: 26379
+    quorum: 2
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  exporter:
+    enabled: true
+    image: oliver006/redis_exporter
+    tag: v1.86.0
+    serviceMonitor:
+      enabled: false
+      disableAPICheck: true
+      labels:
+        prometheus: main
+  persistentVolume:
+    enabled: true
+    storageClass: ~
+    accessModes: [ReadWriteOnce]
+    size: 1Gi
+
+minio:
+  enabled: true
+  fullnameOverride: minio
+  mode: standalone
+  replicas: 1
+  drivesPerNode: 1
+  pools: 1
+  image:
+    repository: quay.io/minio/minio
+    tag: RELEASE.2024-12-18T13-15-44Z
+    pullPolicy: IfNotPresent
+  mcImage:
+    repository: quay.io/minio/mc
+    tag: RELEASE.2024-11-21T17-21-54Z
+    pullPolicy: IfNotPresent
+  ingress:
+    enabled: true
+    ingressClassName: ~
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "1g"
+    path: /
+    hosts:
+      - minio-api.cnapcloud.com
+    tls:
+      - secretName: cnapcloud.com-tls
+        hosts:
+          - minio-api.cnapcloud.com
+  consoleIngress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    hosts:
+      - minio.cnapcloud.com
+    path: /
+    tls:
+      - secretName: cnapcloud.com-tls
+        hosts:
+          - minio.cnapcloud.com
+  existingSecret: minio-root-secret
+  environment:
+    MINIO_NOTIFY_WEBHOOK_ENABLE_PRIMARY: "on"
+    # Plain string, not tpl-rendered — update by hand if rag-api's fullnameOverride changes.
+    MINIO_NOTIFY_WEBHOOK_ENDPOINT_PRIMARY: "http://rag-api.rag.svc:8000/internal/s3-event"
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 4Gi
+  service:
+    type: ClusterIP
+    port: "9000"
+  consoleService:
+    type: ClusterIP
+    port: "9001"
+  resources:
+    requests:
+      memory: 1Gi
+  securityContext:
+    enabled: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+mailpit:
+  enabled: true
+  fullnameOverride: mailpit
+  image:
+    tag: v1.29.6
+  extraEnvVars:
+    - name: TZ
+      value: Asia/Seoul
+  service:
+    http:
+      type: ClusterIP
+      port: 80
+    smtp:
+      type: ClusterIP
+      port: 25
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: mailpit.cnapcloud.com
+    path: /
+    pathType: Prefix
+  mailpit:
+    smtp:
+      authFile:
+        enabled: true
+        existingSecret:
+          name: mailpit-smtp-auth
+          keyMapping:
+            smtp.htpasswd: smtp.htpasswd
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+reloader:
+  enabled: true
+  fullnameOverride: reloader
+  reloader:
+    watchGlobally: true
+    ignoreConfigMaps: false
+    ignoreSecrets: false
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    serviceAccount:
+      create: true
+    serviceMonitor:
+      enabled: false
+
+qdrant:
+  enabled: true
+  fullnameOverride: qdrant
+  replicaCount: 3
+  readOnlyApiKey:
+    valueFrom:
+      secretKeyRef:
+        name: qdrant-apikey
+        key: read-only-api-key
+  config:
+    cluster:
+      enabled: true
+      p2p:
+        port: 6335
+      consensus:
+        tick_period_ms: 100
+  persistence:
+    accessModes: [ReadWriteOnce]
+    size: 3Gi
+  snapshotPersistence:
+    enabled: true
+    accessModes: [ReadWriteOnce]
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  service:
+    type: ClusterIP
+    ports:
+      - name: http
+        port: 6333
+        targetPort: 6333
+        protocol: TCP
+        checksEnabled: true
+      - name: grpc
+        port: 6334
+        targetPort: 6334
+        protocol: TCP
+        checksEnabled: false
+      - name: p2p
+        port: 6335
+        targetPort: 6335
+        protocol: TCP
+        checksEnabled: false
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    hosts:
+      - host: qdrant.cnapcloud.com
+        paths:
+          - path: /
+            pathType: Prefix
+            servicePort: 6333
+    tls:
+      - secretName: cnapcloud-com-tls
+        hosts:
+          - qdrant.cnapcloud.com
+  env:
+    - name: QDRANT__TELEMETRY_DISABLED
+      value: "true"
+  metrics:
+    serviceMonitor:
+      enabled: false
+      additionalLabels:
+        release: prometheus
+  podManagementPolicy: Parallel
+  topologySpreadConstraints:
+    - maxSkew: 2
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values: ["qdrant"]
+          - key: statefulset.kubernetes.io/pod-name
+            operator: Exists
+
+dagster:
+  enabled: true
+  global:
+    fullnameOverride: dagster
+    dagsterHome: "/opt/dagster/dagster_home"
+    dagsterInstanceConfigMap: "dagster-instance"
+    postgresqlSecretName: "dagster-postgresql-secret"
+  dagsterWebserver:
+    nameOverride: "webserver"
+    replicaCount: 1
+    annotations:
+      secret.reloader.stakater.com/reload: "dagster-postgresql-secret"
+    env:
+      - name: TZ
+        value: Asia/Seoul
+      - name: DAGSTER_POSTGRES_URL
+        value: postgresql://dagster:$(DAGSTER_PG_PASSWORD)@cnpg-postgres-rw.rag.svc:5432/dagster
+    image:
+      repository: "cnapcloud/dagster"
+      tag: "1.13.8"
+      pullPolicy: Always
+    service:
+      type: ClusterIP
+      port: 3000
+    readinessProbe:
+      httpGet:
+        path: "/server_info"
+        port: 3000
+      periodSeconds: 20
+      timeoutSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
+  dagsterDaemon:
+    enabled: true
+    annotations:
+      secret.reloader.stakater.com/reload: "dagster-postgresql-secret"
+    env:
+      - name: TZ
+        value: Asia/Seoul
+      - name: DAGSTER_POSTGRES_URL
+        value: postgresql://dagster:$(DAGSTER_PG_PASSWORD)@cnpg-postgres-rw.rag.svc:5432/dagster
+    image:
+      repository: "cnapcloud/dagster"
+      tag: "1.13.8"
+      pullPolicy: Always
+    runCoordinator:
+      enabled: true
+      type: QueuedRunCoordinator
+      config:
+        queuedRunCoordinator:
+          maxConcurrentRuns: 3
+    runMonitoring:
+      enabled: true
+      pollIntervalSeconds: 30
+      maxResumeRunAttempts: 0
+      maxRuntimeSeconds: 1800
+  runLauncher:
+    type: K8sRunLauncher
+    config:
+      k8sRunLauncher:
+        jobNamespace: rag
+        envConfigMaps:
+          - name: dagster-pipeline-env
+        envSecrets:
+          - name: dagster-postgresql-secret
+          - name: *credentialsSecretName
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        runK8sConfig:
+          jobSpecConfig:
+            ttlSecondsAfterFinished: 1800
+            activeDeadlineSeconds: 1800
+          containerConfig:
+            env:
+              - name: TZ
+                value: Asia/Seoul
+          podSpecConfig:
+            affinity:
+              nodeAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 100
+                    preference:
+                      matchExpressions:
+                        - key: node-role.kubernetes.io/av
+                          operator: Exists
+  ingress:
+    enabled: true
+    apiVersion: "networking.k8s.io/v1/Ingress"
+    ingressClassName: nginx
+    dagsterWebserver:
+      host: "dagster.cnapcloud.com"
+      path: "/"
+      pathType: Prefix
+      tls:
+        enabled: false
+  postgresql:
+    enabled: false
+    postgresqlHost: "cnpg-postgres-rw.rag.svc"
+    postgresqlUsername: dagster
+    postgresqlDatabase: dagster
+    service:
+      port: 5432
+  generatePostgresqlPasswordSecret: false
+  pythonLogs:
+    pythonLogLevel: INFO
+    managedPythonLoggers: [""]
+  dagster-user-deployments:
+    # dagster's own dagster-role/dagster-rolebinding (rbacEnabled above) already grant the
+    # same namespace-wide permissions; this subchart's default rbacEnabled: true renders a
+    # second Role/RoleBinding with the identical fixed name (fullnameOverride: dagster is
+    # shared), which collides on install.
+    rbacEnabled: false
+    deployments:
+      - name: dag-rag-api
+        annotations:
+          configmap.reloader.stakater.com/reload: "dagster-rag-api-config"
+          # comma-joined string — can't alias credentialsSecretName, keep in sync by hand
+          secret.reloader.stakater.com/reload: "rag-api-credentials,dagster-postgresql-secret"
+        image:
+          repository: ghcr.io/cnapcloud/rag-api
+          tag: "latest"
+          pullPolicy: Always
+        codeServerArgs: ["-f", "src/rag_api/defs/definitions.py"]
+        port: 4000
+        env:
+          - name: TZ
+            value: Asia/Seoul
+          - name: PYTHONPATH
+            value: /app/src
+          - name: DAGSTER_HOME
+            value: /opt/dagster/dagster_home
+          - name: DAGSTER_POSTGRES_URL
+            value: postgresql://dagster:$(DAGSTER_PG_PASSWORD)@cnpg-postgres-rw.rag.svc:5432/dagster
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: OPENBLAS_NUM_THREADS
+            value: "1"
+        envSecrets:
+          - name: *credentialsSecretName
+        volumes:
+          - name: dagster-storage
+            emptyDir: {}
+          - name: dagster-rag-api-config
+            configMap:
+              name: dagster-rag-api-config
+          - name: kiwi-user-words-config
+            configMap:
+              name: kiwi-user-words
+        volumeMounts:
+          - name: dagster-storage
+            mountPath: /opt/dagster/dagster_home/storage
+          - name: dagster-rag-api-config
+            mountPath: /app/settings.yaml
+            subPath: settings.yaml
+          - name: kiwi-user-words-config
+            mountPath: /app/data/kiwi_user_words.tsv
+            subPath: kiwi_user_words.tsv

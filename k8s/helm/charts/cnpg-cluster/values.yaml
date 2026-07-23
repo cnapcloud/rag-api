@@ -1,0 +1,69 @@
+clusterName: cnpg-postgres
+instances: 1
+
+postgresql:
+  parameters:
+    max_connections: "200"
+    shared_buffers: "256MB"
+
+storage:
+  size: 2Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+# One entry per app database/role. secretName must have "username"/"password" keys —
+# provide the values via a separate, untracked values file (see values-secrets.yaml.example
+# at the chart root); this chart only creates the Secret objects, never hardcodes credentials.
+#
+# Named cnpg-<role>-role, distinct from the app-level "rag-api-credentials" secret
+# (an envFrom bag with different keys) — same namespace, so they must stay distinctly named.
+roles:
+  - name: rag-api
+    database: rag-api
+    secretName: cnpg-rag-api-role
+  - name: dagster
+    database: dagster
+    secretName: cnpg-dagster-role
+  - name: langfuse
+    database: langfuse
+    secretName: cnpg-langfuse-role
+
+# Populated from the untracked secrets values file, keyed by secretName above.
+# Example: secrets: { cnpg-rag-api-role: { username: rag-api, password: "..." } }
+secrets: {}
+
+# Requires the Prometheus Operator's PodMonitor CRD — not guaranteed to exist in every
+# cluster, so off by default. Enable per environment where Prometheus is deployed.
+podMonitor:
+  enabled: false
+  additionalLabels:
+    release: prometheus
+
+backup:
+  enabled: true
+  schedule: "0 3 * * *" # daily 03:00, evaluated in the cluster's local time
+  image: ghcr.io/cloudnative-pg/postgresql:18.1-system-trixie
+  database: rag-api
+  credentialsSecretName: cnpg-rag-api-role
+  minio:
+    endpoint: "http://minio:9000"
+    bucket: pg-backup
+    existingSecret: minio-root-secret
+
+restore:
+  enabled: true
+  suspend: true # manual trigger only
+  schedule: "0 0 1 1 *"
+  database: rag-api
+  credentialsSecretName: cnpg-rag-api-role
+  restoreSchema: restore_test
+  cleanupSchemaAfter: true
+  minio:
+    endpoint: "http://minio:9000"
+    bucket: pg-backup
+    existingSecret: minio-root-secret

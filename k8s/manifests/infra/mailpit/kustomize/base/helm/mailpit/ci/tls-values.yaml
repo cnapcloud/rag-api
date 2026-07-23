@@ -1,9 +1,0 @@
-mailpit:
-  ui:
-    tls:
-      enabled: true
-      secretName: ui-tls
-  smtp:
-    tls:
-      enabled: true
-      secretName: smtp-tls

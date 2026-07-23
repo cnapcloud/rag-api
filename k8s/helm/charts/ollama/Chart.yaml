@@ -1,0 +1,4 @@
+apiVersion: v2
+name: ollama
+description: Service + EndpointSlice pointer to an Ollama instance running outside the cluster
+version: 0.1.0

@@ -1,0 +1,17 @@
+{{- if index .Values "dagster" "enabled" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dagster-rag-api-config
+data:
+  settings.yaml: |
+    {{- tpl .Values.settings . | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kiwi-user-words
+data:
+  kiwi_user_words.tsv: |
+    {{- .Values.kiwiUserWords | nindent 4 }}
+{{- end }}

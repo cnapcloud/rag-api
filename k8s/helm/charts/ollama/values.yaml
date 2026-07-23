@@ -1,0 +1,4 @@
+# externalIP is the host running Ollama, reachable from cluster nodes.
+# Same role as the per-env kustomize patch that used to set /endpoints/0/addresses/0.
+externalIP: ""
+port: 11434

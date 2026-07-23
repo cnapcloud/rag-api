@@ -1,0 +1,22 @@
+minio:
+  endpoint: "http://minio:9000"
+  existingSecret: minio-root-secret
+
+buckets:
+  - rag-api
+  - dagster
+  - mlflow
+  - langfuse
+  - rag-api-backup
+  - pg-backup
+
+# Webhook event subscription created on the primary data bucket after mb.
+eventBucket: rag-api
+eventArn: "arn:minio:sqs::PRIMARY:webhook"
+eventTypes: "put,delete"
+
+mirror:
+  enabled: true
+  schedule: "30 3 * * *" # daily 03:30, evaluated in the cluster's local time
+  sourceBucket: rag-api
+  destBucket: rag-api-backup

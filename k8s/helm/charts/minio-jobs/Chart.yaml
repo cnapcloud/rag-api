@@ -1,0 +1,4 @@
+apiVersion: v2
+name: minio-jobs
+description: Bucket bootstrap Job and backup-mirror CronJob for the minio subchart (not part of the upstream minio chart)
+version: 0.1.0

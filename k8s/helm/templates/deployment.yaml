@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rag-api.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "rag-api.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "rag-api.fullname" . }}
+      annotations:
+        configmap.reloader.stakater.com/reload: "rag-api-config"
+        secret.reloader.stakater.com/reload: {{ .Values.credentialsSecretName | quote }}
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: rag-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: Asia/Seoul
+          envFrom:
+            - secretRef:
+                name: {{ .Values.credentialsSecretName }}
+          ports:
+            - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: rag-api-config
+              mountPath: /app/settings.yaml
+              subPath: settings.yaml
+              readOnly: true
+      volumes:
+        - name: rag-api-config
+          configMap:
+            name: rag-api-config

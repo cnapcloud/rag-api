@@ -1,0 +1,4 @@
+apiVersion: v2
+name: cnpg-cluster
+description: CloudNativePG Cluster (rag-api/dagster/langfuse databases) + backup/restore CronJobs + PodMonitor
+version: 0.1.0

@@ -1,0 +1,33 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.clusterName }}
+spec:
+  instances: {{ .Values.instances }}
+
+  postgresql:
+    parameters:
+      {{- toYaml .Values.postgresql.parameters | nindent 6 }}
+
+  bootstrap:
+    initdb:
+      postInitSQL:
+        {{- range .Values.roles }}
+        - CREATE ROLE {{ .name | quote }} LOGIN
+        - CREATE DATABASE {{ .database | quote }} OWNER {{ .name | quote }}
+        {{- end }}
+
+  managed:
+    roles:
+      {{- range .Values.roles }}
+      - name: {{ .name }}
+        login: true
+        passwordSecret:
+          name: {{ .secretName }}
+      {{- end }}
+
+  storage:
+    size: {{ .Values.storage.size }}
+
+  resources:
+    {{- toYaml .Values.resources | nindent 4 }}

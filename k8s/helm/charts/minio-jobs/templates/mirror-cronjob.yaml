@@ -1,0 +1,48 @@
+{{- if .Values.mirror.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: minio-{{ .Values.mirror.sourceBucket }}-mirror
+spec:
+  schedule: {{ .Values.mirror.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mirror
+              image: minio/mc:latest
+              env:
+                - name: MINIO_ENDPOINT
+                  value: {{ .Values.minio.endpoint }}
+                - name: MINIO_ROOT_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.minio.existingSecret }}
+                      key: rootUser
+                - name: MINIO_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.minio.existingSecret }}
+                      key: rootPassword
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  mc alias set local "${MINIO_ENDPOINT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
+                  mc mirror --overwrite local/{{ .Values.mirror.sourceBucket }} local/{{ .Values.mirror.destBucket }}
+                  echo "Mirror done, verifying..."
+
+                  DIFF_OUTPUT=$(mc diff local/{{ .Values.mirror.sourceBucket }} local/{{ .Values.mirror.destBucket }})
+                  if [ -n "$DIFF_OUTPUT" ]; then
+                    echo "RESULT: MISMATCH FOUND"
+                    echo "$DIFF_OUTPUT"
+                    exit 1
+                  fi
+                  echo "RESULT: SOURCE AND BACKUP MATCH"
+{{- end }}

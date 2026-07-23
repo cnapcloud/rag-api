@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rag-api.admin.fullname" . }}
+spec:
+  selector:
+    app: {{ include "rag-api.admin.fullname" . }}
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP

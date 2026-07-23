@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rag-api-config
+data:
+  settings.yaml: |
+    {{- tpl .Values.settings . | nindent 4 }}
