@@ -8,11 +8,8 @@
 nameOverride: rag-api
 fullnameOverride: rag-api
 
-# The one name every consumer of rag-api's credentials points at (this chart's Deployment,
-# dagster's runLauncher/user-deployment, reloader annotations). Point it at a pre-existing
-# Secret instead of letting this chart create one (see README.md > Secrets).
-# Edit the value directly here — the *credentialsSecretName aliases below resolve at
-# YAML-parse time, so --set/-f overrides won't reach the dagster: block copies.
+# Secret name every rag-api-credentials consumer points at (Deployment, dagster, reloader).
+# Edit directly here, not via --set/-f — the *credentialsSecretName aliases below resolve at YAML-parse time.
 credentialsSecretName: &credentialsSecretName rag-api-credentials
 
 image:
