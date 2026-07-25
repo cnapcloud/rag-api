@@ -100,13 +100,19 @@ def _instrument_tracing(app: FastAPI) -> None:
         return
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
+    # /mcp$ excluded: FastMCP's streamable-http session loop is spawned once at
+    # `initialize` time and reuses that (by-then-ended) OTel context for every later
+    # tools/call in the session, so an auto HTTP root span for /mcp is disconnected from
+    # the actual tool execution almost every time -- an orphan with no children/attributes
+    # rather than useful data. mcp/tools/{tool} (traced_tool/tool_span) remains the source
+    # of truth for MCP tracing, same as pre-US-46.
     FastAPIInstrumentor.instrument_app(
         app,
-        excluded_urls="/health,/ready,/status$",
+        excluded_urls="/health,/ready,/status$,/mcp$",
         exclude_spans=["receive", "send"],
     )
     logger.info(
-        "FastAPI tracing instrumentation enabled (excluded_urls: /health,/ready,/status;"
+        "FastAPI tracing instrumentation enabled (excluded_urls: /health,/ready,/status,/mcp;"
         " exclude_spans: receive,send)"
     )
 
