@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel, model_validator
 
 from rag_api.exceptions import ConflictError, NotFoundError
+from rag_api.tracing.span import rest_span, set_redacted_input
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -96,12 +97,15 @@ class ConnectorPatch(BaseModel):
 
 
 @router.post("", status_code=201)
+@rest_span
 async def create_connector(body: ConnectorCreate, background_tasks: BackgroundTasks):
     import psycopg.errors
 
     from rag_api.infra.crypto import encrypt_config, mask_config
     from rag_api.infra.postgres import create_connector as pg_create
     from rag_api.infra.postgres import get_kb_meta
+
+    set_redacted_input({"body": {**body.model_dump(), "config": mask_config(body.config)}})
 
     if get_kb_meta(body.kb_id) is None:
         raise NotFoundError(f"KB not found: {body.kb_id}")
@@ -126,6 +130,7 @@ async def create_connector(body: ConnectorCreate, background_tasks: BackgroundTa
 
 
 @router.get("")
+@rest_span
 async def list_connectors_endpoint(
     kb_id: str | None = Query(default=None),
     source_type: str | None = Query(default=None),
@@ -149,6 +154,7 @@ async def list_connectors_endpoint(
 
 
 @router.get("/{connector_id}")
+@rest_span
 async def get_connector_endpoint(connector_id: str):
     from rag_api.infra.crypto import mask_config
     from rag_api.infra.postgres import get_connector
@@ -160,9 +166,15 @@ async def get_connector_endpoint(connector_id: str):
 
 
 @router.patch("/{connector_id}")
+@rest_span
 async def patch_connector(connector_id: str, body: ConnectorPatch, background_tasks: BackgroundTasks):
     from rag_api.infra.crypto import MASK_VALUE, SECRET_FIELDS, encrypt_config, mask_config
     from rag_api.infra.postgres import get_connector, update_connector
+
+    masked_body = body.model_dump()
+    if masked_body.get("config"):
+        masked_body["config"] = mask_config(masked_body["config"])
+    set_redacted_input({"connector_id": connector_id, "body": masked_body})
 
     existing = get_connector(connector_id)
     if existing is None:
@@ -188,6 +200,7 @@ async def patch_connector(connector_id: str, body: ConnectorPatch, background_ta
 
 
 @router.delete("/{connector_id}", status_code=202)
+@rest_span
 async def delete_connector_endpoint(connector_id: str, background_tasks: BackgroundTasks):
     from rag_api.infra.postgres import get_connector, set_connector_status
 
@@ -236,6 +249,7 @@ def _cascade_delete(connector_id: str) -> None:
 
 
 @router.post("/{connector_id}/sync", status_code=202)
+@rest_span
 async def trigger_sync(connector_id: str, background_tasks: BackgroundTasks):
     from rag_api.infra.postgres import get_connector, set_connector_sync_status
 
@@ -323,6 +337,7 @@ def _dispatch_sync(connector: dict) -> None:
 
 
 @router.post("/{connector_id}/sync/abort", status_code=202)
+@rest_span
 async def abort_sync(connector_id: str):
     from rag_api.connectors.abort import request_abort
     from rag_api.infra.postgres import (
@@ -353,6 +368,7 @@ async def abort_sync(connector_id: str):
 
 
 @router.get("/{connector_id}/sync/status")
+@rest_span
 async def get_sync_status(connector_id: str):
     from rag_api.infra.postgres import get_connector, get_connector_doc_counts
 
@@ -372,6 +388,7 @@ async def get_sync_status(connector_id: str):
 
 
 @router.get("/{connector_id}/docs")
+@rest_span
 async def list_connector_docs(
     connector_id: str,
     page: int = Query(default=1, ge=1),

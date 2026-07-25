@@ -41,3 +41,4 @@
 | 43 | 레거시 .doc/.ppt + .pptx 지원 추가 | US-43 | 통합(backlog 참고) — done |
 | 44 | KB별 설정 오버라이드 (ingestion/chunking/dedup) | US-44 | 통합(backlog 참고) — done |
 | 45 | KB 설정 오버라이드 필드 스키마 — 값 검증/description/override 메타데이터 + `/settings/schema` | US-45 | 통합(backlog 참고) — done |
+| [46](46-rest-mcp-tracing-structure-unification.md) | REST/MCP 트레이싱 구조 통일 — root span + business span(input/output) 표준화 | US-46 | in-progress |
