@@ -60,13 +60,15 @@ async def search(
         "results": [
             {
                 "text": r.text,
-                "score": round(r.score, 6),
-                "rerank_score": round(r.rerank_score, 6) if r.rerank_score is not None else None,
                 "kb_id": r.kb_id,
-                "source": r.source,
-                "page_num": r.page_num,
-                "page_label": r.page_label,
-                "chunk_idx": r.chunk_index,
+                "doc_id": r.doc_id,
+                "title": r.title,
+                "chunk_id": r.chunk_id,
+                "score": round(r.score, 6),
+                **({"source": r.source} if r.source and r.source != r.title else {}),
+                **({"page_num": r.page_num} if r.page_num is not None else {}),
+                **({"page_label": r.page_label} if r.page_label else {}),
+                **({"rerank_score": round(r.rerank_score, 6)} if r.rerank_score is not None else {}),
             }
             for r in final_results
         ],
