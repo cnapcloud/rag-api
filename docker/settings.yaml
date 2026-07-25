@@ -115,8 +115,8 @@ mcp:
   port: 8001
 
 tracing:
-  enabled: false
-  langfuse_baseurl: ""
+  enabled: true
+  langfuse_baseurl: http://192.168.0.75:3020
   service_name: "rag-api"
 
 logging:
