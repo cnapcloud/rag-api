@@ -70,7 +70,7 @@ def _node_to_result(kb_id: str, node) -> SearchResult:
         doc_type=meta.get("doc_type", ""),
         chunk_index=int(meta.get("chunk_index", 0)),
         page_num=meta.get("page_num"),
-        page_label=meta.get("page_label"),
+        page_label=str(v) if (v := meta.get("page_label")) is not None else None,
         text=node.get_content(),
         score=float(node.score or 0.0),
         rerank_score=None,

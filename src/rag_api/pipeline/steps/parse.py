@@ -105,6 +105,15 @@ def parse(
         )
         documents = reader.load_data()
 
+        for doc in documents:
+            label = doc.metadata.pop("page_label", None)
+            if label is None:
+                continue
+            if isinstance(label, int) and doc.metadata.get("page_num") is None:
+                doc.metadata["page_num"] = label
+            else:
+                doc.metadata["page_label"] = str(label)
+
         for post_process in parser.get_post_processors():
             documents.extend(post_process(documents, file_path, suffix, kb_id))
 

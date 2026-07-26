@@ -42,3 +42,4 @@
 | 44 | KB별 설정 오버라이드 (ingestion/chunking/dedup) | US-44 | 통합(backlog 참고) — done |
 | 45 | KB 설정 오버라이드 필드 스키마 — 값 검증/description/override 메타데이터 + `/settings/schema` | US-45 | 통합(backlog 참고) — done |
 | [46](46-rest-mcp-tracing-structure-unification.md) | REST/MCP 트레이싱 구조 통일 — root span + business span(input/output) 표준화 | US-46 | in-progress |
+| [47](47-page-label-type-mismatch-500.md) | 다중 KB 검색 시 page_label 타입 불일치로 인한 500 에러 수정 | US-47 | done |
