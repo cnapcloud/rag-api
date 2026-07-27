@@ -25,6 +25,7 @@ async def search(
 ) -> dict[str, Any]:
     """Search knowledge bases and return relevant text chunks.
 
+    query: use the same language as the user's original request. Do not translate it.
     kb_ids: knowledge base IDs to search. Omit to search all available KBs.
     top_k: maximum number of results to return. Defaults to server setting.
     mode: 'hybrid' for keyword+semantic search (better for specific terms),
