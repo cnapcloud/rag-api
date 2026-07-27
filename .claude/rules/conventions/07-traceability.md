@@ -27,3 +27,6 @@ prd.md (§N, 고정 앵커) ← design/*.md ← backlogs/US-XX-*.md ↔ plans/XX
 
 - [ ] design 표(US 컬럼) 또는 변경 이력에 이번 작업 반영
 - [ ] `plans/plan.md`에 해당 행 확인 — 없으면 추가
+- [ ] `plans/plan.md` 해당 행 status를 `backlog.md`와 동일하게 동기화 (있으면 값 갱신)
+- [ ] 행에 링크된 plan 파일이 실제로 존재하는지 확인 — 없으면 링크 제거하고
+      `통합(backlog 참고)`로 전환

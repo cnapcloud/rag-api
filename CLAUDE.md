@@ -57,9 +57,11 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 - `from src.config...` 형태의 import 금지 (`rag_api`는 editable install되어 있어 `PYTHONPATH` 불필요)
 - 인프라 클라이언트를 테스트에서 실제 연결로 사용 금지 (항상 conftest.py 픽스처 사용, `.claude/rules/conventions/02-testing.md`)
 - `infra/` 파일 역할 혼동 금지: `s3.py`(스토리지) / `redis.py`(큐) / `postgres.py`(메타데이터) / `qdrant.py`(벡터)
+- `infra/` 파일 수정 전 반드시 Read/grep으로 내용 확인 (복붙 사고 전례, 2026-06-07)
 - 파이프라인 Op 함수는 부작용 없는 순수 함수로 유지 (Dagster와 runner.py 양쪽에서 재사용)
 - 이모지 사용 금지 — 코드, 로그, 문서 어디서도 이모지 불가
 - `logger.*()` 메시지와 `print()` CLI 출력 모두 영어로 작성
+- 커밋 메시지에 `Co-Authored-By: Claude` 트레일러 금지 (2026-07-14 이후 신규 커밋)
 
 ## Session Start
 
@@ -70,6 +72,10 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 
 각 파일의 Full History/개별 상세 파일은 해당 항목을 실제로 조사·작업할 때만 연다.
 MEMORY.md 인덱스가 가리키는 개별 상세 파일은 이번 작업과 직접 관련될 때만 연다.
+
+위 3개 외 `.claude/rules/` 하위 파일(`README.md` 포함)은 세션 시작 시 사전 탐색하지
+않는다. 해당 컨벤션이 실제로 필요한 작업(예: infra 파일 수정, git merge, backlog `done`
+전환)을 할 때만 그때 연다.
 
 backlog/plan 진행 상황 갱신 규칙은 `.claude/rules/conventions/00-progress-tracking.md`(세션
 북키핑)에, design 문서·backlog 작성 시 링크 포맷은 `07-traceability.md`에 있다.

@@ -16,3 +16,4 @@ Claude Code가 세션 간에 학습한 내용을 저장하는 공간. 코드/des
 - [파서 레지스트리(US-41) 도입 배경](parser_registry_design_rationale.md) — rag-api 공개 확정으로 비공개 파서(캡셔닝/OCR)를 rag-ent-api에서 주입해야 함; E-21로 완료, 관련 문서는 rag-ent-api에 있음 (2026-07-16)
 - [docutils RST 스타일시트 함정](docutils_rst_stylesheet_pitfall.md) — publish_string()은 CSS를 <style>로 임베드, 태그 제거만으론 안 지워짐 → publish_parts()['body'] 사용 (2026-07-16)
 - [config/settings.py ↔ pipeline/steps 순환 임포트 함정](config_settings_pipeline_circular_import_pitfall.md) — settings.py가 step 모듈 타입 재사용 시 step 쪽의 resolve_settings import를 함수 내부로 지연시켜야 함 (2026-07-19)
+- [pptx page_label 타입 함정](pptx_page_label_type_pitfall.md) — 서드파티 리더(PptxReader)가 page_label에 int를 넣어 str 스키마 계약을 깨고, 다중 KB 검색에서만 드러남 (2026-07-27, US-47)
