@@ -2,6 +2,7 @@
 name = "rag-api"
 version = "0.1.0"
 requires-python = ">=3.11"
+license = { text = "MIT" }
 dependencies = [
     # LlamaIndex 코어
     "llama-index-core>=0.10.0",
