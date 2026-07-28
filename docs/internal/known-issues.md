@@ -34,6 +34,7 @@
   - [24. 나무위키 /activity/ 페이지가 봇 User-Agent에만 404를 반환해 unrestricted 크롤링 문서가 failed로 남음](#24-나무위키-activity-페이지가-봇-user-agent에만-404를-반환해-unrestricted-크롤링-문서가-failed로-남음)
   - [25. page_label이 PDF에 실제로 인쇄된 페이지 번호와 다를 수 있음 — /PageLabels 룰이 없는 문서는 항상 null](#25-page_label이-pdf에-실제로-인쇄된-페이지-번호와-다를-수-있음--pagelabels-룰이-없는-문서는-항상-null)
   - [26. upsert 단계의 delete-then-insert 구조로 reindex 중 insert 실패 시 기존 Qdrant 청크가 유실됨](#26-upsert-단계의-delete-then-insert-구조로-reindex-중-insert-실패-시-기존-qdrant-청크가-유실됨)
+  - [27. trafilatura favor_recall 모드가 인라인 서식 태그(strong/b/em/i) 주변 텍스트를 통째로 유실](#27-trafilatura-favor_recall-모드가-인라인-서식-태그strongbemi-주변-텍스트를-통째로-유실)
 
 ---
 
@@ -1304,3 +1305,60 @@ reindex 실행 안에서 delete와 insert 사이에 원자성이 없어 생기�
 - Point ID를 `(doc_id, chunk_index)` 등 deterministic 값으로 바꿔 upsert 자체가 덮어쓰기가
   되도록 하는 방안도 근본적인 대안이 될 수 있으나, 기존 point ID 체계 전반에 영향을 주는
   변경이라 범위가 크다 — 검토하지 않았다.
+
+---
+
+## 27. trafilatura favor_recall 모드가 인라인 서식 태그(strong/b/em/i) 주변 텍스트를 통째로 유실
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved (워크어라운드 — 업스트림 미해결) |
+| 발견일 | 2026-07-28 |
+| 해결일 | 2026-07-28 |
+| 심각도 | MED |
+
+**증상**
+
+kb-01의 나무위키 "고양이" 문서(17번 항목과 동일 문서)에서, 원문 "사람 나이로 치면 약
+150살이다."가 인제스트 후 "사람 나이로 치면 약"까지만 저장되고 "150살이다."가 통째로
+사라졌다. Qdrant point의 저장된 `text`를 확인해보면 유실 지점에 원본에 없던 `\n\n`이 생겨
+있었다(`<br><br>`이 바로 뒤에 있어 문단 구분처럼 보이지만, 실제로는 다음 문장 전체가
+유실된 자리).
+
+**원인**
+
+`parser/html.py`의 `HTMLCleanReader`가 쓰는 `trafilatura`(2.1.0, 조사 시점 PyPI 최신)의
+`favor_recall=True` 추출 경로가 `<strong>`처럼 인라인 서식 태그로 감싼 텍스트와 그 직후
+텍스트 노드를 통째로 삼키는 버그다(업스트림 `adbar/trafilatura` 이슈 #882, #890 — 2026-07-28
+기준 아직 미배포). `settings.ingestion.html_extraction_policy` 기본값이 `"lenient"`라
+운영에서는 항상 `favor_recall=True` 경로를 타므로 영향 범위가 넓다.
+
+17번 항목과의 관계: 17번은 `favor_precision` 모드가 본문 전체를 boilerplate로 오판해 버리는
+문제였고, 그 해결책으로 `favor_recall`(lenient)을 기본값으로 전환했다(US-39). 이번 이슈는 바로
+그 `favor_recall` 모드 자체가 갖고 있던, 훨씬 더 좁은 범위지만 별개인 버그다 — 본문 전체가
+아니라 인라인 서식 태그 주변 텍스트만 국소적으로 사라진다.
+
+**해결**
+
+`HTMLCleanReader.load_data()`에서 HTML을 `trafilatura.extract()`에 넘기기 전에
+`<strong>`/`<b>`/`<em>`/`<i>` 태그를 unwrap(태그만 제거, 텍스트는 보존)하는 전처리
+(`_unwrap_inline_tags`)를 추가했다. 실제 나무위키 문서로 재현·검증했고, kb-01 재인제스트 후
+Qdrant에 "사람 나이로 치면 약 150살이다." 전체 문장이 온전히 저장됨을 확인했다. 상세는
+US-48 참고.
+
+**현재 대안**
+
+`_unwrap_inline_tags`로 인라인 태그를 벗겨내는 전처리가 사실상의 해결책이다. 트레이드오프로
+굵게/기울임 강조 정보는 사라지지만, 검색 파이프라인이 강조 서식을 사용하지 않아 수용 가능하다고
+판단했다.
+
+**미해결**
+
+- `trafilatura` 업스트림 버그(#882, #890) 자체는 아직 수정 릴리스가 나오지 않았다. 향후 신규
+  버전에서 반영되면 워크어라운드 제거를 재검토한다.
+- unwrap 대상은 `strong`/`b`/`em`/`i` 4종으로 한정했다. #890은 인라인 태그가 2개 이상 +
+  table 조상 조합에서도 발생한다고 보고돼, 다른 인라인 태그(`span`, `mark` 등)에서 유사 증상이
+  재발하면 `_INLINE_TAGS_TO_UNWRAP` 목록 확장을 검토해야 한다.
+- 원본 trafilatura 버그를 최소 HTML로 결정론적으로 재현하는 시도는 실패했다(namu.wiki 페이지의
+  구체적 DOM 구조에 의존하는 것으로 보임) — 그래서 회귀 테스트는 `_unwrap_inline_tags` 함수
+  자체의 동작만 검증하고, trafilatura 내부 동작에 의존하는 통합 테스트는 추가하지 않았다.
