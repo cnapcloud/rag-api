@@ -171,3 +171,33 @@ def test_html_clean_reader_no_extractable_content_returns_empty_text(
     assert len(docs) == 1
     assert docs[0].text == ""
     assert docs[0].metadata["file_path"] == str(html_only_boilerplate_file)
+
+
+# Regression: trafilatura's favor_recall extraction can silently drop text inside
+# (and immediately after) <strong>/<b>/<em>/<i> tags on some page structures
+# (upstream adbar/trafilatura #882, #890, open as of 2.1.0). Confirmed on a
+# namu.wiki page where "<strong>150살</strong>이다." was extracted as just "약"
+# with the rest of the sentence gone. HTMLCleanReader unwraps these tags before
+# handing HTML to trafilatura to sidestep the bug.
+@pytest.mark.parametrize("tag", ["strong", "b", "em", "i"])
+def test_unwrap_inline_tags_removes_tag_but_keeps_text(tag):
+    from rag_api.pipeline.steps.parser.html import _unwrap_inline_tags
+
+    html = f"<p>사람 나이로 치면 약 <{tag}>150살</{tag}>이다.</p>"
+
+    result = _unwrap_inline_tags(html)
+
+    assert f"<{tag}>" not in result
+    assert f"</{tag}>" not in result
+    assert "약 150살이다" in result
+
+
+def test_unwrap_inline_tags_leaves_non_inline_markup_untouched():
+    from rag_api.pipeline.steps.parser.html import _unwrap_inline_tags
+
+    html = "<div><h1>Title</h1><p>Body <strong>bold</strong> text</p></div>"
+
+    result = _unwrap_inline_tags(html)
+
+    assert "<h1>Title</h1>" in result
+    assert "<p>Body bold text</p>" in result
