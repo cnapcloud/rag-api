@@ -67,13 +67,14 @@ def run_ingest_pipeline(
             )
             return 0
 
-        nodes = chunk(documents, kb_id=kb_id)
-        if not nodes:
+        chunk_result = chunk(documents, kb_id=kb_id)
+        if not chunk_result.nodes:
             raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
-        embedded_nodes = embed(nodes)
+        embedded_nodes = embed(chunk_result.nodes)
         upsert_result = upsert(
             kb_id, doc_id, embedded_nodes,
             title=title, source_type=source_type, source=source,
+            parents=chunk_result.parents,
         )
 
         cfg = get_settings().embedding

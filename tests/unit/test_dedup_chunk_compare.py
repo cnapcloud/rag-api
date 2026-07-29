@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from rag_api.pipeline.steps.chunk import ChunkResult
 from rag_api.pipeline.steps.dedup.chunk_compare import (
     ChunkCompareScore,
     compare_chunks,
@@ -78,7 +79,7 @@ def test_compare_chunks_coverage_weighted_average():
     nodes = [MagicMock(), MagicMock()]
     embedded = [_embedded_node(), _embedded_node()]
 
-    with patch(_CHUNK, return_value=nodes), \
+    with patch(_CHUNK, return_value=ChunkResult(nodes=nodes)), \
          patch(_EMBED, return_value=embedded), \
          patch(_GET_DOC, return_value={"chunk_count": 2}), \
          patch(_SEARCH, side_effect=[[("p1", 0.9), ("p2", 0.3)], [("p3", 0.4)]]) as mock_search:
@@ -98,7 +99,7 @@ def test_compare_chunks_no_matches_zero_score():
     nodes = [MagicMock()]
     embedded = [_embedded_node()]
 
-    with patch(_CHUNK, return_value=nodes), \
+    with patch(_CHUNK, return_value=ChunkResult(nodes=nodes)), \
          patch(_EMBED, return_value=embedded), \
          patch(_GET_DOC, return_value={"chunk_count": 1}), \
          patch(_SEARCH, return_value=[("p1", 0.1)]):
@@ -111,7 +112,7 @@ def test_compare_chunks_no_matches_zero_score():
 
 
 def test_compare_chunks_empty_documents_zero_score():
-    with patch(_CHUNK, return_value=[]), patch(_EMBED) as mock_embed:
+    with patch(_CHUNK, return_value=ChunkResult(nodes=[])), patch(_EMBED) as mock_embed:
         score = compare_chunks(
             kb_id="kb-1", doc_id="doc-a", documents=[], candidate_doc_id="doc-c", cfg=_make_cfg()
         )
@@ -124,7 +125,7 @@ def test_compare_chunks_scales_score_by_chunk_ratio():
     nodes = [MagicMock(), MagicMock(), MagicMock()]
     embedded = [_embedded_node(), _embedded_node(), _embedded_node()]
 
-    with patch(_CHUNK, return_value=nodes), \
+    with patch(_CHUNK, return_value=ChunkResult(nodes=nodes)), \
          patch(_EMBED, return_value=embedded), \
          patch(_GET_DOC, return_value={"chunk_count": 4}), \
          patch(_SEARCH, return_value=[("p1", 1.0)]):
@@ -139,7 +140,7 @@ def test_compare_chunks_scales_score_by_chunk_ratio():
 def test_compare_chunks_skips_embed_when_chunk_ratio_below_similar_threshold():
     nodes = [MagicMock()]
 
-    with patch(_CHUNK, return_value=nodes), \
+    with patch(_CHUNK, return_value=ChunkResult(nodes=nodes)), \
          patch(_GET_DOC, return_value={"chunk_count": 10}), \
          patch(_EMBED) as mock_embed, \
          patch(_SEARCH) as mock_search:
@@ -157,7 +158,7 @@ def test_compare_chunks_skips_embed_when_chunk_ratio_below_similar_threshold():
 def test_compare_chunks_missing_candidate_chunk_count_skips():
     nodes = [MagicMock()]
 
-    with patch(_CHUNK, return_value=nodes), \
+    with patch(_CHUNK, return_value=ChunkResult(nodes=nodes)), \
          patch(_GET_DOC, return_value=None), \
          patch(_EMBED) as mock_embed:
         score = compare_chunks(

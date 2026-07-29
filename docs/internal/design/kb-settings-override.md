@@ -141,7 +141,7 @@ def clear_kb_settings_overrides(kb_id: str) -> None:
 | ingestion | `ingestion.table_layout.*` | 가능 | 리더 내부 판단(reader) + 후처리기 등록 무조건화 필요(§6) |
 | ingestion | `ingestion.image_captioning.*` | 가능 | 등록 무조건화 + 리더 내부 판단으로 전환 필요(§6) |
 | ingestion | `ingestion.parser_plugins` | **배제** | 배포 타임에 "어떤 모듈이 존재하는가"를 정하는 값 — KB별로 다르면 동일 확장자를 두 리더가 동시에 요구하는 상황이 생겨 last-writer-wins 구조와 충돌 |
-| chunking | `chunking.strategy`, `chunking.chunk_size`, `chunking.chunk_overlap`, `chunking.min_chunk_chars`, `chunking.semantic_threshold`, `chunking.code_chunk_lines`, `chunking.code_chunk_lines_overlap` | 가능 | 전부 순수 파라미터, 캐싱 없음 |
+| chunking | `chunking.strategy`, `chunking.chunk_size`, `chunking.chunk_overlap`, `chunking.min_chunk_chars`, `chunking.semantic_threshold`, `chunking.code_max_chars` | 가능 | 전부 순수 파라미터, 캐싱 없음 |
 | dedup | `dedup.enabled`, `dedup.chunk_compare.*`, `dedup.minhash.jaccard_threshold`/`title_fuzzy_threshold`/`title_only_min_jaccard_floor`, `dedup.simhash.hamming_identical_threshold`/`hamming_similar_threshold` | 가능 | 매 비교 호출 시 파라미터로 전달 |
 | dedup | `dedup.simhash.ngram`/`num_bands`/`simhash_bits` | **배제** | 이미 Postgres `simhash_bands`에 저장된 기존 문서의 지문과 계산 방식이 달라져 비교 불가능해짐(재인덱싱 없이는 위험) |
 | dedup | `dedup.minhash.user_words_path` | **배제** | Kiwi 토크나이저가 프로세스 전역 싱글턴(`dedup/tokenizer.py`)으로 1회 로드 — KB별 경로를 지원하려면 경로 키 캐시가 별도로 필요, 이번 범위 밖 |

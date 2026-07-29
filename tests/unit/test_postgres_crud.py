@@ -368,3 +368,69 @@ def test_run_migrations_missing_dir_raises_config_error():
         with pytest.raises(ConfigError, match="Migrations directory not found"):
             pg.run_migrations()
     mock_get_pool.assert_not_called()
+
+
+# ──────────────────────────────────────────────
+# parent_chunks — docs/internal/design/parent-child-chunking.md §4.1
+# ──────────────────────────────────────────────
+
+def _parent_chunk(chunk_id="doc-a:0", level=0, parent_id=None, chunk_index=0,
+                   text="ancestor text", child_count=2, page_num=None, page_label=None):
+    from rag_api.pipeline.steps.chunk import ParentChunk
+    return ParentChunk(
+        chunk_id=chunk_id, level=level, parent_id=parent_id, chunk_index=chunk_index,
+        text=text, child_count=child_count, page_num=page_num, page_label=page_label,
+    )
+
+
+def test_save_parent_chunks_empty_list_is_noop():
+    with _fake_pool() as (conn, _):
+        pg.save_parent_chunks("doc-a", _KB_ID, [])
+    conn.cursor.assert_not_called()
+    conn.commit.assert_not_called()
+
+
+def test_save_parent_chunks_inserts_with_on_conflict_upsert():
+    parents = [_parent_chunk("doc-a:0"), _parent_chunk("doc-a:1", level=1, parent_id="doc-a:0")]
+    with _fake_pool() as (conn, _):
+        pg.save_parent_chunks("doc-a", _KB_ID, parents)
+
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.executemany.assert_called_once()
+    sql, rows = cur.executemany.call_args[0]
+    assert "INSERT INTO parent_chunks" in sql
+    assert "ON CONFLICT (chunk_id) DO UPDATE" in sql
+    assert rows[0][0] == "doc-a:0"
+    assert rows[0][1] == "doc-a"  # doc_id
+    assert rows[0][2] == _KB_ID
+    conn.commit.assert_called_once()
+
+
+def test_get_parent_chunks_empty_ids_returns_empty_dict():
+    with _fake_pool() as (conn, _):
+        result = pg.get_parent_chunks([])
+    assert result == {}
+    conn.execute.assert_not_called()
+
+
+def test_get_parent_chunks_returns_keyed_by_chunk_id():
+    row = ("doc-a:0", "doc-a", _KB_ID, 0, None, 0, "ancestor text", 2, None, None)
+    with _fake_pool(fetchall_rows=[row]) as (conn, _):
+        result = pg.get_parent_chunks(["doc-a:0"])
+
+    assert set(result) == {"doc-a:0"}
+    assert result["doc-a:0"]["child_count"] == 2
+    assert result["doc-a:0"]["parent_id"] is None
+    assert result["doc-a:0"]["text"] == "ancestor text"
+    sql, params = conn.execute.call_args[0]
+    assert "parent_chunks" in sql
+    assert params == [["doc-a:0"]]
+
+
+def test_delete_parent_chunks_by_doc_deletes_all_levels():
+    with _fake_pool() as (conn, _):
+        pg.delete_parent_chunks_by_doc("doc-a")
+    sql, params = conn.execute.call_args_list[0][0]
+    assert "DELETE FROM parent_chunks" in sql
+    assert params == ["doc-a"]
+    conn.commit.assert_called_once()

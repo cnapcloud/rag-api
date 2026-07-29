@@ -12,6 +12,7 @@ from rag_api.pipeline.utils.purge import purge_doc_artifacts
 _DEL_CHUNKS = "rag_api.infra.qdrant.delete_chunks_by_doc_id"
 _DEL_SIMHASH = "rag_api.infra.postgres.delete_simhash_bands"
 _DEL_MINHASH = "rag_api.infra.postgres.delete_minhash_bands"
+_DEL_PARENT_CHUNKS = "rag_api.infra.postgres.delete_parent_chunks_by_doc"
 _DEL_S3 = "rag_api.infra.s3.delete_by_key"
 
 DOC_ID = "doc-abc"
@@ -22,17 +23,19 @@ STORAGE_KEY = "kb-01/file.pdf"
 def test_all_three_called_with_chunks():
     with patch(_DEL_CHUNKS) as mock_chunks, \
             patch(_DEL_SIMHASH) as mock_sim, \
-            patch(_DEL_MINHASH) as mock_min:
+            patch(_DEL_MINHASH) as mock_min, \
+            patch(_DEL_PARENT_CHUNKS) as mock_parent:
         purge_doc_artifacts(DOC_ID, KB_ID, include_chunks=True)
 
     mock_chunks.assert_called_once_with(KB_ID, DOC_ID)
     mock_sim.assert_called_once_with(DOC_ID)
     mock_min.assert_called_once_with(DOC_ID)
+    mock_parent.assert_called_once_with(DOC_ID)
 
 
 def test_include_chunks_false_skips_qdrant():
     with patch(_DEL_CHUNKS) as mock_chunks, \
-            patch(_DEL_SIMHASH), patch(_DEL_MINHASH):
+            patch(_DEL_SIMHASH), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         purge_doc_artifacts(DOC_ID, KB_ID, include_chunks=False)
 
     mock_chunks.assert_not_called()
@@ -40,14 +43,14 @@ def test_include_chunks_false_skips_qdrant():
 
 def test_empty_kb_id_skips_qdrant():
     with patch(_DEL_CHUNKS) as mock_chunks, \
-            patch(_DEL_SIMHASH), patch(_DEL_MINHASH):
+            patch(_DEL_SIMHASH), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         purge_doc_artifacts(DOC_ID, kb_id="", include_chunks=True)
 
     mock_chunks.assert_not_called()
 
 
 def test_storage_key_present_calls_s3():
-    with patch(_DEL_CHUNKS), patch(_DEL_SIMHASH), patch(_DEL_MINHASH), \
+    with patch(_DEL_CHUNKS), patch(_DEL_SIMHASH), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS), \
             patch(_DEL_S3) as mock_s3:
         purge_doc_artifacts(DOC_ID, KB_ID, STORAGE_KEY, include_chunks=False)
 
@@ -55,7 +58,7 @@ def test_storage_key_present_calls_s3():
 
 
 def test_no_storage_key_skips_s3():
-    with patch(_DEL_CHUNKS), patch(_DEL_SIMHASH), patch(_DEL_MINHASH), \
+    with patch(_DEL_CHUNKS), patch(_DEL_SIMHASH), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS), \
             patch(_DEL_S3) as mock_s3:
         purge_doc_artifacts(DOC_ID, KB_ID, include_chunks=False)
 
@@ -64,7 +67,7 @@ def test_no_storage_key_skips_s3():
 
 def test_swallow_false_propagates_exception():
     with patch(_DEL_CHUNKS, side_effect=RuntimeError("qdrant down")), \
-            patch(_DEL_SIMHASH), patch(_DEL_MINHASH):
+            patch(_DEL_SIMHASH), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         with pytest.raises(RuntimeError, match="qdrant down"):
             purge_doc_artifacts(DOC_ID, KB_ID, include_chunks=True, swallow=False)
 
@@ -73,22 +76,41 @@ def test_swallow_true_continues_after_chunk_failure(caplog):
     with patch(_DEL_CHUNKS, side_effect=RuntimeError("qdrant down")), \
             patch(_DEL_SIMHASH) as mock_sim, \
             patch(_DEL_MINHASH) as mock_min, \
+            patch(_DEL_PARENT_CHUNKS) as mock_parent, \
             caplog.at_level(logging.WARNING):
         purge_doc_artifacts(DOC_ID, KB_ID, include_chunks=True, swallow=True)
 
     assert "delete_chunks_by_doc_id" in caplog.text
     mock_sim.assert_called_once_with(DOC_ID)
     mock_min.assert_called_once_with(DOC_ID)
+    mock_parent.assert_called_once_with(DOC_ID)
 
 
 def test_swallow_true_continues_after_simhash_failure(caplog):
     with patch(_DEL_CHUNKS), \
             patch(_DEL_SIMHASH, side_effect=RuntimeError("pg down")), \
             patch(_DEL_MINHASH) as mock_min, \
+            patch(_DEL_PARENT_CHUNKS) as mock_parent, \
             caplog.at_level(logging.WARNING):
         purge_doc_artifacts(DOC_ID, KB_ID, include_chunks=True, swallow=True)
 
     assert "delete_simhash_bands" in caplog.text
+    mock_min.assert_called_once_with(DOC_ID)
+    mock_parent.assert_called_once_with(DOC_ID)
+
+
+def test_swallow_true_continues_after_parent_chunks_failure(caplog):
+    """delete_parent_chunks_by_doc runs alongside simhash/minhash cleanup — a failure there
+    must not block the other two (same swallow policy, parent-child-chunking.md §3.3)."""
+    with patch(_DEL_CHUNKS), \
+            patch(_DEL_SIMHASH) as mock_sim, \
+            patch(_DEL_MINHASH) as mock_min, \
+            patch(_DEL_PARENT_CHUNKS, side_effect=RuntimeError("pg down")), \
+            caplog.at_level(logging.WARNING):
+        purge_doc_artifacts(DOC_ID, KB_ID, include_chunks=True, swallow=True)
+
+    assert "delete_parent_chunks_by_doc" in caplog.text
+    mock_sim.assert_called_once_with(DOC_ID)
     mock_min.assert_called_once_with(DOC_ID)
 
 
@@ -97,7 +119,7 @@ def test_s3_client_error_always_swallowed(caplog):
 
     s3_error = ClientError({"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "DeleteObject")
 
-    with patch(_DEL_CHUNKS), patch(_DEL_SIMHASH), patch(_DEL_MINHASH), \
+    with patch(_DEL_CHUNKS), patch(_DEL_SIMHASH), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS), \
             patch(_DEL_S3, side_effect=s3_error), \
             caplog.at_level(logging.WARNING):
         purge_doc_artifacts(DOC_ID, KB_ID, STORAGE_KEY, swallow=False)

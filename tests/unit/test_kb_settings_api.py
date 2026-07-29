@@ -72,13 +72,15 @@ class TestGetSettingsSchema:
             resp = client.get(f"/api/kb/{KB_ID}/settings/schema")
         assert resp.status_code == 404
 
-    def test_returns_only_ingestion_chunking_dedup_keys(self, client):
+    def test_returns_only_ingestion_chunking_dedup_retrieval_keys(self, client):
         with patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB):
             resp = client.get(f"/api/kb/{KB_ID}/settings/schema")
 
         assert resp.status_code == 200
         schema = resp.json()["schema"]
-        assert all(key.startswith(("ingestion.", "chunking.", "dedup.")) for key in schema)
+        assert all(
+            key.startswith(("ingestion.", "chunking.", "dedup.", "retrieval.")) for key in schema
+        )
 
     def test_field_entry_shape(self, client):
         with patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB):
@@ -102,6 +104,7 @@ class TestGetSettingsSchema:
 
         schema = resp.json()["schema"]
         assert schema["ingestion.parser_plugins"]["overridable"] is False
+        assert schema["retrieval.rerank.api_key"]["overridable"] is False
 
 
 class TestGetOverrides:

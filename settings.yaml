@@ -78,8 +78,7 @@ chunking:
   chunk_overlap: 128
   min_chunk_chars: 30
   semantic_threshold: 0.8
-  code_chunk_lines: 40
-  code_chunk_lines_overlap: 5
+  code_max_chars: 1500
 
 provider:
   name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
@@ -107,6 +106,9 @@ retrieval:
     top_n: 3
     timeout_sec: 5
     fallback_on_error: true
+  auto_merge:
+    enabled: false                # chunking.strategy="hierarchical"와 별도 스위치
+    merge_threshold: 0.5
 
 knowledge_bases:
   - id: "kb-01"

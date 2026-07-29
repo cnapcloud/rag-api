@@ -13,14 +13,14 @@ purge.py → retriever.py → API 응답 → 문서 갱신.
 ## 1. Settings (`src/rag_api/config/settings.py`)
 
 ```python
-ChunkStrategy = Literal["recursive", "semantic", "parent_child"]   # 3번째 값 추가 (pipeline/steps/chunk.py)
+ChunkStrategy = Literal["recursive", "semantic", "hierarchical"]   # 3번째 값 추가 (pipeline/steps/chunk.py)
 
 
 class ChunkingSettings(BaseModel):
     strategy: ChunkStrategy = Field(default="recursive", ...)   # 기존 필드, 타입만 확장
     ...
     # chunk_size: 기존 필드, 타입을 int -> int | list[int]로 확장. 신규 필드 없음.
-    # strategy="recursive"/"semantic"이면 지금처럼 단일 int, "parent_child"면 리스트.
+    # strategy="recursive"/"semantic"이면 지금처럼 단일 int, "hierarchical"면 리스트.
     chunk_size: int | list[int] = Field(default=1024, ...)
 
     @field_validator("chunk_size")
@@ -67,9 +67,9 @@ api_key: str = Field(default="", json_schema_extra={"override": False})
 
 ```yaml
 chunking:
-  strategy: "recursive"        # "recursive" | "semantic" | "parent_child"
+  strategy: "recursive"        # "recursive" | "semantic" | "hierarchical"
   chunk_overlap: 128           # 기존 필드 재사용, 모든 레벨 공통
-  chunk_size: 1024             # 기존 필드 — strategy="parent_child"면 [2048, 512]처럼 리스트로
+  chunk_size: 1024             # 기존 필드 — strategy="hierarchical"면 [2048, 512]처럼 리스트로
 
 retrieval:
   auto_merge:
@@ -151,7 +151,7 @@ class ChunkResult:
 
 ### 4.2 `chunk()` 분기 추가
 
-`cfg.strategy == "parent_child"`이고 텍스트 문서인 경우(atomic/code 경로는 그대로 유지):
+`cfg.strategy == "hierarchical"`이고 텍스트 문서인 경우(atomic/code 경로는 그대로 유지):
 
 1. `id_func`로 `f"{doc_id}:{next(counter)}"` 형태의 전역 카운터 발급 (문서 하나당 counter 하나 공유)
 2. `HierarchicalNodeParser.from_defaults(chunk_sizes=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap, ...)`로 분할
@@ -300,7 +300,7 @@ def _build_merged_result(a: dict, children: list[SearchResult]) -> SearchResult:
 
 ## 11. 테스트
 
-- `chunk.py`: `strategy="parent_child"`로 3-level 문서 청킹 → leaf/ancestor 개수, `parent_chunk_id`
+- `chunk.py`: `strategy="hierarchical"`로 3-level 문서 청킹 → leaf/ancestor 개수, `parent_chunk_id`
   체인, `child_count`(필터 반영) 단위 테스트
 - `retriever.py`: `_auto_merge_parents()` — 2-level 병합/미병합, 3-level 캐스케이드(§10.6 예시
   수치 그대로 재현), orphan(parent row 없음) self-healing 단위 테스트

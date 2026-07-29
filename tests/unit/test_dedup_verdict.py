@@ -14,6 +14,7 @@ _GET_DOC = "rag_api.infra.postgres.get_doc_by_id"
 _UPDATE_PAYLOAD = "rag_api.infra.qdrant.update_payload_by_doc_id"
 _DEL_BANDS = "rag_api.infra.postgres.delete_simhash_bands"
 _DEL_MINHASH = "rag_api.infra.postgres.delete_minhash_bands"
+_DEL_PARENT_CHUNKS = "rag_api.infra.postgres.delete_parent_chunks_by_doc"
 _DEL_CHUNKS = "rag_api.infra.qdrant.delete_chunks_by_doc_id"
 
 _TS_NEW = datetime(2026, 6, 26, 10, 0, 0, tzinfo=UTC)
@@ -92,7 +93,7 @@ def test_title_changed_a_newer_updates_c():
          patch(_PG) as mock_udf, \
          patch(_UPDATE_PAYLOAD) as mock_qpay, \
          patch(_DEL_BANDS) as mock_del, \
-         patch(_DEL_MINHASH):
+         patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
     mock_qpay.assert_called_once_with(
@@ -118,7 +119,7 @@ def test_title_changed_a_newer_transfers_chunk_count():
          patch(_PG) as mock_udf, \
          patch(_UPDATE_PAYLOAD), \
          patch(_DEL_BANDS), \
-         patch(_DEL_MINHASH):
+         patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
     a_call = next(c for c in mock_udf.call_args_list if c[0][0] == "doc-a")
@@ -133,7 +134,7 @@ def test_title_changed_c_newer_marks_a_outdated():
          patch(_PG) as mock_udf, \
          patch(_UPDATE_PAYLOAD) as mock_qpay, \
          patch(_DEL_BANDS) as mock_del, \
-         patch(_DEL_MINHASH):
+         patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
     mock_qpay.assert_not_called()
@@ -150,7 +151,7 @@ def test_title_changed_c_created_at_null_treats_a_as_newer():
          patch(_PG), \
          patch(_UPDATE_PAYLOAD) as mock_qpay, \
          patch(_DEL_BANDS), \
-         patch(_DEL_MINHASH):
+         patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_title_changed("doc-a", "doc-c", run_id="r1")
 
     mock_qpay.assert_called_once()
@@ -178,7 +179,7 @@ def test_similar_a_newer_deletes_c_chunks_and_marks_outdated():
          patch(_PG) as mock_udf, \
          patch(_DEL_CHUNKS) as mock_del_chunks, \
          patch(_DEL_BANDS), \
-         patch(_DEL_MINHASH):
+         patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_similar("doc-a", result, run_id="r1")
 
     assert result.needs_indexing is True
@@ -199,7 +200,7 @@ def test_similar_c_newer_marks_a_outdated_no_indexing():
     result = _result("similar", needs_indexing=False, duplicate_doc_id="doc-c")
 
     with patch(_GET_DOC, side_effect=[doc_a, doc_c]), patch(_PG) as mock_udf, \
-            patch(_DEL_BANDS), patch(_DEL_MINHASH):
+            patch(_DEL_BANDS), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_similar("doc-a", result, run_id="r1")
 
     assert result.needs_indexing is False
@@ -211,7 +212,7 @@ def test_similar_c_created_at_null_treats_a_as_newer():
     doc_c = _make_doc("doc-c", doc_created_at=None)
     result = _result("similar", needs_indexing=False, duplicate_doc_id="doc-c")
 
-    with patch(_GET_DOC, side_effect=[doc_a, doc_c]), patch(_PG), patch(_DEL_CHUNKS), patch(_DEL_BANDS), patch(_DEL_MINHASH):
+    with patch(_GET_DOC, side_effect=[doc_a, doc_c]), patch(_PG), patch(_DEL_CHUNKS), patch(_DEL_BANDS), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_similar("doc-a", result, run_id="r1")
 
     assert result.needs_indexing is True
@@ -221,7 +222,7 @@ def test_similar_no_duplicate_marks_outdated_no_indexing():
     result = _result("similar", needs_indexing=False, duplicate_doc_id=None)
 
     with patch(_GET_DOC) as mock_get, patch(_PG) as mock_udf, \
-            patch(_DEL_BANDS), patch(_DEL_MINHASH):
+            patch(_DEL_BANDS), patch(_DEL_MINHASH), patch(_DEL_PARENT_CHUNKS):
         handle_similar("doc-a", result, run_id="r1")
 
     mock_get.assert_not_called()

@@ -1,6 +1,6 @@
 # US-03: Parent-Child 청킹 & Auto-Merge 검색
 
-**상태**: todo
+**상태**: done
 
 > 설계: [parent-child-chunking.md](../../docs/internal/design/parent-child-chunking.md)
 
@@ -20,7 +20,7 @@
 - `upsert.py` 확장 — ancestor Postgres 저장 + Qdrant leaf payload에 `parent_chunk_id` 추가
 - `rag/retriever.py` — auto-merge 그룹핑/재귀 병합 순수 함수, `_search_kb` 흐름에 통합
 - `pipeline/utils/purge.py` — 문서 삭제(soft/hard) 시 `parent_chunks` 정리
-- Settings 추가 — `chunking.strategy`에 `"parent_child"` 값 추가, `chunking.chunk_size` 타입을 `int | list[int]`로 확장, `retrieval.auto_merge.*`
+- Settings 추가 — `chunking.strategy`에 `"hierarchical"` 값 추가, `chunking.chunk_size` 타입을 `int | list[int]`로 확장, `retrieval.auto_merge.*`
 - KB 오버라이드 확장 — `OVERRIDABLE_SETTINGS_PREFIXES`에 `retrieval.` 추가 + `retrieval.rerank.api_key` deny-list
 - REST API 응답(`SearchResultItem`) — `merged`/`parent_chunk_id` 필드 추가
 - `dedup/chunk_compare.py`, `defs/ops/ingest_ops.py`, `pipeline/runner.py` — `chunk()` 반환 타입 변경에 따른 호출부 수정
@@ -41,18 +41,25 @@
 
 ## 완료 기준
 
-- [ ] `chunking.strategy`가 `"recursive"`/`"semantic"`(기본값)일 때 기존 단일 레벨 청킹/검색 동작이 그대로 유지된다(회귀 테스트)
-- [ ] `chunking.strategy="parent_child"`인 문서를 인제스트하면 `parent_chunks`에 계층(root~leaf 바로 위)이 저장되고, Qdrant leaf payload에 `parent_chunk_id`가 채워진다
-- [ ] `min_chunk_chars` 필터로 걸러진 leaf는 `child_count` 계산에서 제외되고, `child_count=0`인 ancestor는 저장되지 않는다
-- [ ] 검색 시 매칭 비율이 `merge_threshold` 이상이면 parent 텍스트로 병합되고, 미만이면 개별 결과가 그대로 반환된다 (2-level 단위 테스트)
-- [ ] N-level(3-level 이상) 문서에서 레벨을 타고 올라가며 반복 병합되고, 병합 실패한 결과가 상위 레벨에서 재시도되지 않는다(settled/active 분리, 단위 테스트)
-- [ ] 문서 soft delete/hard delete 시 `parent_chunks`가 정리된다(dedup bands와 동일한 패턴)
-- [ ] 재인덱싱(delete-then-insert) 후 `parent_chunks`가 새 내용으로 교체된다
-- [ ] `dedup/chunk_compare.py`가 `chunk().nodes`만 사용하도록 수정되고 기존 dedup 테스트가 통과한다
-- [ ] KB별로 `chunk_sizes`/`merge_threshold`를 오버라이드할 수 있고, `chunk_sizes` 내림차순 검증이 전역 로드/KB 오버라이드 양쪽 경로에서 모두 걸린다
-- [ ] `retrieval.rerank.api_key`는 `retrieval.` 접두사가 오버라이드 허용으로 바뀐 뒤에도 여전히 오버라이드 불가 상태다(deny-list 테스트)
-- [ ] REST API 검색 응답에 `merged: bool` 필드가 포함되고, `merged=true`인 결과는 `chunk_index`가 `None`이다
-- [ ] 관련 테스트 전체 통과
+- [x] `chunking.strategy`가 `"recursive"`/`"semantic"`(기본값)일 때 기존 단일 레벨 청킹/검색 동작이 그대로 유지된다(회귀 테스트)
+- [x] `chunking.strategy="hierarchical"`인 문서를 인제스트하면 `parent_chunks`에 계층(root~leaf 바로 위)이 저장되고, Qdrant leaf payload에 `parent_chunk_id`가 채워진다
+- [x] `min_chunk_chars` 필터로 걸러진 leaf는 `child_count` 계산에서 제외되고, `child_count=0`인 ancestor는 저장되지 않는다
+- [x] 검색 시 매칭 비율이 `merge_threshold` 이상이면 parent 텍스트로 병합되고, 미만이면 개별 결과가 그대로 반환된다 (2-level 단위 테스트)
+- [x] N-level(3-level 이상) 문서에서 레벨을 타고 올라가며 반복 병합되고, 병합 실패한 결과가 상위 레벨에서 재시도되지 않는다(settled/active 분리, 단위 테스트)
+- [x] 문서 soft delete/hard delete 시 `parent_chunks`가 정리된다(dedup bands와 동일한 패턴)
+- [x] 재인덱싱(delete-then-insert) 후 `parent_chunks`가 새 내용으로 교체된다
+- [x] `dedup/chunk_compare.py`가 `chunk().nodes`만 사용하도록 수정되고 기존 dedup 테스트가 통과한다
+- [x] KB별로 `chunk_sizes`/`merge_threshold`를 오버라이드할 수 있고, `chunk_sizes` 내림차순 검증이 전역 로드/KB 오버라이드 양쪽 경로에서 모두 걸린다
+- [x] `retrieval.rerank.api_key`는 `retrieval.` 접두사가 오버라이드 허용으로 바뀐 뒤에도 여전히 오버라이드 불가 상태다(deny-list 테스트)
+- [x] REST API 검색 응답에 `merged: bool` 필드가 포함되고, `merged=true`인 결과는 `chunk_index`가 `None`이다
+- [x] 관련 테스트 전체 통과 (617 passed, 1 skipped — 기존부터 skip인 Dagster 통합 테스트)
+
+## 구현 노트
+
+- `chunking.strategy` 값은 설계 문서 초안의 `"parent_child"` 대신 `"hierarchical"`로 확정 —
+  `recursive`/`semantic`과 동일하게 "분할 방식"을 가리키는 명명 축으로 통일하기 위해 구현 완료
+  후 전체 rename 적용(사용자 협의 결과). `ParentChunk`/`parent_chunks`/`parent_chunk_id` 등
+  저장 구조를 가리키는 이름은 관계 구조 자체가 바뀐 게 아니므로 그대로 유지.
 
 ## 의존성
 

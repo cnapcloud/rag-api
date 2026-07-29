@@ -21,7 +21,11 @@ def purge_doc_artifacts(
     storage_key: delete S3 file when non-empty. ClientError is always swallowed.
     swallow: when True, log warning on failure and continue; when False, propagate.
     """
-    from rag_api.infra.postgres import delete_minhash_bands, delete_simhash_bands
+    from rag_api.infra.postgres import (
+        delete_minhash_bands,
+        delete_parent_chunks_by_doc,
+        delete_simhash_bands,
+    )
     from rag_api.infra.qdrant import delete_chunks_by_doc_id
 
     def _run(fn, *args):
@@ -51,3 +55,4 @@ def purge_doc_artifacts(
 
     _run(delete_simhash_bands, doc_id)
     _run(delete_minhash_bands, doc_id)
+    _run(delete_parent_chunks_by_doc, doc_id)

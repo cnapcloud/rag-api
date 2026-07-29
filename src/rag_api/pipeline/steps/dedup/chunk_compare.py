@@ -77,7 +77,7 @@ def compare_chunks(
     from rag_api.pipeline.steps.chunk import chunk
     from rag_api.pipeline.steps.embed import embed
 
-    nodes = chunk(documents, kb_id=kb_id)
+    nodes = chunk(documents, kb_id=kb_id).nodes
     if not nodes:
         logger.info("chunk_compare: no chunks for doc_id=%s candidate=%s", doc_id, candidate_doc_id)
         return ChunkCompareScore(candidate_doc_id=candidate_doc_id, aggregate_score=0.0)

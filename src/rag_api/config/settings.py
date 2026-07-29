@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal, get_args, get_origin
+from typing import Annotated, Any, Literal, get_args, get_origin
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.fields import FieldInfo
 
@@ -93,19 +93,36 @@ class QueuePollSettings(BaseModel):
 
 
 class ChunkingSettings(BaseModel):
-    # document_aware는 US-03 대기 중 — ChunkStrategy(pipeline/steps/chunk.py)가 실제 구현 기준
     strategy: ChunkStrategy = Field(default="recursive", description="Chunking Strategy")
     # cross-field: chunk_overlap < chunk_size (design doc §3, 이번 US 범위 밖)
-    chunk_size: int = Field(default=1024, ge=64, le=8192, description="Chunk Size")
+    # strategy="recursive"/"semantic"이면 단일 int(기존과 동일). strategy="hierarchical"면
+    # chunk_sizes 리스트(큰 것 -> 작은 것 순, 마지막 값이 leaf 크기) —
+    # docs/internal/design/parent-child-chunking.md §6
+    chunk_size: Annotated[int, Field(ge=64, le=8192)] | list[int] = Field(
+        default=1024, description="Chunk Size",
+    )
     chunk_overlap: int = Field(default=128, ge=0, le=8191, description="Chunk Overlap")
     semantic_threshold: float = Field(default=0.8, ge=0.0, le=1.0, description="Semantic Threshold")
     # 상한은 chunk_size 대비 상식적 가드레일
     min_chunk_chars: int = Field(default=30, ge=1, le=2000, description="Min Chunk Chars")
-    # cross-field: code_chunk_lines_overlap < code_chunk_lines (design doc §3, 이번 US 범위 밖)
-    code_chunk_lines: int = Field(default=40, ge=5, le=500, description="Code Chunk Lines")
-    code_chunk_lines_overlap: int = Field(
-        default=5, ge=0, le=499, description="Code Chunk Lines Overlap",
-    )
+    # CodeSplitter의 실제 청크 크기 판단 기준(count_mode="char" 기본값) — chunk_lines/
+    # chunk_lines_overlap는 설치된 llama-index-core 버전에서 생성자 인자로만 저장되고 실제
+    # 분할 로직(_chunk_node)에서는 읽히지 않는 죽은 파라미터라 필드 자체를 없앴다.
+    code_max_chars: int = Field(default=1500, ge=100, le=20000, description="Code Max Chars")
+
+    @field_validator("chunk_size")
+    @classmethod
+    def _validate_chunk_size(cls, v: int | list[int]) -> int | list[int]:
+        """list인 경우만 검증 — int 범위(ge/le)는 이미 Annotated[int, Field(...)]가 처리한다.
+        strategy와 chunk_size 모양이 안 맞는 조합(예: strategy="recursive"인데 리스트)은 여기서
+        막지 않는다 — 해당 전략의 파서가 런타임에 즉시 실패한다
+        (docs/internal/design/parent-child-chunking.md §6)."""
+        if isinstance(v, list):
+            if len(v) < 2:
+                raise ValueError("chunk_size list must have at least 2 levels")
+            if any(v[i] <= v[i + 1] for i in range(len(v) - 1)):
+                raise ValueError("chunk_size list must be strictly descending")
+        return v
 
 
 class ProviderSettings(BaseModel):
@@ -122,7 +139,10 @@ class EmbeddingSettings(BaseModel):
 class RerankerSettings(BaseModel):
     enabled: bool = True
     provider: str = "jina"      # jina | local (자체 호스팅 Cohere-compatible rerank 서버, base_url 필요)
-    api_key: str = ""
+    # retrieval.rerank.api_key는 리랭커 API 자격증명 — OVERRIDABLE_SETTINGS_PREFIXES에 "retrieval."이
+    # 추가된 뒤에도 KB별로 노출/변경되면 안 되므로 명시적으로 deny-list에 남긴다
+    # (docs/internal/design/parent-child-chunking.md §6)
+    api_key: str = Field(default="", json_schema_extra={"override": False})
     model: str = "jina-reranker-v2-base-multilingual"
     base_url: str = ""          # provider=local일 때만 사용 (예: http://reranker:8080/rerank)
     top_n: int = 3
@@ -139,12 +159,24 @@ class SimilaritySearchSettings(BaseModel):
     min_score: float = 0.0
 
 
+class AutoMergeSettings(BaseModel):
+    """Parent-child auto-merge — docs/internal/design/parent-child-chunking.md §5, §6.
+
+    별도 스위치로 유지 — 청킹(저장, chunking.strategy="hierarchical")과 병합(검색)은 독립적으로
+    껐다 켤 수 있어야 한다(예: 구조는 저장해두고 병합만 잠시 끄기).
+    """
+
+    enabled: bool = False
+    merge_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 class RetrievalSettings(BaseModel):
     mode: Literal["hybrid", "similarity"] = "hybrid"
     top_k: int = 10
     hybrid: HybridSearchSettings = Field(default_factory=HybridSearchSettings)
     similarity: SimilaritySearchSettings = Field(default_factory=SimilaritySearchSettings)
     rerank: RerankerSettings = Field(default_factory=RerankerSettings)
+    auto_merge: AutoMergeSettings = Field(default_factory=AutoMergeSettings)
 
 
 class LogSettings(BaseModel):
@@ -351,7 +383,7 @@ def get_settings() -> Settings:
 
 # 오버라이드 가능한 top-level 섹션. allow-list를 deny-list보다 먼저 적용 — provider/redis/postgres/
 # qdrant 같은 인프라 자격증명 섹션은 이 목록에 없으므로 애초에 저장 시점에 거부된다.
-OVERRIDABLE_SETTINGS_PREFIXES = ("ingestion.", "chunking.", "dedup.")
+OVERRIDABLE_SETTINGS_PREFIXES = ("ingestion.", "chunking.", "dedup.", "retrieval.")
 
 
 def _override_allowed(field: FieldInfo) -> bool:
@@ -443,6 +475,20 @@ def resolve_settings(kb_id: str | None) -> Settings:
     return type(base)(**merged)
 
 
+def _int_range_from_union_annotation(annotation: Any) -> tuple[int | None, int | None] | None:
+    """chunking.chunk_size(`Annotated[int, Field(ge=.., le=..)] | list[int]`)처럼 int 분기에
+    ge/le가 붙은 Union annotation에서 그 범위를 꺼낸다. int 분기가 없으면 None."""
+    for arg in get_args(annotation):
+        if get_origin(arg) is Annotated:
+            base, *extras = get_args(arg)
+            if base is int:
+                metadata = getattr(extras[0], "metadata", extras) if extras else []
+                ge = next((m.ge for m in metadata if hasattr(m, "ge")), None)
+                le = next((m.le for m in metadata if hasattr(m, "le")), None)
+                return ge, le
+    return None
+
+
 # dedup.simhash.hamming_*_threshold의 진짜 상한은 정적 상수가 아니라 그 배포의 simhash_bits
 # 값이다 — kb-settings-override-schema.md §5.
 _DYNAMIC_MAX_HAMMING_KEYS = (
@@ -473,12 +519,17 @@ def describe_overridable_settings(current: Settings) -> dict[str, dict[str, Any]
                 _walk(annotation, dotted_key, name)
                 continue
 
+            union_int_range = _int_range_from_union_annotation(annotation)
+
             if get_origin(annotation) is Literal:
                 field_type = "enum"
                 enum_values: list[Any] | None = list(get_args(annotation))
             elif annotation is bool:
                 field_type, enum_values = "bool", None
-            elif annotation is int:
+            elif annotation is int or union_int_range is not None:
+                # union_int_range branch: e.g. chunking.chunk_size (int | list[int]) — reported
+                # as "int" for backward compat, ge/le come from the Annotated[int, ...] union arm
+                # since they aren't visible on field.metadata directly (parent-child-chunking.md §6)
                 field_type, enum_values = "int", None
             elif annotation is float:
                 field_type, enum_values = "float", None
@@ -487,6 +538,8 @@ def describe_overridable_settings(current: Settings) -> dict[str, dict[str, Any]
 
             min_value = next((m.ge for m in field.metadata if hasattr(m, "ge")), None)
             max_value = next((m.le for m in field.metadata if hasattr(m, "le")), None)
+            if union_int_range is not None and min_value is None and max_value is None:
+                min_value, max_value = union_int_range
             if dotted_key in _DYNAMIC_MAX_HAMMING_KEYS:
                 max_value = current.dedup.simhash.simhash_bits
 

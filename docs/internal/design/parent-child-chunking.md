@@ -28,7 +28,7 @@ backlog/plan 단계에서 진행한다. 현재 청킹/검색 구조는
 ### 1.3 비범위
 
 - `semantic`/`code` 청킹 전략과의 조합 미지원 — `chunking.strategy`는 `"recursive"`/`"semantic"`/
-  `"parent_child"` 중 하나만 가질 수 있는 단일 값이라(§6), 애초에 동시에 켜지는 조합이
+  `"hierarchical"` 중 하나만 가질 수 있는 단일 값이라(§6), 애초에 동시에 켜지는 조합이
   존재하지 않는다. code 파일은 `strategy`와 무관하게 별도 경로로 처리된다(기존과 동일).
 - 기존에 이미 인덱싱된 문서의 소급 재청킹 미포함 — 옵션 활성화 이후 신규/재인덱싱 문서부터
   적용. 기존 문서는 `parent_chunk_id = NULL`로 검색되어 자동으로 auto-merge에서 제외된다(§5.2).
@@ -60,7 +60,7 @@ backlog/plan 단계에서 진행한다. 현재 청킹/검색 구조는
 parse()                              변경 없음 — Document.metadata["doc_id"] 포함
    │
    ▼
-chunk()                              chunking.strategy="parent_child"이면:
+chunk()                              chunking.strategy="hierarchical"이면:
    │                                   1) HierarchicalNodeParser.from_defaults(
    │                                        chunk_sizes=cfg.chunk_size, ...)   # 이 시점 cfg.chunk_size는
    │                                        리스트([가장 큰 것, ..., leaf 크기]) — HierarchicalNodeParser
@@ -81,7 +81,7 @@ chunk()                              chunking.strategy="parent_child"이면:
    │                                      child_count=0인 ancestor는 저장하지 않는다(§4.1, §5.1
    │                                      ZeroDivisionError 방지)
    │                                   5) strategy가 "recursive"/"semantic"이면 기존과 동일한
-   │                                      단일 레벨 분할 (타입 구조상 parent_child와 동시에
+   │                                      단일 레벨 분할 (타입 구조상 hierarchical와 동시에
    │                                      켜질 수 없음 — §6)
    │                                   atomic(table/image_caption)·code 파일은 기존과 동일하게
    │                                   별도 경로로 처리되고, HierarchicalNodeParser는 "text" 경로
@@ -197,7 +197,7 @@ Index: `idx_parent_chunks_doc` on `(doc_id)`, `idx_parent_chunks_parent` on `(pa
 
 ```
 payload
-└── parent_chunk_id  : str|null   -- leaf 바로 위 레벨 하나만 가리킴. strategy != "parent_child"인
+└── parent_chunk_id  : str|null   -- leaf 바로 위 레벨 하나만 가리킴. strategy != "hierarchical"인
                                       문서(기존 recursive/semantic 문서 포함)는 null (하위 호환).
                                       트리 상위 경로는 저장하지 않고, 병합 시 Postgres parent_id를
                                       따라 올라가며 조회한다.
@@ -220,7 +220,7 @@ class ParentChunk:
 @dataclass
 class ChunkResult:
     nodes: list[BaseNode]        # leaf 노드만 (임베딩·검색 대상)
-    parents: list[ParentChunk]   # 모든 비-leaf 레벨 노드. strategy != "parent_child"면 빈 리스트
+    parents: list[ParentChunk]   # 모든 비-leaf 레벨 노드. strategy != "hierarchical"면 빈 리스트
 ```
 
 `get_leaf_nodes()`로 leaf를, 나머지 전체 노드(모든 비-leaf 레벨)를 순회하며 `ParentChunk`로
@@ -329,11 +329,11 @@ def _auto_merge_parents(
 
 ```yaml
 chunking:
-  strategy: "recursive"        # "recursive" | "semantic" | "parent_child" — 3번째 값 추가
+  strategy: "recursive"        # "recursive" | "semantic" | "hierarchical" — 3번째 값 추가
   chunk_overlap: 128           # 기존 필드 그대로 재사용 — 모든 레벨에 공통 적용
   chunk_size: 1024             # 기존 필드, 타입을 int -> int | list[int]로 확장.
                                 # strategy="recursive"/"semantic"이면 지금처럼 단일 int.
-                                # strategy="parent_child"면 리스트(예: [2048, 512]) — 큰 것부터
+                                # strategy="hierarchical"면 리스트(예: [2048, 512]) — 큰 것부터
                                 # 작은 것 순, 마지막 값이 leaf(실제 검색 단위) 크기. 리스트일 때
                                 # 최소 2개(=2-level), 3개 이상이면 N-level, 반드시 내림차순
 
@@ -344,15 +344,15 @@ retrieval:
     merge_threshold: 0.5          # 0.0 ~ 1.0, 모든 레벨 공통
 ```
 
-- **on/off는 별도 `enabled` 불리언이 아니라 `chunking.strategy = "parent_child"` 값 자체다** —
+- **on/off는 별도 `enabled` 불리언이 아니라 `chunking.strategy = "hierarchical"` 값 자체다** —
   `strategy`는 이미 `"recursive"`/`"semantic"` 중 하나만 가질 수 있는 단일 값(`Literal`)이라,
-  여기에 3번째 값을 추가하면 "semantic이면서 parent_child도 켜짐" 같은 조합이 애초에
+  여기에 3번째 값을 추가하면 "semantic이면서 hierarchical도 켜짐" 같은 조합이 애초에
   존재할 수 없다(§1.3의 "semantic/code와 조합 미지원"이 검증 규칙 없이 타입 구조로 보장됨).
   이 프로젝트에 과거 이 자리의 3번째 값이었던 `"document_aware"`가 있었던 전례와도 일치한다
-  (다만 의미가 달라져서 새 이름 `"parent_child"`를 쓴다 — 옛 `document_aware`는 무조건 병합,
+  (다만 의미가 달라져서 새 이름 `"hierarchical"`를 쓴다 — 옛 `document_aware`는 무조건 병합,
   Qdrant 벡터 없는 포인트 저장 방식으로 지금 설계와 다르다).
 - **신규 필드가 없다** — `chunking.chunk_size`의 타입을 `int`에서 `int | list[int]`로 확장해서
-  그대로 재사용한다. `parent_child`용 별도 필드(`chunk_sizes` 등)를 만들지 않는다 — 필드
+  그대로 재사용한다. `hierarchical`용 별도 필드(`chunk_sizes` 등)를 만들지 않는다 — 필드
   이름이 하나뿐이라 "단수/복수 중 뭘 써야 하지" 하는 혼동이 없다. `chunk_overlap`도 새 필드
   없이 기존 값을 모든 레벨에 공통 적용한다(레벨별로 다른 overlap은 지원 안 함 —
   HierarchicalNodeParser 기본 동작과도 일치).
@@ -366,7 +366,7 @@ retrieval:
   로드(`model_validate`) 경로와 KB 오버라이드 경로 양쪽에서 동일하게 실행된다.
 - `chunking.strategy`/`chunking.chunk_size`는 이미 `"chunking."` 접두사 하위 필드라
   `OVERRIDABLE_SETTINGS_PREFIXES`에 이미 포함돼 있다(변경 불필요) — KB마다 다른 문서 성격에
-  맞춰 `strategy`를 `"parent_child"`로, `chunk_size`를 원하는 레벨 구성으로 오버라이드할 수
+  맞춰 `strategy`를 `"hierarchical"`로, `chunk_size`를 원하는 레벨 구성으로 오버라이드할 수
   있다.
 - `retrieval.auto_merge.merge_threshold`는 KB마다 다르게 튜닝할 수 있어야 한다(문서 성격에 따라
   최적값이 다르므로 — §7). 이를 위해 `OVERRIDABLE_SETTINGS_PREFIXES`(`config/settings.py`)에
@@ -436,7 +436,7 @@ retrieval:
 
 | 구성 요소 | 위치 |
 |-----------|------|
-| Settings 필드 | `src/rag_api/config/settings.py` — `ChunkingSettings.parent_child`, `RetrievalSettings.auto_merge`, `OVERRIDABLE_SETTINGS_PREFIXES`에 `"retrieval."` 추가 + `retrieval.rerank.api_key` deny-list |
+| Settings 필드 | `src/rag_api/config/settings.py` — `ChunkingSettings.strategy`에 `"hierarchical"` 값 추가, `RetrievalSettings.auto_merge`, `OVERRIDABLE_SETTINGS_PREFIXES`에 `"retrieval."` 추가 + `retrieval.rerank.api_key` deny-list |
 | 청킹 (HierarchicalNodeParser) | `src/rag_api/pipeline/steps/chunk.py` |
 | Ancestor 저장/조회/삭제 SQL | `src/rag_api/infra/postgres.py` — `save_parent_chunks`, `get_parent_chunks`, `delete_parent_chunks_by_doc` |
 | Auto-merge 그룹핑/재귀 병합 로직 | `src/rag_api/rag/retriever.py` |

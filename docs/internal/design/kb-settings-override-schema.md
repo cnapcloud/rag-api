@@ -52,8 +52,7 @@ min/max가 있는 필드는 전부 Pydantic `Field(ge=, le=)`로 구현 가능�
 | `chunking.chunk_overlap` | int | 128 | - | 0 | 8191 | 가능 | Chunk Overlap | cross-field: `chunk_overlap < chunk_size`(§3) |
 | `chunking.min_chunk_chars` | int | 30 | - | 1 | 2000 | 가능 | Min Chunk Chars | 상한은 `chunk_size` 대비 상식적 가드레일 |
 | `chunking.semantic_threshold` | float | 0.8 | - | 0.0 | 1.0 | 가능 | Semantic Threshold | 코사인 유사도류 threshold로 추정 |
-| `chunking.code_chunk_lines` | int | 40 | - | 5 | 500 | 가능 | Code Chunk Lines | cross-field: `code_chunk_lines_overlap < code_chunk_lines`(§3) |
-| `chunking.code_chunk_lines_overlap` | int | 5 | - | 0 | 499 | 가능 | Code Chunk Lines Overlap | cross-field: 위와 동일 |
+| `chunking.code_max_chars` | int | 1500 | - | 100 | 20000 | 가능 | Code Max Chars | `CodeSplitter`의 실제 청크 크기 판단 기준(count_mode="char") |
 | `dedup.enabled` | bool | `true` | - | - | - | 가능 | Dedup Enabled | bool은 range 없음 |
 | `dedup.chunk_compare.chunk_match_threshold` | float | 0.50 | - | 0.0 | 1.0 | 가능 | Chunk Match Threshold | |
 | `dedup.chunk_compare.body_identical_threshold` | float | 0.95 | - | 0.0 | 1.0 | 가능 | Body Identical Threshold | cross-field: `body_similar_threshold <= body_identical_threshold`(§3) |
@@ -136,7 +135,6 @@ rag-api 자체 `Settings`의 15개 top-level 그룹(§2.1의 `ingestion`/`chunki
 | 제약 |
 |---|
 | `chunking.chunk_overlap < chunking.chunk_size` |
-| `chunking.code_chunk_lines_overlap < chunking.code_chunk_lines` |
 | `dedup.chunk_compare.body_similar_threshold <= dedup.chunk_compare.body_identical_threshold` |
 | `dedup.simhash.hamming_identical_threshold <= dedup.simhash.hamming_similar_threshold` |
 | `dedup.simhash.hamming_*_threshold`가 오버라이드 불가 필드인 `dedup.simhash.simhash_bits`(그 KB의 현재 전역값)를 상한으로 참조 |

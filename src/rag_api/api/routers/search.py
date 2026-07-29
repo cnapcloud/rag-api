@@ -54,13 +54,15 @@ class SearchResultItem(BaseModel):
     source_type: str
     source: str
     doc_type: str
-    chunk_index: int
+    chunk_index: int | None
     page_num: Any | None
     page_label: str | None
     text: str
     score: float
     rerank_score: float | None
     updated_at: str
+    merged: bool
+    parent_chunk_id: str | None
 
 
 class SearchMeta(BaseModel):
@@ -141,6 +143,8 @@ async def search(req: SearchRequest):
                 score=r.score,
                 rerank_score=r.rerank_score,
                 updated_at=r.updated_at,
+                merged=r.merged,
+                parent_chunk_id=r.parent_chunk_id,
             )
             for r in final_results
         ],
