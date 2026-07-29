@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, get_args, get_origin
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.fields import FieldInfo
 
@@ -94,7 +94,6 @@ class QueuePollSettings(BaseModel):
 
 class ChunkingSettings(BaseModel):
     strategy: ChunkStrategy = Field(default="recursive", description="Chunking Strategy")
-    # cross-field: chunk_overlap < chunk_size (design doc §3, 이번 US 범위 밖)
     # strategy="recursive"/"semantic"이면 단일 int(기존과 동일). strategy="hierarchical"면
     # chunk_sizes 리스트(큰 것 -> 작은 것 순, 마지막 값이 leaf 크기) —
     # docs/internal/design/parent-child-chunking.md §6
@@ -113,15 +112,38 @@ class ChunkingSettings(BaseModel):
     @field_validator("chunk_size")
     @classmethod
     def _validate_chunk_size(cls, v: int | list[int]) -> int | list[int]:
-        """list인 경우만 검증 — int 범위(ge/le)는 이미 Annotated[int, Field(...)]가 처리한다.
-        strategy와 chunk_size 모양이 안 맞는 조합(예: strategy="recursive"인데 리스트)은 여기서
-        막지 않는다 — 해당 전략의 파서가 런타임에 즉시 실패한다
-        (docs/internal/design/parent-child-chunking.md §6)."""
+        """list인 경우만 검증 — int 자체의 ge/le는 이미 Annotated[int, Field(...)]가 처리하지만,
+        그건 int 분기에만 걸리고 list 항목에는 적용되지 않으므로 여기서 항목별로 같은 범위
+        (64~8192)를 다시 확인한다(US-49). strategy와 chunk_size 모양이 안 맞는 조합(예:
+        strategy="recursive"인데 리스트)은 여기서 막지 않는다 — 해당 전략의 파서가 런타임에
+        즉시 실패한다(docs/internal/design/parent-child-chunking.md §6)."""
         if isinstance(v, list):
             if len(v) < 2:
                 raise ValueError("chunk_size list must have at least 2 levels")
             if any(v[i] <= v[i + 1] for i in range(len(v) - 1)):
                 raise ValueError("chunk_size list must be strictly descending")
+            if any(item < 64 or item > 8192 for item in v):
+                raise ValueError("chunk_size list items must be within 64-8192")
+        return v
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def _validate_chunk_overlap(cls, v: int, info: ValidationInfo) -> int:
+        """pipeline/steps/chunk.py의 _build_hierarchical_parser가 이 값을 leaf(가장 작은)
+        레벨에만 적용한다(root/mid는 overlap=0 — 임베딩/검색 대상이 아니라 겹쳐봐야 Postgres
+        저장 용량만 늘어남, US-49 후속). 그래서 캡도 leaf(가장 작은) chunk_size 기준으로 건다 —
+        지나치게 크면 SentenceSplitter가 크래시하지 않고 인접 leaf가 거의 통째로 겹치는 상태로
+        조용히 색인된다(15% 캡 근거는 US-49 오픈 이슈 참고). chunk_size 자체가 이미 검증
+        실패했으면 info.data에 값이 없으므로 건너뛴다(에러가 중복 보고되지 않게)."""
+        chunk_size = info.data.get("chunk_size")
+        if chunk_size is None:
+            return v
+        base = min(chunk_size) if isinstance(chunk_size, list) else chunk_size
+        cap = base * 0.15
+        if v > cap:
+            raise ValueError(
+                f"chunk_overlap ({v}) must not exceed 15% of chunk_size ({base}): max {cap:.0f}"
+            )
         return v
 
 
@@ -430,8 +452,10 @@ def validate_override_values(base: Settings, overrides: dict[str, Any]) -> None:
 
     resolve_settings()도 type(base)(**merged)로 같은 재구성을 하지만 그건 인제스트 시점에야
     실행된다 — 값 자체가 잘못된 override(예: jaccard_threshold: 5.0)를 저장 시점에 걸러내려면
-    같은 재구성을 PUT/PATCH 경로에서도 수행해야 한다. cross-field 제약(chunk_overlap <
-    chunk_size 등)은 이번 검증 범위 밖(design doc §3).
+    같은 재구성을 PUT/PATCH 경로에서도 수행해야 한다. chunk_overlap-chunk_size 조합은
+    ChunkingSettings._validate_chunk_overlap이 이 재구성 경로에서도 함께 걸린다(US-49). 그 외
+    cross-field 제약(hamming_identical <= hamming_similar 등)은 여전히 검증 범위 밖(design doc
+    §3).
     """
     merged = _apply_dotted_overrides(base.model_dump(), overrides)
     try:

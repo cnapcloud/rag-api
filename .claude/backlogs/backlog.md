@@ -50,3 +50,4 @@
 | [US-46](US-46-rest-mcp-tracing-structure-unification.md) | REST/MCP 트레이싱 구조 통일 — root span + business span(input/output) 표준화 | in-progress |
 | [US-47](US-47-page-label-type-mismatch-500.md) | 다중 KB 검색 시 page_label 타입 불일치로 인한 500 에러 수정 | done |
 | [US-48](US-48-html-trafilatura-inline-tag-text-loss.md) | trafilatura favor_recall 모드가 인라인 서식 태그 주변 텍스트를 유실하는 버그 수정 | done |
+| [US-49](US-49-chunk-overlap-validation.md) | chunk_overlap - chunk_size cross-field 검증 추가 | done |

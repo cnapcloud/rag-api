@@ -69,4 +69,4 @@
 
 - `parent_chunk_size`/`chunk_sizes` 기본값은 초기 추정치 — 실측 후 조정 (design [§7](../../docs/internal/design/parent-child-chunking.md#7-리스크--오픈-이슈))
 - 재인덱싱 시 결정적 ID(`"{doc_id}:{idx}"`)로 인한 짧은 불일치 윈도우는 수용된 리스크로 남겨둠 (design §7)
-- `HierarchicalNodeParser.from_defaults()`가 레벨별로 다른 `chunk_overlap`을 지원하는지는 구현 시점에 실제 시그니처로 확인 필요 (design §7)
+- `HierarchicalNodeParser.from_defaults()`는 레벨별로 다른 `chunk_overlap`을 지원하지 않는다(확인 완료, 모든 레벨에 동일 값 적용) — 다만 `chunk_overlap`이 leaf `chunk_size` 대비 과도하게 크면 크래시 없이 조용히 통과하는 문제가 남아있어 별도 [US-49](US-49-chunk-overlap-validation.md)로 분리

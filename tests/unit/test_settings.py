@@ -115,14 +115,16 @@ def test_resolve_settings_applies_flat_dot_key_overrides(base_settings: Settings
 
     overrides = {
         "ingestion.max_file_size_mb": 50,
-        "chunking.chunk_size": 512,
+        # 128 (untouched global chunk_overlap default) must stay within 15% of this value —
+        # US-49's chunk_overlap cross-field cap
+        "chunking.chunk_size": 1000,
         "dedup.enabled": False,
     }
     with patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value=overrides):
         resolved = resolve_settings("kb-01")
 
     assert resolved.ingestion.max_file_size_mb == 50
-    assert resolved.chunking.chunk_size == 512
+    assert resolved.chunking.chunk_size == 1000
     assert resolved.dedup.enabled is False
     # untouched fields still fall back to the global value
     assert resolved.chunking.chunk_overlap == base_settings.chunking.chunk_overlap
@@ -278,6 +280,97 @@ def test_chunk_size_int_still_enforces_range() -> None:
         Settings.model_validate({"chunking": {"chunk_size": 10}})
 
 
+def test_chunk_size_list_rejects_item_below_range() -> None:
+    """Unlike the int branch, ge/le on Annotated[int, ...] never applies to list items —
+    each item must be checked explicitly (US-49)."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="64-8192"):
+        Settings.model_validate({"chunking": {"chunk_size": [999999, 5]}})
+
+
+def test_chunk_size_list_rejects_item_above_range() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="64-8192"):
+        Settings.model_validate({"chunking": {"chunk_size": [999999, 512]}})
+
+
+def test_chunk_size_list_accepts_items_at_range_bounds() -> None:
+    # chunk_overlap explicitly small — leaf=64 caps overlap at 64*0.15=9.6 (US-49)
+    settings = Settings.model_validate(
+        {"chunking": {"chunk_size": [8192, 64], "chunk_overlap": 9}}
+    )
+    assert settings.chunking.chunk_size == [8192, 64]
+
+
+# ──────────────────────────────────────────────
+# chunking.chunk_overlap — 15% cap vs. leaf/int chunk_size (US-49)
+# ──────────────────────────────────────────────
+
+def test_chunk_overlap_accepts_default_values() -> None:
+    settings = Settings.model_validate({"chunking": {"chunk_size": 1024, "chunk_overlap": 128}})
+    assert settings.chunking.chunk_overlap == 128
+
+
+def test_chunk_overlap_rejects_value_over_cap_for_int_chunk_size() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="15%"):
+        Settings.model_validate({"chunking": {"chunk_size": 100, "chunk_overlap": 20}})
+
+
+def test_chunk_overlap_accepts_value_at_cap_for_int_chunk_size() -> None:
+    settings = Settings.model_validate({"chunking": {"chunk_size": 100, "chunk_overlap": 15}})
+    assert settings.chunking.chunk_overlap == 15
+
+
+def test_chunk_overlap_rejects_value_over_cap_for_leaf_of_list_chunk_size() -> None:
+    """cap is based on min(chunk_size) (the leaf level), not the largest level."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="15%"):
+        Settings.model_validate(
+            {"chunking": {"chunk_size": [2048, 512, 64], "chunk_overlap": 55}}
+        )
+
+
+def test_chunk_overlap_accepts_value_within_cap_for_leaf_of_list_chunk_size() -> None:
+    settings = Settings.model_validate(
+        {"chunking": {"chunk_size": [2048, 512, 128], "chunk_overlap": 15}}
+    )
+    assert settings.chunking.chunk_overlap == 15
+
+
+def test_chunk_overlap_skips_when_chunk_size_itself_invalid() -> None:
+    """chunk_size validation already failed (ascending list) — chunk_overlap validator must not
+    raise a second, misleading error since info.data won't contain chunk_size."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="strictly descending"):
+        Settings.model_validate({"chunking": {"chunk_size": [512, 2048], "chunk_overlap": 20}})
+
+
+def test_validate_override_values_rejects_chunk_overlap_over_cap() -> None:
+    """Same cap must fire on the KB-override save path (type(base)(**merged))."""
+    from rag_api.config.settings import validate_override_values
+    from rag_api.exceptions import IngestValidationError
+
+    with pytest.raises(IngestValidationError):
+        validate_override_values(
+            Settings(), {"chunking.chunk_size": 100, "chunking.chunk_overlap": 20}
+        )
+
+
+def test_validate_override_values_rejects_out_of_range_chunk_size_list_item() -> None:
+    """Same per-item 64-8192 range check must fire on the KB-override save path (US-49)."""
+    from rag_api.config.settings import validate_override_values
+    from rag_api.exceptions import IngestValidationError
+
+    with pytest.raises(IngestValidationError):
+        validate_override_values(Settings(), {"chunking.chunk_size": [999999, 5]})
+
+
 def test_validate_override_values_rejects_ascending_chunk_size_list() -> None:
     """The chunk_size list validator must also fire on the KB-override save path
     (type(base)(**merged) reconstruction), not just global settings.yaml load."""
@@ -287,7 +380,8 @@ def test_validate_override_values_rejects_ascending_chunk_size_list() -> None:
     with pytest.raises(IngestValidationError):
         validate_override_values(Settings(), {"chunking.chunk_size": [512, 2048]})
 
-    validate_override_values(Settings(), {"chunking.chunk_size": [2048, 512, 128]})
+    # leaf 900 keeps the untouched global chunk_overlap default (128) within the 15% cap (US-49)
+    validate_override_values(Settings(), {"chunking.chunk_size": [2048, 1200, 900]})
 
 
 # ──────────────────────────────────────────────
@@ -335,7 +429,8 @@ def test_validate_override_values_ignores_null_placeholder() -> None:
     non-null override in the same call still passes."""
     from rag_api.config.settings import validate_override_values
 
-    validate_override_values(Settings(), {"chunking.chunk_size": 512})
+    # 1000 keeps the untouched global chunk_overlap default (128) within the 15% cap (US-49)
+    validate_override_values(Settings(), {"chunking.chunk_size": 1000})
 
 
 # ──────────────────────────────────────────────

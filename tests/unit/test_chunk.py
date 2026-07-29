@@ -146,6 +146,18 @@ def test_chunk_hierarchical_requires_list_chunk_size():
         chunk(docs, strategy="hierarchical", chunk_size=1024, chunk_overlap=16)
 
 
+def test_hierarchical_parser_applies_overlap_only_to_leaf_level():
+    """root/mid SentenceSplitters get chunk_overlap=0 — only the leaf level (last chunk_sizes
+    entry) keeps the configured overlap, since root/mid are never embedded/searched and
+    overlapping them would only duplicate raw text in Postgres parent_chunks (US-49 follow-up)."""
+    from rag_api.pipeline.steps.chunk import _build_hierarchical_parser
+
+    parser = _build_hierarchical_parser([600, 200, 60], chunk_overlap=10, id_func=lambda i, doc: str(i))
+
+    overlaps = [parser.node_parser_map[node_id].chunk_overlap for node_id in parser.node_parser_ids]
+    assert overlaps == [0, 0, 10]
+
+
 def test_chunk_hierarchical_3level_structure():
     """3-level HierarchicalNodeParser split — leaves + ancestors form a consistent tree."""
     from rag_api.pipeline.steps.chunk import chunk

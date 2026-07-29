@@ -330,7 +330,7 @@ def _auto_merge_parents(
 ```yaml
 chunking:
   strategy: "recursive"        # "recursive" | "semantic" | "hierarchical" — 3번째 값 추가
-  chunk_overlap: 128           # 기존 필드 그대로 재사용 — 모든 레벨에 공통 적용
+  chunk_overlap: 128           # 기존 필드 그대로 재사용 — leaf(마지막) 레벨에만 적용, root/mid는 0
   chunk_size: 1024             # 기존 필드, 타입을 int -> int | list[int]로 확장.
                                 # strategy="recursive"/"semantic"이면 지금처럼 단일 int.
                                 # strategy="hierarchical"면 리스트(예: [2048, 512]) — 큰 것부터
@@ -354,9 +354,10 @@ retrieval:
 - **신규 필드가 없다** — `chunking.chunk_size`의 타입을 `int`에서 `int | list[int]`로 확장해서
   그대로 재사용한다. `hierarchical`용 별도 필드(`chunk_sizes` 등)를 만들지 않는다 — 필드
   이름이 하나뿐이라 "단수/복수 중 뭘 써야 하지" 하는 혼동이 없다. `chunk_overlap`도 새 필드
-  없이 기존 값을 모든 레벨에 공통 적용한다(레벨별로 다른 overlap은 지원 안 함 —
-  HierarchicalNodeParser 기본 동작과도 일치).
-- 검증은 **`chunk_size` 필드 자체에 붙는 `@field_validator` 하나**로 충분하다 — `strategy`를
+  없이 기존 값을 재사용하되, `_build_hierarchical_parser`가 leaf(마지막) 레벨에만 적용하고
+  root/mid는 `overlap=0`으로 분할한다(US-49 후속) — root/mid는 임베딩·검색 대상이 아니라서
+  overlap을 줘봐야 Postgres 저장 용량만 늘어난다.
+- `chunk_size` 자체의 모양 검증은 **`@field_validator` 하나**로 충분하다 — `strategy`를
   참조할 필요가 없다: 값이 `list`면 "2개 이상, 내림차순"만 확인하고, `int`면 기존 `ge=64,
   le=8192` 범위만 확인한다. `strategy`와 `chunk_size`의 모양이 서로 안 맞는 경우(예:
   `strategy="recursive"`인데 `chunk_size`가 리스트)는 이 validator가 막지 않고, 해당 전략의
@@ -364,6 +365,11 @@ retrieval:
   실패한다 — 조용히 잘못된 채로 넘어가는 경우가 없으므로 굳이 `strategy`까지 보는 진짜
   cross-field 검증을 추가하지 않는다. 이 field-level 검증은 전역 `settings.yaml`
   로드(`model_validate`) 경로와 KB 오버라이드 경로 양쪽에서 동일하게 실행된다.
+- `chunk_overlap`이 `chunk_size`(leaf 레벨에만 적용, 위 항목) 대비 과도하게 크면(예: leaf
+  `chunk_size=60`에 `chunk_overlap=55`) 크래시 없이 통과해 인접 leaf가 거의 통째로 겹치는
+  상태로 조용히 색인될 수 있다 — 이 cross-field 검증은
+  [US-49](../../../.claude/backlogs/US-49-chunk-overlap-validation.md)로 분리해 구현했다
+  (`ChunkingSettings._validate_chunk_overlap`, leaf/int `chunk_size` 대비 15% 캡).
 - `chunking.strategy`/`chunking.chunk_size`는 이미 `"chunking."` 접두사 하위 필드라
   `OVERRIDABLE_SETTINGS_PREFIXES`에 이미 포함돼 있다(변경 불필요) — KB마다 다른 문서 성격에
   맞춰 `strategy`를 `"hierarchical"`로, `chunk_size`를 원하는 레벨 구성으로 오버라이드할 수

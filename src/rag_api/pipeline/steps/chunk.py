@@ -98,12 +98,20 @@ def _make_id_func(doc_id: str):
 
 
 def _build_hierarchical_parser(chunk_sizes: list[int], chunk_overlap: int, id_func):
+    """Only the leaf level (last entry of chunk_sizes) gets chunk_overlap — root/mid ancestors
+    are never embedded/searched (ParentChunk docstring above), so overlapping them would only
+    duplicate raw text in Postgres parent_chunks with no retrieval benefit (US-49 follow-up)."""
     from llama_index.core.node_parser import HierarchicalNodeParser, NodeParser, SentenceSplitter
 
     node_parser_ids = [f"level_{i}_size_{cs}" for i, cs in enumerate(chunk_sizes)]
+    leaf_index = len(chunk_sizes) - 1
     node_parser_map: dict[str, NodeParser] = {
-        node_parser_id: SentenceSplitter(chunk_size=cs, chunk_overlap=chunk_overlap, id_func=id_func)
-        for cs, node_parser_id in zip(chunk_sizes, node_parser_ids)
+        node_parser_id: SentenceSplitter(
+            chunk_size=cs,
+            chunk_overlap=chunk_overlap if i == leaf_index else 0,
+            id_func=id_func,
+        )
+        for i, (cs, node_parser_id) in enumerate(zip(chunk_sizes, node_parser_ids))
     }
     return HierarchicalNodeParser(
         chunk_sizes=chunk_sizes, node_parser_ids=node_parser_ids, node_parser_map=node_parser_map,
