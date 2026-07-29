@@ -73,9 +73,10 @@ dedup:
     compare_all_candidates: false
 
 chunking:
-  strategy: "recursive"
-  chunk_size: 1024
-  chunk_overlap: 128
+  strategy: "recursive"         # recursive | semantic | hierarchical
+  chunk_size: 1024               # strategy="hierarchical"면 리스트로 지정, 예: [2048, 512, 128]
+                                  # (큰 것 -> 작은 것 순, 마지막이 leaf/검색 단위, 내림차순 필수)
+  chunk_overlap: 128              # hierarchical에서는 leaf 레벨에만 적용 (root/mid는 0)
   min_chunk_chars: 30
   semantic_threshold: 0.8
   code_max_chars: 1500
@@ -99,10 +100,10 @@ retrieval:
     min_score: 0.0
   rerank:
     enabled: false
-    provider: "jina"              # jina | local (자체 호스팅 Cohere-compatible rerank 서버)
+    provider: "jina"              # jina | internal (자체 호스팅 Cohere-compatible rerank 서버)
     api_key: ""
     model: "jina-reranker-v2-base-multilingual"
-    base_url: ""                  # provider=local일 때만 사용 (예: http://reranker:8080/rerank)
+    base_url: ""                  # provider=internal일 때만 사용 (예: http://reranker:8080/rerank)
     top_n: 3
     timeout_sec: 5
     fallback_on_error: true

@@ -85,13 +85,13 @@ async def rerank_async(
         return top, "none", False
 
     _top_n = top_n or cfg.top_n
-    url = {"jina": JINA_URL, "local": cfg.base_url}.get(cfg.provider)
+    url = {"jina": JINA_URL, "internal": cfg.base_url}.get(cfg.provider)
 
     try:
         if url is None:
             raise NotImplementedError(f"Unsupported rerank provider: {cfg.provider}")
         if not url:
-            raise ConfigError("retrieval.rerank.base_url is required for provider=local")
+            raise ConfigError("retrieval.rerank.base_url is required for provider=internal")
 
         reranked = await _rerank_http(
             url=url,

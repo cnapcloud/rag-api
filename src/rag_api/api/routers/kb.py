@@ -158,10 +158,12 @@ def _validate_overrides(overrides: dict[str, Any]) -> None:
 @router.get("/kb/{kb_id}/settings")
 @rest_span
 async def get_kb_effective_settings(kb_id: str):
-    """Effective settings (global + KB override merged) — ingestion/chunking/dedup only.
+    """Effective settings (global + KB override merged) — ingestion/chunking/dedup/retrieval only.
 
     Never returns the full Settings object: it also holds provider/redis/postgres/qdrant
-    credentials that must not leak through a KB-scoped read endpoint.
+    credentials that must not leak through a KB-scoped read endpoint. retrieval.rerank.api_key
+    is excluded even though the rest of `retrieval` is included (deny-listed via
+    json_schema_extra={"override": False}, docs/internal/design/parent-child-chunking.md §6).
     """
     from rag_api.config.settings import resolve_settings
     from rag_api.infra.postgres import get_kb_meta
@@ -170,10 +172,13 @@ async def get_kb_effective_settings(kb_id: str):
         raise NotFoundError(f"KB not found: {kb_id}")
 
     cfg = resolve_settings(kb_id)
+    retrieval = cfg.retrieval.model_dump()
+    retrieval["rerank"].pop("api_key", None)
     return {
         "ingestion": cfg.ingestion.model_dump(),
         "chunking": cfg.chunking.model_dump(),
         "dedup": cfg.dedup.model_dump(),
+        "retrieval": retrieval,
     }
 
 

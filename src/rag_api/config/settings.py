@@ -159,26 +159,33 @@ class EmbeddingSettings(BaseModel):
 
 
 class RerankerSettings(BaseModel):
-    enabled: bool = True
-    provider: str = "jina"      # jina | local (자체 호스팅 Cohere-compatible rerank 서버, base_url 필요)
-    # retrieval.rerank.api_key는 리랭커 API 자격증명 — OVERRIDABLE_SETTINGS_PREFIXES에 "retrieval."이
-    # 추가된 뒤에도 KB별로 노출/변경되면 안 되므로 명시적으로 deny-list에 남긴다
-    # (docs/internal/design/parent-child-chunking.md §6)
+    enabled: bool = Field(default=True, description="Rerank Enabled")
+    # internal = 자체 호스팅 Cohere-compatible rerank 서버 (base_url 필요)
+    provider: Literal["jina", "internal"] = Field(default="jina", description="Rerank Provider")
+    # retrieval.rerank.api_key/model은 리랭커 배포(provider/모델 조합)를 고정하는 값이라
+    # OVERRIDABLE_SETTINGS_PREFIXES에 "retrieval."이 추가된 뒤에도 KB별로 노출/변경되면 안 되므로
+    # 명시적으로 deny-list에 남긴다 (docs/internal/design/parent-child-chunking.md §6)
     api_key: str = Field(default="", json_schema_extra={"override": False})
-    model: str = "jina-reranker-v2-base-multilingual"
-    base_url: str = ""          # provider=local일 때만 사용 (예: http://reranker:8080/rerank)
-    top_n: int = 3
-    timeout_sec: int = 5
-    fallback_on_error: bool = True
+    model: str = Field(
+        default="jina-reranker-v2-base-multilingual",
+        description="Rerank Model",
+        json_schema_extra={"override": False},
+    )
+    base_url: str = Field(
+        default="", description="Rerank Base URL",
+    )  # provider=internal일 때만 사용 (예: http://reranker:8080/rerank)
+    top_n: int = Field(default=3, description="Rerank Top N")
+    timeout_sec: int = Field(default=5, description="Rerank Timeout (sec)")
+    fallback_on_error: bool = Field(default=True, description="Fallback On Error")
 
 
 class HybridSearchSettings(BaseModel):
-    alpha: float = 0.5
-    rrf_k: int = 60
+    alpha: float = Field(default=0.5, description="Alpha (Hybrid)")
+    rrf_k: int = Field(default=60, description="RRF K")
 
 
 class SimilaritySearchSettings(BaseModel):
-    min_score: float = 0.0
+    min_score: float = Field(default=0.0, description="Min Score")
 
 
 class AutoMergeSettings(BaseModel):
@@ -188,13 +195,13 @@ class AutoMergeSettings(BaseModel):
     껐다 켤 수 있어야 한다(예: 구조는 저장해두고 병합만 잠시 끄기).
     """
 
-    enabled: bool = False
-    merge_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    enabled: bool = Field(default=False, description="Auto Merge Enabled")
+    merge_threshold: float = Field(default=0.5, ge=0.0, le=1.0, description="Merge Threshold")
 
 
 class RetrievalSettings(BaseModel):
-    mode: Literal["hybrid", "similarity"] = "hybrid"
-    top_k: int = 10
+    mode: Literal["hybrid", "similarity"] = Field(default="hybrid", description="Search Mode")
+    top_k: int = Field(default=10, description="Top K")
     hybrid: HybridSearchSettings = Field(default_factory=HybridSearchSettings)
     similarity: SimilaritySearchSettings = Field(default_factory=SimilaritySearchSettings)
     rerank: RerankerSettings = Field(default_factory=RerankerSettings)

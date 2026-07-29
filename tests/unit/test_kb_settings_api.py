@@ -35,9 +35,10 @@ class TestGetEffectiveSettings:
             resp = client.get(f"/api/kb/{KB_ID}/settings")
         assert resp.status_code == 404
 
-    def test_returns_only_ingestion_chunking_dedup_sections(self, client):
+    def test_returns_only_ingestion_chunking_dedup_retrieval_sections(self, client):
         """Must never leak provider/redis/postgres/qdrant credentials through this endpoint —
-        see design doc §9.2 (security fix from review)."""
+        see design doc §9.2 (security fix from review). retrieval.rerank.api_key is a further
+        deny-listed field within the retrieval section itself (parent-child-chunking.md §6)."""
         with (
             patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
             patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
@@ -46,24 +47,27 @@ class TestGetEffectiveSettings:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert set(body.keys()) == {"ingestion", "chunking", "dedup"}
+        assert set(body.keys()) == {"ingestion", "chunking", "dedup", "retrieval"}
         assert "provider" not in body
         assert "redis" not in body
         assert "postgres" not in body
         assert "qdrant" not in body
+        assert "api_key" not in body["retrieval"]["rerank"]
 
     def test_reflects_stored_override(self, client):
         with (
             patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
             patch(
                 "rag_api.infra.postgres.get_kb_settings_overrides",
-                return_value={"chunking.chunk_size": 512},
+                # 1000 keeps the untouched global chunk_overlap default (128) within the 15%
+                # cross-field cap (US-49) — see test_settings.py for the cap itself
+                return_value={"chunking.chunk_size": 1000},
             ),
         ):
             resp = client.get(f"/api/kb/{KB_ID}/settings")
 
         assert resp.status_code == 200
-        assert resp.json()["chunking"]["chunk_size"] == 512
+        assert resp.json()["chunking"]["chunk_size"] == 1000
 
 
 class TestGetSettingsSchema:
@@ -211,15 +215,17 @@ class TestPatchOverrides:
             patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
             patch("rag_api.infra.postgres.upsert_kb_settings_override") as mock_upsert,
             patch("rag_api.infra.postgres.delete_kb_settings_override") as mock_delete,
-            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={"chunking.chunk_size": 512}),
+            # 1000 keeps the untouched global chunk_overlap default (128) within the 15%
+            # cross-field cap (US-49)
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={"chunking.chunk_size": 1000}),
         ):
             resp = client.patch(
                 f"/api/kb/{KB_ID}/settings/overrides",
-                json={"overrides": {"chunking.chunk_size": 512}},
+                json={"overrides": {"chunking.chunk_size": 1000}},
             )
 
         assert resp.status_code == 200
-        mock_upsert.assert_called_once_with(KB_ID, "chunking.chunk_size", 512)
+        mock_upsert.assert_called_once_with(KB_ID, "chunking.chunk_size", 1000)
         mock_delete.assert_not_called()
 
     def test_null_value_deletes_key(self, client):
