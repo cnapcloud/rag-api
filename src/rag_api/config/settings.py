@@ -159,12 +159,17 @@ class EmbeddingSettings(BaseModel):
 
 
 class RerankerSettings(BaseModel):
-    enabled: bool = Field(default=True, description="Rerank Enabled")
+    # retrieval.rerank.*는 여러 KB를 한 요청으로 합쳐 검색할 때 병합된 결과 전체에 대해 정확히
+    # 한 번만 적용되는 요청 단위 동작이라 "어느 KB의 설정을 쓸지"가 애초에 정의되지 않는다 —
+    # KB별로 다르게 켜고 끌 수 있는 auto_merge(개별 KB 결과에 적용)와는 성격이 다르므로 전체
+    # deny-list (docs/internal/design/kb-settings-override.md §5).
+    enabled: bool = Field(
+        default=True, description="Rerank Enabled", json_schema_extra={"override": False},
+    )
     # internal = 자체 호스팅 Cohere-compatible rerank 서버 (base_url 필요)
-    provider: Literal["jina", "internal"] = Field(default="jina", description="Rerank Provider")
-    # retrieval.rerank.api_key/model은 리랭커 배포(provider/모델 조합)를 고정하는 값이라
-    # OVERRIDABLE_SETTINGS_PREFIXES에 "retrieval."이 추가된 뒤에도 KB별로 노출/변경되면 안 되므로
-    # 명시적으로 deny-list에 남긴다 (docs/internal/design/parent-child-chunking.md §6)
+    provider: Literal["jina", "internal"] = Field(
+        default="jina", description="Rerank Provider", json_schema_extra={"override": False},
+    )
     api_key: str = Field(default="", json_schema_extra={"override": False})
     model: str = Field(
         default="jina-reranker-v2-base-multilingual",
@@ -172,27 +177,45 @@ class RerankerSettings(BaseModel):
         json_schema_extra={"override": False},
     )
     base_url: str = Field(
-        default="", description="Rerank Base URL",
+        default="", description="Rerank Base URL", json_schema_extra={"override": False},
     )  # provider=internal일 때만 사용 (예: http://reranker:8080/rerank)
-    top_n: int = Field(default=3, description="Rerank Top N")
-    timeout_sec: int = Field(default=5, description="Rerank Timeout (sec)")
-    fallback_on_error: bool = Field(default=True, description="Fallback On Error")
+    top_n: int = Field(
+        default=3, description="Rerank Top N", json_schema_extra={"override": False},
+    )
+    timeout_sec: int = Field(
+        default=5, description="Rerank Timeout (sec)", json_schema_extra={"override": False},
+    )
+    fallback_on_error: bool = Field(
+        default=True, description="Fallback On Error", json_schema_extra={"override": False},
+    )
 
 
 class HybridSearchSettings(BaseModel):
-    alpha: float = Field(default=0.5, description="Alpha (Hybrid)")
-    rrf_k: int = Field(default=60, description="RRF K")
+    # alpha/rrf_k도 RerankerSettings와 같은 이유로 deny-list — mode="hybrid"에서 alpha는
+    # KB별 검색 호출(_search_kb)에 값 자체는 들어가지만, rrf_k는 여러 KB의 결과를 합치는
+    # merge 단계(rrf_merge)에서 요청당 한 번만 쓰인다. 두 필드를 분리해서 alpha만 여는 것도
+    # 검토했으나(2026-07-29 논의), 값 하나가 요청 인자로 이미 들어오면 그게 우선이라는 현재
+    # 정책과 일관되게 이번 범위에서는 hybrid 섹션 전체를 닫고 전역 설정 + 요청 인자로만
+    # 제어한다.
+    alpha: float = Field(
+        default=0.5, description="Alpha (Hybrid)", json_schema_extra={"override": False},
+    )
+    rrf_k: int = Field(default=60, description="RRF K", json_schema_extra={"override": False})
 
 
 class SimilaritySearchSettings(BaseModel):
-    min_score: float = Field(default=0.0, description="Min Score")
+    min_score: float = Field(
+        default=0.0, description="Min Score", json_schema_extra={"override": False},
+    )
 
 
 class AutoMergeSettings(BaseModel):
     """Parent-child auto-merge — docs/internal/design/parent-child-chunking.md §5, §6.
 
     별도 스위치로 유지 — 청킹(저장, chunking.strategy="hierarchical")과 병합(검색)은 독립적으로
-    껐다 켤 수 있어야 한다(예: 구조는 저장해두고 병합만 잠시 끄기).
+    껐다 켤 수 있어야 한다(예: 구조는 저장해두고 병합만 잠시 끄기). retrieval.* 중 KB별
+    오버라이드가 열려 있는 건 이 섹션뿐이다 — _search_kb가 KB 단위로 직접 resolve_settings()를
+    호출해 적용하는 유일한 retrieval 필드(kb-settings-override.md §5).
     """
 
     enabled: bool = Field(default=False, description="Auto Merge Enabled")
@@ -200,8 +223,13 @@ class AutoMergeSettings(BaseModel):
 
 
 class RetrievalSettings(BaseModel):
-    mode: Literal["hybrid", "similarity"] = Field(default="hybrid", description="Search Mode")
-    top_k: int = Field(default=10, description="Top K")
+    # mode/top_k도 rerank/hybrid와 동일한 이유(요청 단위로 한 번만 결정)로 deny-list.
+    mode: Literal["hybrid", "similarity"] = Field(
+        default="hybrid", description="Search Mode", json_schema_extra={"override": False},
+    )
+    top_k: int = Field(
+        default=10, description="Top K", json_schema_extra={"override": False},
+    )
     hybrid: HybridSearchSettings = Field(default_factory=HybridSearchSettings)
     similarity: SimilaritySearchSettings = Field(default_factory=SimilaritySearchSettings)
     rerank: RerankerSettings = Field(default_factory=RerankerSettings)

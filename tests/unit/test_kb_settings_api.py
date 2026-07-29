@@ -110,6 +110,31 @@ class TestGetSettingsSchema:
         assert schema["ingestion.parser_plugins"]["overridable"] is False
         assert schema["retrieval.rerank.api_key"]["overridable"] is False
 
+    def test_retrieval_request_scoped_fields_marked_not_overridable(self, client):
+        """mode/top_k/hybrid/similarity/rerank apply once per multi-KB search request (merge,
+        rerank) — no single KB owns them, so only auto_merge stays KB-overridable
+        (kb-settings-override.md §5)."""
+        with patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB):
+            resp = client.get(f"/api/kb/{KB_ID}/settings/schema")
+
+        schema = resp.json()["schema"]
+        for key in (
+            "retrieval.mode",
+            "retrieval.top_k",
+            "retrieval.hybrid.alpha",
+            "retrieval.hybrid.rrf_k",
+            "retrieval.similarity.min_score",
+            "retrieval.rerank.enabled",
+            "retrieval.rerank.provider",
+            "retrieval.rerank.base_url",
+            "retrieval.rerank.top_n",
+            "retrieval.rerank.timeout_sec",
+            "retrieval.rerank.fallback_on_error",
+        ):
+            assert schema[key]["overridable"] is False, key
+        assert schema["retrieval.auto_merge.enabled"]["overridable"] is True
+        assert schema["retrieval.auto_merge.merge_threshold"]["overridable"] is True
+
 
 class TestGetOverrides:
     def test_returns_404_for_unknown_kb(self, client):
