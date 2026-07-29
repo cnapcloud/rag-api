@@ -24,6 +24,7 @@
 | 2026-07-16 | [settings-composition.md](settings-composition.md) | Settings 확장 아키텍처 — vendoring 앱이 Settings를 안전하게 확장/공유하는 기본 설계 |
 | 2026-07-18 | [kb-settings-override.md](kb-settings-override.md) | KB별 설정 오버라이드 — ingestion/chunking/dedup 값을 KB 단위로 오버라이드하는 리졸버·저장 스키마·파서 레지스트리 재설계·REST API |
 | 2026-07-19 | [kb-settings-override-schema.md](kb-settings-override-schema.md) | KB 설정 오버라이드 필드 스키마 설계 — 전체 속성 min/max·enum·override 메타데이터, `/settings/schema` 엔드포인트 (kb-settings-override.md는 별도 유지, 미갱신) |
+| 2026-07-29 | [parent-child-chunking.md](parent-child-chunking.md) | Parent-child 청킹 & Auto-Merge 검색 — HierarchicalNodeParser N-level 분할 + 커스텀 재귀 merge 로직(LlamaIndex AutoMergingRetriever 미사용), 자기참조 `parent_chunks` 트리 스키마, 삭제 처리, 예시 포함 |
 
 ## 변경 이력
 
