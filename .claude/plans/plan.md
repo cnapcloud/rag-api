@@ -6,7 +6,7 @@
 | [02](02-concurrency-guard.md) | Concurrency Guard — Sensor + QueueWorker | US-02 | done |
 | [03](03-stuck-running-recovery.md) | Stuck Running Recovery — Dagster run_id check | US-05 | done |
 | [04](04-zombie-detection-to-sensor.md) | Zombie Detection을 Sensor로 이동 | US-06 | todo |
-| [05](05-otel-tracing.md) | OTel Tracing — API W3C header + MCP _meta.traceparent → Langfuse | US-07 | todo |
+| 05 | OTel Tracing — API W3C header + MCP _meta.traceparent → Langfuse | US-07 | 통합(backlog 참고) — done |
 | [08](08-search-mode-split-min-score.md) | 검색 모드 분리 및 유사도 기반 필터 (hybrid / similarity) | US-08 | done |
 | [11](11-postgres-schema-migration.md) | Postgres 스키마 설계 및 Redis 메타데이터 이전 | US-11 | done |
 | [13](13-doc-list-pagination.md) | Document List API — 페이지네이션 / 검색 / 정렬 | US-13 | done |
@@ -41,3 +41,6 @@
 | 43 | 레거시 .doc/.ppt + .pptx 지원 추가 | US-43 | 통합(backlog 참고) — done |
 | 44 | KB별 설정 오버라이드 (ingestion/chunking/dedup) | US-44 | 통합(backlog 참고) — done |
 | 45 | KB 설정 오버라이드 필드 스키마 — 값 검증/description/override 메타데이터 + `/settings/schema` | US-45 | 통합(backlog 참고) — done |
+| [46](46-rest-mcp-tracing-structure-unification.md) | REST/MCP 트레이싱 구조 통일 — root span + business span(input/output) 표준화 | US-46 | in-progress |
+| [47](47-page-label-type-mismatch-500.md) | 다중 KB 검색 시 page_label 타입 불일치로 인한 500 에러 수정 | US-47 | done |
+| 48 | trafilatura favor_recall 모드가 인라인 서식 태그 주변 텍스트를 유실하는 버그 수정 | US-48 | 통합(backlog 참고) — done |

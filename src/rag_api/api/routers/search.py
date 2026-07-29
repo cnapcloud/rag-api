@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from rag_api.exceptions import IngestValidationError
+from rag_api.tracing.span import rest_span
 
 router = APIRouter()
 
@@ -84,6 +85,7 @@ class SearchResponse(BaseModel):
 # ──────────────────────────────────────────────
 
 @router.post("/search", response_model=SearchResponse)
+@rest_span
 async def search(req: SearchRequest):
     from rag_api.config.settings import get_settings
     from rag_api.rag.retriever import search as retriever_search

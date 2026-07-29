@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from rag_api.exceptions import ConflictError, NotFoundError
+from rag_api.tracing.span import rest_span
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class KBSettingsOverrideRequest(BaseModel):
 
 
 @router.get("/kb")
+@rest_span
 async def list_kbs_endpoint(
     sort_by: str = Query(default="kb_id"),
     sort_order: str = Query(default="asc"),
@@ -44,6 +46,7 @@ async def list_kbs_endpoint(
 
 
 @router.get("/kb/{kb_id}")
+@rest_span
 async def get_kb(kb_id: str):
     from rag_api.infra.postgres import get_kb_meta
 
@@ -54,6 +57,7 @@ async def get_kb(kb_id: str):
 
 
 @router.post("/kb", status_code=201)
+@rest_span
 async def create_kb(req: KBCreateRequest):
     from rag_api.infra.postgres import list_kb_ids, register_kb
     from rag_api.infra.qdrant import ensure_collection
@@ -68,6 +72,7 @@ async def create_kb(req: KBCreateRequest):
 
 
 @router.patch("/kb/{kb_id}", status_code=200)
+@rest_span
 async def update_kb(kb_id: str, req: KBUpdateRequest):
     from rag_api.infra.postgres import get_kb_meta, update_kb_meta
 
@@ -79,6 +84,7 @@ async def update_kb(kb_id: str, req: KBUpdateRequest):
 
 
 @router.delete("/kb/{kb_id}", status_code=200)
+@rest_span
 async def delete_kb(kb_id: str):
     """
     KB deletion order:
@@ -150,6 +156,7 @@ def _validate_overrides(overrides: dict[str, Any]) -> None:
 
 
 @router.get("/kb/{kb_id}/settings")
+@rest_span
 async def get_kb_effective_settings(kb_id: str):
     """Effective settings (global + KB override merged) — ingestion/chunking/dedup only.
 
@@ -171,6 +178,7 @@ async def get_kb_effective_settings(kb_id: str):
 
 
 @router.get("/kb/{kb_id}/settings/schema")
+@rest_span
 async def get_kb_settings_schema(kb_id: str):
     """dot-key별 type/enum/default/overridable/min/max/description/group — rag-admin이 폼을
     하드코딩 없이 동적으로 그리기 위한 스키마(kb-settings-override-schema.md §5).
@@ -185,6 +193,7 @@ async def get_kb_settings_schema(kb_id: str):
 
 
 @router.get("/kb/{kb_id}/settings/overrides")
+@rest_span
 async def get_kb_settings_overrides_endpoint(kb_id: str):
     from rag_api.infra.postgres import get_kb_meta, get_kb_settings_overrides
 
@@ -195,6 +204,7 @@ async def get_kb_settings_overrides_endpoint(kb_id: str):
 
 
 @router.put("/kb/{kb_id}/settings/overrides", status_code=200)
+@rest_span
 async def replace_kb_settings_overrides_endpoint(kb_id: str, req: KBSettingsOverrideRequest):
     """Full replace — keys not present in the body are reset to the global value."""
     from rag_api.infra.postgres import get_kb_meta, replace_kb_settings_overrides
@@ -208,6 +218,7 @@ async def replace_kb_settings_overrides_endpoint(kb_id: str, req: KBSettingsOver
 
 
 @router.patch("/kb/{kb_id}/settings/overrides", status_code=200)
+@rest_span
 async def merge_kb_settings_overrides(kb_id: str, req: KBSettingsOverrideRequest):
     """Per-key upsert — a value of null clears that key (reset to global). Keys not present in
     the body are left untouched. Independent row writes, no read-modify-write race."""
@@ -232,6 +243,7 @@ async def merge_kb_settings_overrides(kb_id: str, req: KBSettingsOverrideRequest
 
 
 @router.delete("/kb/{kb_id}/settings/overrides", status_code=200)
+@rest_span
 async def clear_kb_settings_overrides_endpoint(kb_id: str):
     from rag_api.infra.postgres import clear_kb_settings_overrides, get_kb_meta
 

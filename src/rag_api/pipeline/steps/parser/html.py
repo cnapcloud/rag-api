@@ -7,6 +7,23 @@ from pathlib import Path
 from llama_index.core import Document
 from llama_index.core.readers.base import BaseReader
 
+# trafilatura's favor_recall extraction can silently drop the text inside (and
+# immediately after) these inline formatting tags when they sit under a table
+# ancestor or appear more than once in a paragraph (upstream bugs adbar/trafilatura
+# #882, #890, still open as of trafilatura 2.1.0). Unwrapping them before
+# extraction keeps the text while only losing bold/italic emphasis, which
+# downstream retrieval doesn't use anyway.
+_INLINE_TAGS_TO_UNWRAP = ("strong", "b", "em", "i")
+
+
+def _unwrap_inline_tags(html: str) -> str:
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup.find_all(_INLINE_TAGS_TO_UNWRAP):
+        tag.unwrap()
+    return str(soup)
+
 
 class HTMLCleanReader(BaseReader):
     """HTML reader that extracts main content via trafilatura's density-based
@@ -30,6 +47,8 @@ class HTMLCleanReader(BaseReader):
 
         with open(file, encoding="utf-8") as f:
             html = f.read()
+
+        html = _unwrap_inline_tags(html)
 
         kb_id = (extra_info or {}).get("kb_id")
         policy = resolve_settings(kb_id).ingestion.html_extraction_policy

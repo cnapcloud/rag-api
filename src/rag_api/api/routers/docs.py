@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from rag_api.exceptions import ConflictError, IngestValidationError, NotFoundError
 from rag_api.pipeline.steps.parse import supported_extensions
+from rag_api.tracing.span import rest_span
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ def _build_storage_key(kb_id: str, filename: str) -> str:
 
 
 @router.post("/kb/{kb_id}/docs/upload", status_code=202)
+@rest_span
 async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     """Row-first single document upload.
 
@@ -112,6 +114,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
 
 
 @router.post("/kb/{kb_id}/docs/upload/batch", status_code=202)
+@rest_span
 async def upload_docs_batch(
     kb_id: str,
     files: list[UploadFile] = File(...),
@@ -207,6 +210,7 @@ _SORT_ORDERS = Literal["asc", "desc"]
 
 
 @router.get("/kb/{kb_id}/docs")
+@rest_span
 async def list_docs(
     kb_id: str,
     page: int = Query(default=1, ge=1),
@@ -234,6 +238,7 @@ async def list_docs(
 
 
 @router.get("/kb/{kb_id}/docs/status")
+@rest_span
 async def get_kb_doc_counts(kb_id: str):
     from rag_api.infra.postgres import get_kb_doc_counts as pg_get_kb_doc_counts
     from rag_api.infra.postgres import get_kb_meta
@@ -244,6 +249,7 @@ async def get_kb_doc_counts(kb_id: str):
 
 
 @router.get("/kb/{kb_id}/docs/{doc_id}/status")
+@rest_span
 async def get_doc_status(kb_id: str, doc_id: str):
     from rag_api.infra.postgres import get_doc_by_id
 
@@ -254,6 +260,7 @@ async def get_doc_status(kb_id: str, doc_id: str):
 
 
 @router.delete("/kb/{kb_id}/docs/{doc_id}", status_code=202)
+@rest_span
 async def delete_doc(kb_id: str, doc_id: str, force: bool = Query(False)):
     from rag_api.infra.postgres import get_doc_by_id
     from rag_api.pipeline.queue.enqueue import enqueue_delete_event
@@ -273,6 +280,7 @@ async def delete_doc(kb_id: str, doc_id: str, force: bool = Query(False)):
 
 
 @router.post("/kb/{kb_id}/reindex", status_code=202)
+@rest_span
 async def reindex_kb(
     kb_id: str,
     force: bool = Query(False),
@@ -325,6 +333,7 @@ async def reindex_kb(
 
 
 @router.post("/kb/{kb_id}/docs/{doc_id}/reindex", status_code=202)
+@rest_span
 async def reindex_doc(
     kb_id: str,
     doc_id: str,
@@ -361,6 +370,7 @@ async def reindex_doc(
 
 
 @router.post("/kb/{kb_id}/docs/{doc_id}/fail", status_code=200)
+@rest_span
 async def force_fail_doc(
     kb_id: str,
     doc_id: str,
@@ -415,6 +425,7 @@ async def force_fail_doc(
 
 
 @router.post("/kb/{kb_id}/docs/{doc_id}/recover", status_code=202)
+@rest_span
 async def recover_doc(kb_id: str, doc_id: str):
     """Force-recover a stuck document by resetting status=running to failed and re-queuing."""
     from rag_api.infra.postgres import get_doc_by_id
@@ -435,6 +446,7 @@ async def recover_doc(kb_id: str, doc_id: str):
 
 
 @router.get("/docs")
+@rest_span
 async def list_all_docs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1),
@@ -458,6 +470,7 @@ async def list_all_docs(
 
 
 @router.get("/kb/{kb_id}/docs/{doc_id}/download")
+@rest_span
 async def download_doc(kb_id: str, doc_id: str):
     """Stream the raw file for a document from S3."""
     import mimetypes
@@ -499,6 +512,7 @@ async def download_doc(kb_id: str, doc_id: str):
 
 
 @router.get("/docs/status")
+@rest_span
 async def all_docs_status():
     from rag_api.infra.postgres import get_kb_doc_counts as pg_get_kb_doc_counts
     from rag_api.infra.postgres import list_kb_ids

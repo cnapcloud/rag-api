@@ -91,22 +91,31 @@ def test_get_document_status_no_size():
 # search
 # ──────────────────────────────────────────────
 
-def _make_result(text="hello", kb_id="kb-a", source="doc.pdf", score=0.9):
+def _make_result(
+    text="hello",
+    kb_id="kb-a",
+    source="doc.pdf",
+    title="doc.pdf",
+    score=0.9,
+    page_num=1,
+    page_label=None,
+    rerank_score=None,
+):
     from rag_api.rag.retriever import SearchResult
     return SearchResult(
         chunk_id="chunk-1",
         kb_id=kb_id,
         doc_id="doc-id-1",
-        title="doc.pdf",
+        title=title,
         source_type="s3",
         source=source,
         doc_type="pdf",
         chunk_index=0,
-        page_num=1,
-        page_label=None,
+        page_num=page_num,
+        page_label=page_label,
         text=text,
         score=score,
-        rerank_score=None,
+        rerank_score=rerank_score,
         updated_at="2026-06-08T00:00:00Z",
     )
 
@@ -149,3 +158,65 @@ async def test_search_returns_empty_when_no_kbs():
         result = await search(query="hello")
 
     assert result == {"results": [], "latency_ms": 0}
+
+
+async def _search_with_result(r):
+    with (
+        patch("rag_api.mcp_server.tools.search.list_kb_ids", return_value=["kb-a"]),
+        patch(
+            "rag_api.mcp_server.tools.search.retriever_search",
+            new=AsyncMock(return_value=([r], 1, "none", False)),
+        ),
+    ):
+        return await search(query="hello")
+
+
+@pytest.mark.asyncio
+async def test_search_result_includes_doc_id_title_chunk_id():
+    result = await _search_with_result(_make_result())
+
+    item = result["results"][0]
+    assert item["doc_id"] == "doc-id-1"
+    assert item["title"] == "doc.pdf"
+    assert item["chunk_id"] == "chunk-1"
+
+
+@pytest.mark.asyncio
+async def test_search_result_omits_source_when_equals_title():
+    result = await _search_with_result(_make_result(source="doc.pdf", title="doc.pdf"))
+
+    assert "source" not in result["results"][0]
+
+
+@pytest.mark.asyncio
+async def test_search_result_includes_source_when_different_from_title():
+    result = await _search_with_result(
+        _make_result(source="https://example.com/page", title="Example Page")
+    )
+
+    assert result["results"][0]["source"] == "https://example.com/page"
+
+
+@pytest.mark.asyncio
+async def test_search_result_omits_page_num_and_label_when_none():
+    result = await _search_with_result(_make_result(page_num=None, page_label=None))
+
+    item = result["results"][0]
+    assert "page_num" not in item
+    assert "page_label" not in item
+
+
+@pytest.mark.asyncio
+async def test_search_result_includes_page_num_and_label_when_present():
+    result = await _search_with_result(_make_result(page_num=3, page_label="iii"))
+
+    item = result["results"][0]
+    assert item["page_num"] == 3
+    assert item["page_label"] == "iii"
+
+
+@pytest.mark.asyncio
+async def test_search_result_omits_rerank_score_when_none():
+    result = await _search_with_result(_make_result(rerank_score=None))
+
+    assert "rerank_score" not in result["results"][0]
