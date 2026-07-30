@@ -166,6 +166,14 @@ Claude Desktop `claude_desktop_config.json`:
 
 ---
 
+## CI (GitHub Actions)
+
+`.github/workflows/build-push.yml`은 ARC(actions-runner-controller)로 배포된 자체 호스팅 러너
+(`runs-on: github-runner`)에서 실행되며, `docker buildx`는 사설 k8s 클러스터의 `infra` 네임스페이스
+buildkit(`driver: kubernetes`)을 원격 빌더로 사용해 `linux/arm64,linux/amd64` 멀티아치 이미지를 빌드한다.
+
+---
+
 ## 개발 참여
 
 기능/버그 수정을 진행하려면 [SPEC-DRIVEN-AI-DEVELOPMENT.md](SPEC-DRIVEN-AI-DEVELOPMENT.md)의 스펙 기반 개발 절차
