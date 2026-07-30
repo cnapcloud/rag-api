@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from rag_api.config.settings import get_settings
+from rag_api.config.settings import get_settings, resolve_settings
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,7 @@ def run_ingest_pipeline(
             run_id=run_id,
             doc_type=doc_type,
             embedding_model=cfg.model,
+            chunk_strategy=resolve_settings(kb_id).chunking.strategy,
         )
         logger.info("Ingest done: doc_id=%s kb=%s chunks=%d", doc_id, kb_id, upsert_result.chunk_count)
         return upsert_result.chunk_count

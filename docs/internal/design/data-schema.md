@@ -144,6 +144,8 @@ documents
 ├── file_size           BIGINT
 ├── doc_type            TEXT                    -- s3: original ext | web: html | confluence: md | github: original ext
 ├── embedding_model     TEXT
+├── chunk_strategy      TEXT                    -- recursive | semantic | hierarchical (resolved KB
+│                                                 chunking.strategy at ingest time, set on set_indexed)
 ├── doc_created_at      TIMESTAMPTZ             -- actual document creation date (source-specific)
 ├── title_hash          TEXT
 ├── content_simhash     BIGINT

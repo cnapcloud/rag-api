@@ -82,6 +82,7 @@ def set_indexed(
     run_id: str = "",
     doc_type: str = "",
     embedding_model: str = "",
+    chunk_strategy: str = "",
 ) -> None:
     """Transition to indexed after successful ingest. Clears last_error field."""
     fields: dict = {
@@ -95,6 +96,8 @@ def set_indexed(
         fields["doc_type"] = doc_type
     if embedding_model:
         fields["embedding_model"] = embedding_model
+    if chunk_strategy:
+        fields["chunk_strategy"] = chunk_strategy
     _pg.update_doc_fields(doc_id, fields)
     logger.info("Status set to indexed: doc_id=%s chunks=%d", doc_id, upsert_result.chunk_count)
 

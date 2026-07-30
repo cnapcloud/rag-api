@@ -45,6 +45,7 @@ def _make_doc_row(
     file_size=None,
     doc_type: str | None = "pdf",
     embedding_model=None,
+    chunk_strategy=None,
     doc_created_at=None,
     title_hash=None,
     content_simhash=None,
@@ -54,7 +55,7 @@ def _make_doc_row(
         doc_id, kb_id, title, source_type, source, storage_key,
         content_version, connector_id, status, deleted_at, run_id, last_error,
         created_at, updated_at, process_started_at, process_finished_at,
-        chunk_count, file_size, doc_type, embedding_model, doc_created_at,
+        chunk_count, file_size, doc_type, embedding_model, chunk_strategy, doc_created_at,
         title_hash, content_simhash,
     )
 

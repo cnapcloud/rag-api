@@ -40,7 +40,7 @@ def _to_local_iso(dt: datetime | None) -> str:
 _ALLOWED_UPDATE_FIELDS = frozenset({
     "title", "source", "storage_key", "content_version", "connector_id", "status",
     "deleted_at", "run_id", "last_error", "process_started_at", "process_finished_at",
-    "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
+    "chunk_count", "file_size", "doc_type", "embedding_model", "chunk_strategy", "doc_created_at",
     "title_hash", "content_simhash", "duplicate_of",
 })
 
@@ -52,7 +52,7 @@ _DOC_COLS = (
     "doc_id", "kb_id", "title", "source_type", "source", "storage_key",
     "content_version", "connector_id", "status", "deleted_at", "run_id", "last_error",
     "created_at", "updated_at", "process_started_at", "process_finished_at",
-    "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
+    "chunk_count", "file_size", "doc_type", "embedding_model", "chunk_strategy", "doc_created_at",
     "title_hash", "content_simhash", "duplicate_of",
 )
 _DOC_SELECT = "SELECT " + ", ".join(_DOC_COLS) + " FROM documents"

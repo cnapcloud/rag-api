@@ -158,7 +158,7 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes, p
 @op
 def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
     """Update Postgres document metadata to status=indexed."""
-    from rag_api.config.settings import get_settings
+    from rag_api.config.settings import get_settings, resolve_settings
     from rag_api.pipeline.steps.meta import set_indexed
 
     storage_key = valid_config.get("storage_key", "")
@@ -171,6 +171,7 @@ def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
         run_id=valid_config.get("run_id", context.run_id),
         doc_type=doc_type,
         embedding_model=cfg.model,
+        chunk_strategy=resolve_settings(valid_config["kb_id"]).chunking.strategy,
     )
     context.log.info(
         "ingest_job completed: doc_id=%s chunks=%d",
