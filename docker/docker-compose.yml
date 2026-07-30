@@ -27,7 +27,7 @@ services:
 
   rag-admin:
     <<: *env-file
-    image: ghcr.io/cnapcloud/rag-admin:latest  
+    image: ghcr.io/cnapcloud/rag-admin:latest 
     container_name: rag-admin
     environment:
       API_URL: http://rag-api:8000

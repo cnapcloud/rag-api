@@ -51,9 +51,10 @@ queue_poll:
 
 chunking:
   strategy: "recursive"    # recursive | semantic | hierarchical
-  chunk_size: 1024          # hierarchical: list instead, e.g. [2048, 512, 128]
+  chunk_size: 1024          # hierarchical: list instead, e.g. [2048, 512]
                             # (largest -> smallest, last = leaf/search unit, must be descending)
   chunk_overlap: 128         # hierarchical: applied to the leaf level only (root/mid use 0)
+                              # must not exceed 15% of chunk_size (US-49)
   min_chunk_chars: 30
   semantic_threshold: 0.8
 
@@ -82,6 +83,9 @@ retrieval:
     top_n: 3
     timeout_sec: 5
     fallback_on_error: true
+  auto_merge:
+    enabled: false                # chunking.strategy="hierarchical"일 때만 의미 있음
+    merge_threshold: 0.5
 
 knowledge_bases:
   - id: "kb-01"

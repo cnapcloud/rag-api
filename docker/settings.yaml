@@ -72,10 +72,11 @@ dedup:
     compare_all_candidates: false
 
 chunking:
-  strategy: "recursive"         # recursive | semantic | hierarchical
-  chunk_size: 1024               # strategy="hierarchical"면 리스트로 지정, 예: [2048, 512, 128]
+  strategy: "recursive"           # recursive / semantic / hierarchical
+  chunk_size: 1024                # chunking.strategy="hierarchical"이면 리스트로 지정, 예: [2048, 512]
                                   # (큰 것 -> 작은 것 순, 마지막이 leaf/검색 단위, 내림차순 필수)
   chunk_overlap: 128              # hierarchical에서는 leaf 레벨에만 적용 (root/mid는 0)
+                                  # chunk_size의 15%를 넘을 수 없음 (US-49)
   min_chunk_chars: 30
   semantic_threshold: 0.8
 
