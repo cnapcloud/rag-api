@@ -114,17 +114,17 @@ def dedup_op(context: OpExecutionContext, valid_config: dict, documents):
     yield Output(documents, "to_chunk")
 
 
-@op
+@op(out={"nodes": Out(), "parents": Out()})
 def chunk_op(context: OpExecutionContext, valid_config: dict, to_chunk):
-    """Document -> Node chunking."""
+    """Document -> leaf Node chunking (+ hierarchical ancestor rows, possibly empty)."""
     from rag_api.exceptions import IngestValidationError
     from rag_api.pipeline.steps.chunk import chunk
 
-    nodes = chunk(to_chunk, kb_id=valid_config["kb_id"])
-    if not nodes:
+    result = chunk(to_chunk, kb_id=valid_config["kb_id"])
+    if not result.nodes:
         raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
-    context.log.info("Chunking done: %d nodes", len(nodes))
-    return nodes
+    context.log.info("Chunking done: %d nodes, %d parents", len(result.nodes), len(result.parents))
+    return result.nodes, result.parents
 
 
 @op
@@ -138,8 +138,8 @@ def embed_op(context: OpExecutionContext, nodes):
 
 
 @op
-def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
-    """Delete existing Qdrant chunks then insert new ones."""
+def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes, parents):
+    """Replace parent_chunks ancestors (Postgres) then delete/insert Qdrant leaf chunks."""
     from rag_api.pipeline.steps.upsert import upsert
 
     result = upsert(
@@ -149,6 +149,7 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
         title=valid_config.get("title", ""),
         source_type=valid_config.get("source_type", ""),
         source=valid_config.get("source", ""),
+        parents=parents,
     )
     context.log.info("Upsert done: %d chunks", result.chunk_count)
     return result
@@ -157,7 +158,7 @@ def upsert_op(context: OpExecutionContext, valid_config: dict, embedded_nodes):
 @op
 def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
     """Update Postgres document metadata to status=indexed."""
-    from rag_api.config.settings import get_settings
+    from rag_api.config.settings import get_settings, resolve_settings
     from rag_api.pipeline.steps.meta import set_indexed
 
     storage_key = valid_config.get("storage_key", "")
@@ -170,6 +171,7 @@ def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
         run_id=valid_config.get("run_id", context.run_id),
         doc_type=doc_type,
         embedding_model=cfg.model,
+        chunk_strategy=resolve_settings(valid_config["kb_id"]).chunking.strategy,
     )
     context.log.info(
         "ingest_job completed: doc_id=%s chunks=%d",

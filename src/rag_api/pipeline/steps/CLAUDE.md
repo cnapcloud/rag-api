@@ -15,16 +15,25 @@
 ```
 validate(kb_id, doc_source, etag, file_size) → bool
 parse(kb_id, doc_source)                     → list[Document]
-chunk(documents, strategy, chunk_size, ...)  → list[BaseNode]
+chunk(documents, strategy, chunk_size, ...)  → ChunkResult(nodes, parents)
 embed(nodes)                                 → list[BaseNode]  # embedding 주입됨
-upsert(kb_id, doc_key, nodes)               → UpsertResult
+upsert(kb_id, doc_key, nodes, parents)      → UpsertResult
 set_indexed(doc_id, upsert_result, ...)     → None
 ```
+
+`chunk()`는 항상 `ChunkResult`를 반환한다 — `.nodes`(leaf, 임베딩·검색 대상)와
+`.parents`(ancestor 목록, `strategy="hierarchical"`가 아니면 빈 리스트)로 구성.
+호출부가 `list[BaseNode]`를 기대하던 기존 코드는 `.nodes`로 바꿔야 한다
+(docs/internal/design/parent-child-chunking.md §4.3).
 
 ## 청킹 전략
 
 - `recursive` (SentenceSplitter): 일반 텍스트
 - `semantic` (SemanticSplitterNodeParser): embed_model 필요, API 호출 발생
+- `hierarchical` (HierarchicalNodeParser): N-level 계층 청킹, leaf만 임베딩·검색되고 ancestor는
+  Postgres `parent_chunks`에 저장돼 검색 시 auto-merge로 병합됨 —
+  docs/internal/design/parent-child-chunking.md 참고. `chunk_size`가 이 전략에서는 리스트
+  (큰 것 -> 작은 것 순, 마지막이 leaf 크기).
 
 기본값은 `settings.yaml`의 `chunking.strategy`.
 

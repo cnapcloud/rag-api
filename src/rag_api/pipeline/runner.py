@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from rag_api.config.settings import get_settings
+from rag_api.config.settings import get_settings, resolve_settings
 
 logger = logging.getLogger(__name__)
 
@@ -67,13 +67,14 @@ def run_ingest_pipeline(
             )
             return 0
 
-        nodes = chunk(documents, kb_id=kb_id)
-        if not nodes:
+        chunk_result = chunk(documents, kb_id=kb_id)
+        if not chunk_result.nodes:
             raise IngestValidationError("No indexable content: all chunks below min_chunk_chars threshold")
-        embedded_nodes = embed(nodes)
+        embedded_nodes = embed(chunk_result.nodes)
         upsert_result = upsert(
             kb_id, doc_id, embedded_nodes,
             title=title, source_type=source_type, source=source,
+            parents=chunk_result.parents,
         )
 
         cfg = get_settings().embedding
@@ -84,6 +85,7 @@ def run_ingest_pipeline(
             run_id=run_id,
             doc_type=doc_type,
             embedding_model=cfg.model,
+            chunk_strategy=resolve_settings(kb_id).chunking.strategy,
         )
         logger.info("Ingest done: doc_id=%s kb=%s chunks=%d", doc_id, kb_id, upsert_result.chunk_count)
         return upsert_result.chunk_count

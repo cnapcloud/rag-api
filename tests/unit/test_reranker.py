@@ -1,7 +1,8 @@
-"""reranker.py — jina/local provider 분기 + fallback 단위 테스트."""
+"""reranker.py — jina/internal provider 분기 + fallback 단위 테스트."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -41,13 +42,13 @@ def _mock_async_client(response_json: dict) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_rerank_local_provider_calls_base_url() -> None:
+async def test_rerank_internal_provider_calls_base_url() -> None:
     settings = Settings.model_validate(
         {
             "retrieval": {
                 "rerank": {
                     "enabled": True,
-                    "provider": "local",
+                    "provider": "internal",
                     "base_url": "http://reranker:8080/rerank",
                     "top_n": 2,
                 }
@@ -72,7 +73,7 @@ async def test_rerank_local_provider_calls_base_url() -> None:
     ):
         reranked, provider, fallback_used = await rerank_async("query", results)
 
-    assert provider == "local"
+    assert provider == "internal"
     assert fallback_used is False
     assert [r.chunk_id for r in reranked] == ["chunk-1", "chunk-0"]
     mock_client.post.assert_awaited_once()
@@ -81,13 +82,13 @@ async def test_rerank_local_provider_calls_base_url() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rerank_local_provider_without_base_url_falls_back() -> None:
+async def test_rerank_internal_provider_without_base_url_falls_back() -> None:
     settings = Settings.model_validate(
         {
             "retrieval": {
                 "rerank": {
                     "enabled": True,
-                    "provider": "local",
+                    "provider": "internal",
                     "base_url": "",
                     "fallback_on_error": True,
                 }
@@ -102,27 +103,33 @@ async def test_rerank_local_provider_without_base_url_falls_back() -> None:
     with patch("rag_api.rag.reranker.get_settings", return_value=settings):
         reranked, provider, fallback_used = await rerank_async("query", results)
 
-    assert provider == "local"
+    assert provider == "internal"
     assert fallback_used is True
     assert [r.chunk_id for r in reranked] == ["chunk-1", "chunk-0"]
 
 
 @pytest.mark.asyncio
 async def test_rerank_unknown_provider_falls_back() -> None:
-    settings = Settings.model_validate(
-        {
-            "retrieval": {
-                "rerank": {
-                    "enabled": True,
-                    "provider": "cohere",
-                    "fallback_on_error": True,
-                }
-            }
-        }
+    # provider is a Literal["jina", "internal"] on Settings — an unsupported value can only
+    # reach reranker.py if some other caller bypasses that validation, so this builds the cfg
+    # object directly instead of through Settings.model_validate (which would itself reject it).
+    fake_settings = SimpleNamespace(
+        retrieval=SimpleNamespace(
+            rerank=SimpleNamespace(
+                enabled=True,
+                provider="cohere",
+                base_url="",
+                api_key="",
+                model="",
+                top_n=3,
+                timeout_sec=5,
+                fallback_on_error=True,
+            )
+        )
     )
     results = [_make_result("chunk-0", "first", 0.2)]
 
-    with patch("rag_api.rag.reranker.get_settings", return_value=settings):
+    with patch("rag_api.rag.reranker.get_settings", return_value=fake_settings):
         reranked, provider, fallback_used = await rerank_async("query", results)
 
     assert provider == "cohere"

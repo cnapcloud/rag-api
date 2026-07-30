@@ -146,6 +146,8 @@ class TestUpsertDocCreatedAt:
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.ensure_collection"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.delete_chunks_by_doc_id"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.upsert_chunks"),
+            patch("rag_api.infra.postgres.delete_parent_chunks_by_doc"),
+            patch("rag_api.infra.postgres.save_parent_chunks"),
         ):
             result = upsert("kb-test", DOC_ID, [en])
 
@@ -167,6 +169,8 @@ class TestUpsertDocCreatedAt:
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.ensure_collection"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.delete_chunks_by_doc_id"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.upsert_chunks", side_effect=capture_upsert),
+            patch("rag_api.infra.postgres.delete_parent_chunks_by_doc"),
+            patch("rag_api.infra.postgres.save_parent_chunks"),
         ):
             upsert("kb-test", DOC_ID, [en])
 
@@ -185,6 +189,8 @@ class TestUpsertDocCreatedAt:
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.ensure_collection"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.delete_chunks_by_doc_id"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.upsert_chunks", side_effect=lambda kb, pts, client=None: captured_points.extend(pts)),
+            patch("rag_api.infra.postgres.delete_parent_chunks_by_doc"),
+            patch("rag_api.infra.postgres.save_parent_chunks"),
         ):
             upsert("kb-test", DOC_ID, [en])
 
@@ -201,6 +207,8 @@ class TestUpsertDocCreatedAt:
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.ensure_collection"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.delete_chunks_by_doc_id"),
             patch("rag_api.pipeline.steps.upsert.qdrant_infra.upsert_chunks"),
+            patch("rag_api.infra.postgres.delete_parent_chunks_by_doc"),
+            patch("rag_api.infra.postgres.save_parent_chunks"),
         ):
             result = upsert("kb-test", DOC_ID, [])
 

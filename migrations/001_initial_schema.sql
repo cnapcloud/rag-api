@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_size           BIGINT,
     doc_type            TEXT,
     embedding_model     TEXT,
+    chunk_strategy      TEXT,
     doc_created_at      TIMESTAMPTZ,
     title_hash          TEXT,
     content_simhash     BIGINT,

@@ -6,13 +6,16 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg_pool
 from psycopg.types.json import Jsonb
 
 from rag_api.config.settings import get_settings
 from rag_api.exceptions import ConfigError
+
+if TYPE_CHECKING:
+    from rag_api.pipeline.steps.chunk import ParentChunk
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +40,7 @@ def _to_local_iso(dt: datetime | None) -> str:
 _ALLOWED_UPDATE_FIELDS = frozenset({
     "title", "source", "storage_key", "content_version", "connector_id", "status",
     "deleted_at", "run_id", "last_error", "process_started_at", "process_finished_at",
-    "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
+    "chunk_count", "file_size", "doc_type", "embedding_model", "chunk_strategy", "doc_created_at",
     "title_hash", "content_simhash", "duplicate_of",
 })
 
@@ -49,7 +52,7 @@ _DOC_COLS = (
     "doc_id", "kb_id", "title", "source_type", "source", "storage_key",
     "content_version", "connector_id", "status", "deleted_at", "run_id", "last_error",
     "created_at", "updated_at", "process_started_at", "process_finished_at",
-    "chunk_count", "file_size", "doc_type", "embedding_model", "doc_created_at",
+    "chunk_count", "file_size", "doc_type", "embedding_model", "chunk_strategy", "doc_created_at",
     "title_hash", "content_simhash", "duplicate_of",
 )
 _DOC_SELECT = "SELECT " + ", ".join(_DOC_COLS) + " FROM documents"
@@ -985,4 +988,71 @@ def delete_minhash_bands(doc_id: str) -> None:
         conn.execute("DELETE FROM minhash_bands WHERE doc_id = %s", [doc_id])
         conn.commit()
     logger.info("MinHash bands deleted: doc_id=%s", doc_id)
+
+
+# ──────────────────────────────────────────────
+# Parent-child chunking ancestor storage — docs/internal/design/parent-child-chunking.md §4.1
+# ──────────────────────────────────────────────
+
+def save_parent_chunks(doc_id: str, kb_id: str, parents: list[ParentChunk]) -> None:
+    """Insert ancestor rows for a document. No-op when parents is empty.
+
+    Caller (pipeline/steps/upsert.py) must pass parents in root-first order (as returned by
+    pipeline/steps/chunk.py's chunk()) — the self-referencing parent_id FK requires each row's
+    parent to already exist. Upserts to tolerate re-ingest (chunk_id is deterministic —
+    "{doc_id}:{idx}", see chunk.py _make_id_func).
+    """
+    if not parents:
+        return
+    with get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO parent_chunks"
+                " (chunk_id, doc_id, kb_id, level, parent_id, chunk_index, text, child_count,"
+                "  page_num, page_label)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                " ON CONFLICT (chunk_id) DO UPDATE SET"
+                "   level = EXCLUDED.level, parent_id = EXCLUDED.parent_id,"
+                "   chunk_index = EXCLUDED.chunk_index, text = EXCLUDED.text,"
+                "   child_count = EXCLUDED.child_count, page_num = EXCLUDED.page_num,"
+                "   page_label = EXCLUDED.page_label",
+                [
+                    (
+                        p.chunk_id, doc_id, kb_id, p.level, p.parent_id, p.chunk_index, p.text,
+                        p.child_count, p.page_num, p.page_label,
+                    )
+                    for p in parents
+                ],
+            )
+        conn.commit()
+    logger.info("Parent chunks saved: doc_id=%s count=%d", doc_id, len(parents))
+
+
+def get_parent_chunks(chunk_ids: list[str]) -> dict[str, dict]:
+    """Batch-fetch ancestor rows by chunk_id -> {chunk_id: row}. Used by rag/retriever.py's
+    auto-merge (missing IDs are simply absent from the result — self-healing, design §5.2)."""
+    if not chunk_ids:
+        return {}
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            "SELECT chunk_id, doc_id, kb_id, level, parent_id, chunk_index, text, child_count,"
+            " page_num, page_label FROM parent_chunks WHERE chunk_id = ANY(%s)",
+            [chunk_ids],
+        ).fetchall()
+    return {
+        row[0]: {
+            "chunk_id": row[0], "doc_id": row[1], "kb_id": row[2], "level": row[3],
+            "parent_id": row[4], "chunk_index": row[5], "text": row[6], "child_count": row[7],
+            "page_num": row[8], "page_label": row[9],
+        }
+        for row in rows
+    }
+
+
+def delete_parent_chunks_by_doc(doc_id: str) -> None:
+    """Remove all parent_chunks rows for a document (any level)."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM parent_chunks WHERE doc_id = %s", [doc_id])
+        conn.commit()
+    logger.info("Parent chunks deleted: doc_id=%s", doc_id)
 

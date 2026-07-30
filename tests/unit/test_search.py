@@ -135,6 +135,8 @@ class TestSearchSimilarity:
         s.retrieval.top_k = top_k
         s.retrieval.hybrid.alpha = 0.5
         s.retrieval.rerank.enabled = False
+        s.retrieval.auto_merge.enabled = False
+        s.chunking.chunk_size = 1024
         return s
 
     def test_uses_dense_only_mode(self):
@@ -147,6 +149,7 @@ class TestSearchSimilarity:
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
             asyncio.run(search("query", ["kb-test"], mode="similarity"))
 
@@ -168,6 +171,7 @@ class TestSearchSimilarity:
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.4))
 
@@ -186,6 +190,7 @@ class TestSearchSimilarity:
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.0))
 
@@ -202,6 +207,7 @@ class TestSearchSimilarity:
             patch("rag_api.rag.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
             results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.5))
 

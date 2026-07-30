@@ -58,6 +58,7 @@ def test_ingest_job_validate_passes(ingest_run_config):
 
     doc = {"doc_id": DOC_ID, "kb_id": "kb-test", "storage_key": "kb-test/test.pdf", "file_size": 1024, "status": "pending"}
 
+    from rag_api.pipeline.steps.chunk import ChunkResult
     from rag_api.pipeline.steps.dedup.types import DedupResult
 
     with (
@@ -68,7 +69,7 @@ def test_ingest_job_validate_passes(ingest_run_config):
         patch("rag_api.pipeline.steps.dedup.run_simhash_detection",
               return_value=DedupResult(body_match="identical_level", needs_indexing=True)),
         patch("rag_api.pipeline.steps.dedup.run_verdict"),
-        patch("rag_api.pipeline.steps.chunk.chunk", return_value=[MagicMock()]),
+        patch("rag_api.pipeline.steps.chunk.chunk", return_value=ChunkResult(nodes=[MagicMock()])),
         patch("rag_api.pipeline.steps.embed.embed", return_value=[]),
         patch("rag_api.pipeline.steps.upsert.upsert") as mock_upsert,
         patch("rag_api.pipeline.steps.meta.set_indexed"),

@@ -28,11 +28,16 @@ PointStruct
     ├── text               : str      — chunk body text
     ├── embedding_model    : str      — embedding model name
     ├── embedding_provider : str      — ollama / openai
-    ├── chunk_strategy     : str      — recursive / semantic
-    ├── chunk_size         : int      — chunk size setting (tokens)
+    ├── chunk_strategy     : str      — recursive / semantic / hierarchical
+    ├── chunk_size         : int|int[] — chunk size setting (tokens); list of levels for
+    │                                    hierarchical (largest -> smallest, last = leaf size)
     ├── chunk_overlap      : int      — chunk overlap setting (tokens)
     ├── updated_at         : str      — ISO 8601 UTC, index timestamp
-    └── doc_created_at     : str      — ISO 8601 UTC, actual document creation date
+    ├── doc_created_at     : str      — ISO 8601 UTC, actual document creation date
+    └── parent_chunk_id    : str|null — PK of this chunk's immediate ancestor in `parent_chunks`
+                                        (below); null when chunking.strategy != "hierarchical"
+                                        or for pre-existing chunks (design:
+                                        parent-child-chunking.md §4.2)
 ```
 
 ### Delete filter pattern
@@ -139,6 +144,8 @@ documents
 ├── file_size           BIGINT
 ├── doc_type            TEXT                    -- s3: original ext | web: html | confluence: md | github: original ext
 ├── embedding_model     TEXT
+├── chunk_strategy      TEXT                    -- recursive | semantic | hierarchical (resolved KB
+│                                                 chunking.strategy at ingest time, set on set_indexed)
 ├── doc_created_at      TIMESTAMPTZ             -- actual document creation date (source-specific)
 ├── title_hash          TEXT
 ├── content_simhash     BIGINT
@@ -187,6 +194,37 @@ Index:
 
 LSH candidate query: 16밴드 × 8행 구조로 UNION — 한 밴드의 8개 값이 모두 일치하는 doc_id만 후보로 추출 (`COUNT(*) = 8` 조건).
 
+### `parent_chunks` table
+
+`chunking.strategy = "hierarchical"`로 인덱싱된 문서의 상위(ancestor) 청크 계층 — 자기참조
+트리. leaf(실제 검색 대상) 청크는 Qdrant에만 있고, 이 테이블에는 leaf 바로 위 레벨부터
+root까지만 저장된다. 전체 설계는 [parent-child-chunking.md §4.1](parent-child-chunking.md#41-postgres--parent_chunks-테이블-신규-자기참조-트리) 참고.
+
+```
+parent_chunks
+├── chunk_id     TEXT         PRIMARY KEY   -- "{doc_id}:{idx}", idx는 문서 전체 전역 카운터
+│                                              (simhash_bands.band_id와 동일한 합성 키 패턴)
+├── doc_id       TEXT         NOT NULL FK documents(doc_id) ON DELETE CASCADE
+├── kb_id        TEXT         NOT NULL FK knowledge_bases(kb_id) ON DELETE CASCADE
+├── level        SMALLINT     NOT NULL   -- 0 = root ... leaf 바로 위 레벨까지 (조회/디버깅용)
+├── parent_id    TEXT         FK parent_chunks(chunk_id) ON DELETE CASCADE  -- NULL = root
+├── chunk_index  INTEGER      NOT NULL   -- 같은 level 내 시퀀스 번호 (0-based)
+├── text         TEXT         NOT NULL   -- 이 노드 전체 텍스트
+├── child_count  INTEGER      NOT NULL   -- 바로 아래 레벨의 실제 자식 수 (min_chunk_chars 필터
+│                                           통과분만; 0인 행은 저장하지 않음)
+├── page_num     INTEGER                 -- 소속 페이지 번호, 비페이지네이션 문서는 NULL
+├── page_label   TEXT                    -- 소속 페이지 라벨, 없으면 NULL
+└── created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+```
+
+Indexes:
+- `idx_parent_chunks_doc` on `(doc_id)`
+- `idx_parent_chunks_parent` on `(parent_id)` — cascade delete 및 상위 조회용
+
+삭제: soft/hard delete 양쪽 모두 `purge_doc_artifacts()`에서 `delete_parent_chunks_by_doc()`을
+호출해 정리(dedup bands와 동일 패턴). hard delete는 `documents` 삭제 시 `ON DELETE CASCADE`로도
+자동 정리됨.
+
 Extension:
 - `pg_trgm` — `documents.title` 컬럼 제목 퍼지 검색용 (`idx_documents_title_trgm` GIN 인덱스)
 
@@ -231,6 +269,8 @@ instead of being processed immediately. Delay/dedup mechanics are covered in
 | doc_created_at extraction | `src/pipeline/steps/parse.py` — `_extract_doc_created_at()` |
 | Postgres KB/doc CRUD | `src/infra/postgres.py` |
 | Document state transitions | `src/pipeline/steps/meta.py` |
-| Schema DDL | `migrations/001_initial_schema.sql`, `migrations/002_kb_settings_overrides.sql` (design 완료, 구현 예정) |
+| Schema DDL | `migrations/001_initial_schema.sql`, `migrations/002_kb_settings_overrides.sql`, `migrations/003_parent_chunks.sql` |
 | Redis queue client | `src/infra/redis.py` |
-| KB 설정 오버라이드 리졸버 | `src/config/settings.py` — `resolve_settings(kb_id)` (design 완료, 구현 예정) |
+| KB 설정 오버라이드 리졸버 | `src/config/settings.py` — `resolve_settings(kb_id)` |
+| `parent_chunks` CRUD | `src/rag_api/infra/postgres.py` — `save_parent_chunks`, `get_parent_chunks`, `delete_parent_chunks_by_doc` |
+| Auto-merge 병합 로직 | `src/rag_api/rag/retriever.py` — `_auto_merge_parents` |

@@ -306,6 +306,7 @@ class TestDeleteConnector:
             patch("rag_api.infra.qdrant.delete_chunks_by_doc_id"),
             patch("rag_api.infra.postgres.delete_simhash_bands"),
             patch("rag_api.infra.postgres.delete_minhash_bands"),
+            patch("rag_api.infra.postgres.delete_parent_chunks_by_doc"),
             patch("rag_api.infra.postgres.soft_delete_doc", side_effect=lambda did: soft_delete_calls.append(did)),
             patch("rag_api.infra.postgres.delete_connector"),
         ):
@@ -338,6 +339,7 @@ class TestDeleteConnector:
                 "rag_api.infra.postgres.delete_minhash_bands",
                 side_effect=lambda did: band_calls.append(("minhash", did)),
             ),
+            patch("rag_api.infra.postgres.delete_parent_chunks_by_doc"),
             patch("rag_api.infra.postgres.soft_delete_doc"),
             patch("rag_api.infra.postgres.delete_connector"),
             patch("rag_api.infra.s3.delete_by_key") as mock_s3_delete,

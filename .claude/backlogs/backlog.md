@@ -8,7 +8,7 @@
 |----|-------|--------|
 | [US-01](US-01-mcp-server.md) | MCP 서버 | done |
 | [US-02](US-02-concurrency-guard.md) | Delete/Ingest 동시 실행 경쟁 조건 해결 | done |
-| [US-03](todo/US-03-small-to-big-retrieval.md) | Small-to-Big Retrieval (document_aware 계층 검색) | todo |
+| [US-03](US-03-parent-child-chunking.md) | Parent-Child 청킹 & Auto-Merge 검색 | done |
 | [US-05](US-05-stuck-running-recovery.md) | Stuck Running 자동 복구 (서버 재시작 시 zombie 상태 해소) | done |
 | [US-06](US-06-sensor-dispatch-lock-false-zombie.md) | Sensor dispatch lock이 zombie로 오탐되는 버그 | todo |
 | [US-07](US-07-mcp-otel-tracing.md) | OpenTelemetry 트레이싱 — MCP _meta.traceparent → Langfuse | done |
@@ -50,3 +50,4 @@
 | [US-46](US-46-rest-mcp-tracing-structure-unification.md) | REST/MCP 트레이싱 구조 통일 — root span + business span(input/output) 표준화 | in-progress |
 | [US-47](US-47-page-label-type-mismatch-500.md) | 다중 KB 검색 시 page_label 타입 불일치로 인한 500 에러 수정 | done |
 | [US-48](US-48-html-trafilatura-inline-tag-text-loss.md) | trafilatura favor_recall 모드가 인라인 서식 태그 주변 텍스트를 유실하는 버그 수정 | done |
+| [US-49](US-49-chunk-overlap-validation.md) | chunk_overlap - chunk_size cross-field 검증 추가 | done |

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from qdrant_client.http import models as qmodels
 
 from rag_api.infra import qdrant as qdrant_infra
+from rag_api.pipeline.steps.chunk import ParentChunk
 from rag_api.pipeline.steps.embed import EmbeddedNode
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,19 @@ def upsert(
     title: str = "",
     source_type: str = "",
     source: str = "",
+    parents: list[ParentChunk] | None = None,
 ) -> UpsertResult:
-    """Delete all existing chunks for doc_id then insert new ones."""
+    """Delete all existing chunks for doc_id then insert new ones.
+
+    parents (hierarchical chunking ancestors, docs/internal/design/parent-child-chunking.md §3.1)
+    are replaced in Postgres before the Qdrant leaf upsert — leaf payload's parent_chunk_id must
+    already resolve to an existing ancestor row by the time search can see the new chunks.
+    """
+    from rag_api.infra.postgres import delete_parent_chunks_by_doc, save_parent_chunks
+
+    delete_parent_chunks_by_doc(doc_id)
+    save_parent_chunks(doc_id, kb_id, parents or [])
+
     client = qdrant_infra.get_qdrant_client()
     updated_at = datetime.now(UTC).isoformat()
 
@@ -63,6 +75,7 @@ def upsert(
             "chunk_strategy": meta.get("chunk_strategy", ""),
             "chunk_size": meta.get("chunk_size", 0),
             "chunk_overlap": meta.get("chunk_overlap", 0),
+            "parent_chunk_id": meta.get("parent_chunk_id"),
             "updated_at": updated_at,
             "doc_created_at": doc_created_at,
         }

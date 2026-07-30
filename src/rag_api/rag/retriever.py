@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 
 from rag_api.config.settings import get_settings
@@ -18,7 +19,7 @@ class SearchResult:
     doc_id: str
     doc_type: str
     title: str
-    chunk_index: int
+    chunk_index: int | None
     page_num: int | None
     page_label: str | None
     text: str
@@ -27,6 +28,8 @@ class SearchResult:
     updated_at: str
     source_type: str = ""
     source: str = ""
+    parent_chunk_id: str | None = None
+    merged: bool = False
 
 
 def _build_vector_store(kb_id: str, qdrant_client=None):
@@ -75,6 +78,7 @@ def _node_to_result(kb_id: str, node) -> SearchResult:
         score=float(node.score or 0.0),
         rerank_score=None,
         updated_at=meta.get("updated_at", ""),
+        parent_chunk_id=meta.get("parent_chunk_id"),
     )
 
 
@@ -117,6 +121,76 @@ def _filter_orphaned_chunks(results: list[SearchResult]) -> list[SearchResult]:
     return kept
 
 
+def _build_merged_result(a: dict, children: list[SearchResult]) -> SearchResult:
+    """children -> one SearchResult representing ancestor `a` (a Postgres parent_chunks row dict,
+    docs/internal/design/parent-child-chunking.md §5.1).
+
+    Non-text/score fields are copied from children[0] — doc_id/kb_id/title/source_type/source/
+    doc_type/updated_at are always identical across children of the same document. chunk_index
+    is set to None: a merged block no longer maps to a single sequence position.
+    """
+    base = children[0]
+    return SearchResult(
+        chunk_id=a["chunk_id"], kb_id=base.kb_id, doc_id=base.doc_id, doc_type=base.doc_type,
+        title=base.title, chunk_index=None, page_num=a["page_num"], page_label=a["page_label"],
+        text=a["text"], score=sum(c.score for c in children) / len(children),
+        rerank_score=None, updated_at=base.updated_at, source_type=base.source_type,
+        source=base.source, parent_chunk_id=None, merged=True,
+    )
+
+
+def _auto_merge_parents(
+    results: list[SearchResult], threshold: float, max_depth: int,
+) -> list[SearchResult]:
+    """Group leaf results by parent_chunk_id and replace groups meeting `threshold` with their
+    ancestor's full text, repeating one level up (Postgres round-trip per level) until either no
+    group merges or `max_depth` (non-leaf level count) is reached.
+
+    docs/internal/design/parent-child-chunking.md §5.1. `settled` holds results that either have
+    no parent_chunk_id (non-hierarchical documents) or already failed threshold at some level —
+    keeping them out of `active` stops them from being retried at a higher level. Ancestors
+    missing from get_parent_chunks() (pipeline interrupted mid-write) fall through to passthrough
+    unchanged — same self-healing pattern as _filter_orphaned_chunks (§5.2). child_count is always
+    >= 1 for any stored ancestor (chunk.py never stores child_count=0 rows), so the division
+    below never raises ZeroDivisionError.
+    """
+    from rag_api.infra.postgres import get_parent_chunks
+
+    active, settled = results, []
+    for _ in range(max_depth):
+        ids = {r.parent_chunk_id for r in active if r.parent_chunk_id}
+        if not ids:
+            break
+        ancestors = get_parent_chunks(list(ids))
+
+        groups: dict[str, list[SearchResult]] = defaultdict(list)
+        passthrough: list[SearchResult] = []
+        for r in active:
+            if r.parent_chunk_id and r.parent_chunk_id in ancestors:
+                groups[r.parent_chunk_id].append(r)
+            else:
+                passthrough.append(r)
+
+        merged: list[SearchResult] = []
+        any_merged = False
+        for pid, children in groups.items():
+            a = ancestors[pid]
+            if len(children) / a["child_count"] >= threshold:
+                r = _build_merged_result(a, children)
+                r.parent_chunk_id = a["parent_id"]
+                merged.append(r)
+                any_merged = True
+            else:
+                merged.extend(children)
+
+        settled.extend(passthrough)
+        active = merged
+        if not any_merged:
+            break
+
+    return settled + active
+
+
 def _search_kb(
     kb_id: str,
     query: str,
@@ -125,6 +199,8 @@ def _search_kb(
     mode: str,
     min_score: float,
 ) -> list[SearchResult]:
+    from rag_api.config.settings import resolve_settings
+
     index = _build_index(kb_id)
     if mode == "similarity":
         retriever = index.as_retriever(
@@ -139,11 +215,20 @@ def _search_kb(
         )
 
     nodes = retriever.retrieve(query)
-    return [
+    results = [
         _node_to_result(kb_id, node)
         for node in nodes
         if mode != "similarity" or float(node.score or 0.0) >= min_score
     ]
+
+    resolved = resolve_settings(kb_id)
+    auto_merge = resolved.retrieval.auto_merge
+    chunk_size = resolved.chunking.chunk_size
+    max_depth = len(chunk_size) - 1 if isinstance(chunk_size, list) else 0
+    if auto_merge.enabled and max_depth > 0:
+        results = _auto_merge_parents(results, auto_merge.merge_threshold, max_depth)
+
+    return results
 
 
 async def search(

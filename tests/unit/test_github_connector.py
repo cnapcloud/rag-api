@@ -281,7 +281,7 @@ class TestChunkCodeRouting:
         doc = Document(text="sample text " * 200, metadata={"doc_type": "pdf"})
 
         with _patch("rag_api.pipeline.steps.chunk._build_code_parser") as mock_code:
-            nodes = chunk([doc], strategy="recursive", chunk_size=128, chunk_overlap=16)
+            nodes = chunk([doc], strategy="recursive", chunk_size=128, chunk_overlap=16).nodes
 
         mock_code.assert_not_called()
         assert len(nodes) > 0

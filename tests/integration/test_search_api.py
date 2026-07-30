@@ -11,7 +11,10 @@ from rag_api.api.app import create_app
 from rag_api.rag.retriever import SearchResult
 
 
-def _make_result(chunk_id: str) -> SearchResult:
+def _make_result(
+    chunk_id: str, merged: bool = False, chunk_index: int | None = 0,
+    parent_chunk_id: str | None = None,
+) -> SearchResult:
     return SearchResult(
         chunk_id=chunk_id,
         kb_id="kb-test",
@@ -19,13 +22,15 @@ def _make_result(chunk_id: str) -> SearchResult:
         title="doc.pdf",
         source="doc.pdf",
         doc_type="pdf",
-        chunk_index=0,
+        chunk_index=chunk_index,
         page_num=1,
         page_label="i",
         text="테스트 청크 내용",
         score=0.9,
         rerank_score=None,
         updated_at="2025-06-07T00:00:00Z",
+        merged=merged,
+        parent_chunk_id=parent_chunk_id,
     )
 
 

@@ -3,6 +3,7 @@
 | Plan | Title | Covers | Status |
 |------|-------|--------|--------|
 | [01](01-mcp-server-implementation.md) | MCP Server Implementation | US-01 | done |
+| [03](03-parent-child-chunking.md) | Parent-Child 청킹 & Auto-Merge 검색 | US-03 | done |
 | [02](02-concurrency-guard.md) | Concurrency Guard — Sensor + QueueWorker | US-02 | done |
 | [03](03-stuck-running-recovery.md) | Stuck Running Recovery — Dagster run_id check | US-05 | done |
 | [04](04-zombie-detection-to-sensor.md) | Zombie Detection을 Sensor로 이동 | US-06 | todo |
@@ -44,3 +45,4 @@
 | [46](46-rest-mcp-tracing-structure-unification.md) | REST/MCP 트레이싱 구조 통일 — root span + business span(input/output) 표준화 | US-46 | in-progress |
 | [47](47-page-label-type-mismatch-500.md) | 다중 KB 검색 시 page_label 타입 불일치로 인한 500 에러 수정 | US-47 | done |
 | 48 | trafilatura favor_recall 모드가 인라인 서식 태그 주변 텍스트를 유실하는 버그 수정 | US-48 | 통합(backlog 참고) — done |
+| 49 | chunk_overlap - chunk_size cross-field 검증 추가 | US-49 | 통합(backlog 참고) — done |
