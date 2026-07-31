@@ -40,7 +40,7 @@ queue_poll:
 
 provider:
   name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
-  ollama_url: "http://<ollama-host-ip>:11434"
+  ollama_url: "http://192.168.0.75:11434"
   openai_api_key: ""
 
 ingestion:
