@@ -10,7 +10,7 @@ OCI_REGISTRY := $(REGISTRY_HOST)/cnapcloud/charts
 
 CNPG_NAMESPACE := cnpg-system
 
-.PHONY: deps lint package login push check-cnpg install upgrade uninstall clean
+.PHONY: deps lint preview package login push check-cnpg install upgrade uninstall clean
 
 deps:
 	helm dependency build $(CHART_DIR)
@@ -48,6 +48,14 @@ upgrade: check-cnpg
 		--version $(CHART_VERSION) \
 		-n $(RELEASE_NAME) \
 		--create-namespace \
+		-f $(CHART_DIR)/values.yaml \
+		-f $(VALUES_FILE)
+
+preview:
+	helm template $(RELEASE_NAME) \
+		oci://$(OCI_REGISTRY)/$(CHART_NAME) \
+		--version $(CHART_VERSION) \
+		-n $(RELEASE_NAME) \
 		-f $(CHART_DIR)/values.yaml \
 		-f $(VALUES_FILE)
 

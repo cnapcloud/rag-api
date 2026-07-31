@@ -48,3 +48,7 @@ cnpg-cluster:
     cnpg-langfuse-role:
       username: langfuse
       password: "password"
+
+ollama:
+  enabled: true
+  externalIP: "<ollama-host-ip>" # LAN IP of the host running Ollama, reachable from cluster nodes
