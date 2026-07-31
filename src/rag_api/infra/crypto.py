@@ -31,12 +31,14 @@ _DEFAULT_KEY = base64.urlsafe_b64encode(
 
 def _fernet() -> Fernet:
     raw = os.environ.get("CONNECTOR_SECRET_KEY", "").strip().encode()
-    if raw:
-        try:
-            return Fernet(raw)
-        except Exception:
-            logger.warning("CONNECTOR_SECRET_KEY is invalid — falling back to default key")
-    return Fernet(_DEFAULT_KEY)
+    if not raw:
+        logger.warning("CONNECTOR_SECRET_KEY is not set — falling back to default key")
+        return Fernet(_DEFAULT_KEY)
+    try:
+        return Fernet(raw)
+    except Exception:
+        logger.warning("CONNECTOR_SECRET_KEY is invalid — falling back to default key")
+        return Fernet(_DEFAULT_KEY)
 
 
 def encrypt_config(config: dict) -> dict:

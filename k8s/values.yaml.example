@@ -23,6 +23,7 @@ secrets:
     SMTP_PASSWORD: "password"
     TRACING_LANGFUSE_PUBLIC_KEY: "pk-lf-demo0000000000000000000000"
     TRACING_LANGFUSE_SECRET_KEY: "sk-lf-demo0000000000000000000000"
+    CONNECTOR_SECRET_KEY: "demo-connector-secret-key-0000000000000000=" # used to encrypt connector auth secrets
   redis-auth:
     REDIS_PASSWORD: "password"
   minio-root-secret:
