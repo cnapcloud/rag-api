@@ -40,7 +40,7 @@ queue_poll:
 
 provider:
   name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
-  ollama_url: "http://192.168.0.75:11434"
+  ollama_url: ""
   openai_api_key: ""
 
 ingestion:
@@ -121,7 +121,7 @@ mcp:
 
 tracing:
   enabled: false
-  langfuse_baseurl: http://<langfuse-host-ip>:3020
+  langfuse_baseurl: ""
   service_name: "rag-api"
 
 logging:

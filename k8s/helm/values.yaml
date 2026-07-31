@@ -251,13 +251,7 @@ minio-jobs:
 
 ollama:
   enabled: true
-  # externalIP is environment-specific (the Ollama host's LAN IP) — set it in your own
-  # layered values file (k8s/values.yaml, gitignored), not here. Required at render time;
-  # see charts/ollama/templates/endpointslice.yaml.
-
-# cnpg-operator is not a dependency of this chart at all — install it separately, once
-# per cluster, before installing this chart. See README.md > Prerequisites for the install
-# command and why bundling it here doesn't work.
+  externalIP: "" # LAN IP of the host running Ollama, reachable from cluster nodes — required, set in k8s/values.yaml
 
 redis-ha:
   enabled: true
