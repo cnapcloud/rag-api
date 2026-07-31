@@ -28,6 +28,29 @@ embedding:
   ollama_url: "http://<ollama-host>:11434"
 ```
 
+GPU 서버가 없어 Ollama를 직접 띄우기 어렵다면 OpenAI 임베딩으로 대체할 수 있다 (사전 요구사항의
+`ollama pull` 단계는 건너뛰어도 된다). `provider.name`을 바꾸고 `embedding.model`/`vector_size`를
+OpenAI 모델에 맞게 함께 수정해야 한다 — `vector_size`가 실제 임베딩 차원과 다르면 Qdrant 컬렉션
+생성/검색이 깨진다.
+
+```yaml
+# settings.yaml
+provider:
+  name: "openai"
+
+embedding:
+  model: "text-embedding-3-small"
+  vector_size: 1536              # text-embedding-3-small/ada-002 기준, bge-m3(ollama)는 1024
+```
+
+`OPENAI_API_KEY`는 `docker/settings.yaml`이 아니라 `docker/.env`에 넣는다 (env var 오버라이드로
+`provider.openai_api_key`에 주입됨).
+
+```bash
+# docker/.env
+OPENAI_API_KEY=sk-...
+```
+
 Knowledge Base 목록도 이 파일에서 정의한다. 앱 기동 시 자동으로 생성된다.
 
 ```yaml
@@ -38,27 +61,41 @@ knowledge_bases:
 ```
 
 `docker/.env`에서 MinIO / Redis 자격증명을 확인한다. 기본값은 개발용이며 프로덕션 배포 전에 변경한다.
+MinIO는 `rag-api` 앱이 읽는 `S3_ACCESS_KEY`/`S3_SECRET_KEY`가 실제 변수명이고,
+`docker-compose.yml`이 이 값을 MinIO 서버가 요구하는 `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`로
+매핑한다(둘이 반드시 같은 값이어야 함).
 
 ```bash
+S3_ACCESS_KEY=admin
+S3_SECRET_KEY=password
 REDIS_PASSWORD=redis
-MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=minioadmin
 ```
 
-Postgres 자격증명은 `docker/docker-compose.yml`과 `docker/settings.yaml` 두 곳에 있다. 프로덕션 배포 전에 함께 변경한다.
+같은 파일의 `CONNECTOR_SECRET_KEY`(커넥터 인증정보 암호화 키)도 프로덕션 배포 전에 직접 생성한 값으로 교체한다. 미설정 시 소스코드에 공개된 기본 키로 조용히 폴백된다.
+
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Postgres 자격증명은 세 곳에 걸쳐 있어 함께 바꿔야 실제로 반영된다.
 
 ```yaml
-# docker-compose.yml
+# docker-compose.yml — postgresql 서비스 자체의 superuser 계정 (앱이 쓰는 계정과는 다름)
 postgresql:
   environment:
     POSTGRES_PASSWORD: password   # 변경 필요
 
-# settings.yaml
-postgres:
-  password: "password"           # 변경 필요 (동일한 값으로 맞춤)
+# docker/init-db.sql — 앱이 실제로 쓰는 rag-api 롤 비밀번호가 SQL 리터럴로 하드코딩되어 있음
+CREATE USER "rag-api" WITH PASSWORD 'password';   # 변경 필요 (.env의 POSTGRES_PASSWORD와 동일한 값으로)
+
+# docker/.env — settings.py가 이 환경변수로 postgres.password를 오버라이드함
+POSTGRES_PASSWORD=password        # 변경 필요 (init-db.sql과 동일한 값으로)
 ```
 
-### 3. 기동
+`init-db.sql`은 Postgres 볼륨을 처음 초기화할 때만 실행되므로, 이미 기동한 적이 있는 환경이라면
+`docker-compose down -v`로 `pg_data` 볼륨을 지우고 다시 올려야 새 비밀번호가 실제로 적용된다.
+
+### 3. 서비스 시작
 
 ```bash
 cd docker
@@ -76,7 +113,9 @@ docker compose ps
 
 ## 문서 인덱싱
 
-PDF, Word(docx), 텍스트(txt), 마크다운(md), 한글(hwp) 형식을 지원한다.
+PDF, Word(docx/doc), 텍스트(txt), 마크다운(md), 한글(hwp), HTML, reStructuredText(rst), 이메일(eml),
+CSV/TSV, JSON, EPUB, Excel(xlsx/xls), PowerPoint(pptx/ppt)와 주요 소스코드 확장자(py, ts, js, go, java 등)를
+지원한다 (전체 목록은 [parser/extensions.py](src/rag_api/pipeline/steps/parser/extensions.py) 참고).
 
 ```bash
 # 문서 업로드 — 응답에서 doc_id를 확인한다
