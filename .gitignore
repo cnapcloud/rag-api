@@ -36,6 +36,7 @@ dagster_home/
 !docker/data/
 !docker/data/kiwi_user_words.tsv
 docker/data/mailpit/
+data/journal-*.pdf
 
 # IDE
 .vscode/
