@@ -140,7 +140,7 @@ curl -X DELETE http://localhost:8000/api/kb/kb-01/docs/87131b1a-...
 ```bash
 curl -X POST http://localhost:8000/api/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "삼성증권", "kb_ids": ["kb-01"]}'
+  -d '{"query": "오래된 참나무", "kb_ids": ["kb-01"]}'
 ```
 
 ---
