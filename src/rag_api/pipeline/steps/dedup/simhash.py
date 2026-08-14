@@ -32,8 +32,8 @@ def compute_simhash(text: str, ngram: int = 3, bits: int = 64) -> int:
     v = [0] * bits
     mask = (1 << bits) - 1
 
-    for i in range(max(0, len(text) - ngram + 1)):
-        shingle = text[i : i + ngram]
+    shingles = {text[i : i + ngram] for i in range(max(0, len(text) - ngram + 1))}
+    for shingle in shingles:
         h = int(hashlib.md5(shingle.encode()).hexdigest(), 16) & mask
         for bit in range(bits):
             if h & (1 << bit):
