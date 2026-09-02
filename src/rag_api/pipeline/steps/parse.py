@@ -98,12 +98,18 @@ def parse(
             file_path = local_path
 
         parsers = parser.get_parsers()
-        reader = SimpleDirectoryReader(
-            input_files=[str(file_path)],
-            file_extractor=parsers if parsers else None,
-            file_metadata=lambda _: {"kb_id": kb_id},
-        )
-        documents = reader.load_data()
+        try:
+            reader = SimpleDirectoryReader(
+                input_files=[str(file_path)],
+                file_extractor=parsers if parsers else None,
+                file_metadata=lambda _: {"kb_id": kb_id},
+                raise_on_error=True,
+            )
+            documents = reader.load_data()
+        except Exception as e:
+            if isinstance(e.__cause__, IngestValidationError):
+                raise e.__cause__
+            raise IngestValidationError(f"Unsupported or unreadable file: {suffix}") from e
 
         for doc in documents:
             label = doc.metadata.pop("page_label", None)
