@@ -379,7 +379,7 @@ bulk insert) 하나로 끝난다.
 
 **allow-list만으로는 안전하지 않다.** `Settings`에는 `ingestion`/`chunking`/`dedup` 말고도
 `provider`(임베딩/LLM API 키), `redis`, `postgres`, `qdrant` 같은 인프라 자격증명 섹션이 있다.
-deny 판정이 없으면 `overrides["provider.openai_api_key"]`나 `overrides["redis.host"]`처럼 §5가
+deny 판정이 없으면 `overrides["provider.api_key"]`나 `overrides["redis.host"]`처럼 §5가
 다루지 않는 필드가 그대로 통과해 KB별로 인프라 자격증명/접속 정보를 덮어쓸 수 있게 된다. 그래서
 **`ingestion.`/`chunking.`/`dedup.` 접두사로 시작하는 키만 애초에 허용하는 allow-list를 필드
 단위 배제 판정보다 먼저** 적용한다.

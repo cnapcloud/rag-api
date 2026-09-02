@@ -168,7 +168,7 @@ chunk_size = cfg.chunking.chunk_size
 | `dagster` | Dagster gRPC 주소 |
 | `ingestion` | 파일 크기 제한, 지원 확장자 |
 | `chunking` | 전략(recursive/semantic), chunk_size, chunk_overlap |
-| `provider` | 임베딩 provider(ollama/openai), ollama_url, openai_api_key |
+| `provider` | 임베딩 provider — `name`(ollama/openai/jina/그 외 OpenAI 호환), `url`, `api_key` |
 | `embedding` | 모델명, vector_size |
 | `retrieval` | top_k, alpha(dense/sparse 가중치) |
 | `queue_worker` | enabled, poll_interval_sec, max_per_poll |

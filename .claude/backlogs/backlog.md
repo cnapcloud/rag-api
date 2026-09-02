@@ -1,5 +1,19 @@
 # Backlog
 
+## Summary (세션 시작 시 이것만 읽음)
+
+US-01~US-49 대부분 완료. 커넥터(US-15~US-21, US-32~US-34, US-37/38), dedup 3단계(US-23/24/35),
+파서 확장(US-41~US-43), KB 설정 오버라이드(US-44/45)까지 done.
+진행 중: US-46 — REST/MCP 트레이싱 구조 통일(root span + business span 표준화).
+대기: US-06 — sensor dispatch lock이 zombie로 오탐되는 버그.
+최근 완료: US-50 — 임베딩 provider 일반화(프로토콜 기반 접속 + OpenAI 호환 폴백 + Jina
+네이티브). 배포는 rag-ent-api E-31과 동시 릴리스 필요.
+
+신규 백로그는 항상 [`_TEMPLATE.md`](_TEMPLATE.md) 형식으로 `todo/`에 작성한다 (자유 서술 금지).
+상세 워크플로우는 `.claude/rules/conventions/00-progress-tracking.md` §5.
+
+## Full History (참조용 — 특정 항목 조사 시에만 열기)
+
 > 포맷 마이그레이션(`.claude/rules/conventions/07-traceability.md`, 2026-07-12 도입): `_TEMPLATE.md`
 > 형식(`> 설계:` 링크 포함)으로 전환 완료된 항목은 US-23/24/35뿐. 나머지는 구 형식 유지 —
 > 해당 항목을 실제로 다시 열어 작업할 때 opportunistic하게 전환한다. 일괄 전환 작업은 계획하지 않음.
@@ -51,3 +65,4 @@
 | [US-47](US-47-page-label-type-mismatch-500.md) | 다중 KB 검색 시 page_label 타입 불일치로 인한 500 에러 수정 | done |
 | [US-48](US-48-html-trafilatura-inline-tag-text-loss.md) | trafilatura favor_recall 모드가 인라인 서식 태그 주변 텍스트를 유실하는 버그 수정 | done |
 | [US-49](US-49-chunk-overlap-validation.md) | chunk_overlap - chunk_size cross-field 검증 추가 | done |
+| [US-50](US-50-provider-openai-compat-generalization.md) | 임베딩 provider 일반화 — 프로토콜 커넥션 + 미지 벤더 OpenAI 호환 폴백 + Jina 네이티브 | done |

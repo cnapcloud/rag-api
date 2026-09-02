@@ -25,7 +25,7 @@ tracing:
   langfuse_public_key: "yaml-langfuse-public"
   langfuse_secret_key: "yaml-langfuse-secret"
 provider:
-  openai_api_key: "yaml-openai-key"
+  api_key: "yaml-openai-key"
 """
 
 
@@ -47,7 +47,7 @@ def test_secret_fields_default_to_yaml_values(settings_yaml: Path) -> None:
     assert settings.retrieval.rerank.api_key == "yaml-rerank-key"
     assert settings.tracing.langfuse_public_key == "yaml-langfuse-public"
     assert settings.tracing.langfuse_secret_key == "yaml-langfuse-secret"
-    assert settings.provider.openai_api_key == "yaml-openai-key"
+    assert settings.provider.api_key == "yaml-openai-key"
 
 
 def test_env_vars_override_yaml_secret_values(settings_yaml: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -71,7 +71,7 @@ def test_env_vars_override_yaml_secret_values(settings_yaml: Path, monkeypatch: 
     assert settings.retrieval.rerank.api_key == "env-rerank-key"
     assert settings.tracing.langfuse_public_key == "env-langfuse-public"
     assert settings.tracing.langfuse_secret_key == "env-langfuse-secret"
-    assert settings.provider.openai_api_key == "env-openai-key"
+    assert settings.provider.api_key == "env-openai-key"
 
 
 def test_rerank_env_override_applies_without_yaml_retrieval_section(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -168,7 +168,7 @@ def test_validate_override_key_rejects_keys_outside_allowed_sections() -> None:
     from rag_api.config.settings import validate_override_key
     from rag_api.exceptions import IngestValidationError
 
-    for key in ("provider.openai_api_key", "redis.password", "postgres.password", "s3.secret_key"):
+    for key in ("provider.api_key", "provider.url", "redis.password", "postgres.password", "s3.secret_key"):
         with pytest.raises(IngestValidationError, match="not overridable"):
             validate_override_key(Settings, key)
 
@@ -506,3 +506,101 @@ def test_describe_overridable_settings_computes_hamming_max_from_simhash_bits() 
     narrow_schema = describe_overridable_settings(narrow)
     assert narrow_schema["dedup.simhash.hamming_identical_threshold"]["max"] == 32
     assert narrow_schema["dedup.simhash.hamming_similar_threshold"]["max"] == 32
+
+
+# ──────────────────────────────────────────────
+# ProviderSettings / resolve_provider_conn (US-50, settings-composition.md §7)
+# ──────────────────────────────────────────────
+
+def test_provider_block_can_be_omitted_and_defaults_to_ollama() -> None:
+    """Omitting the provider block entirely must behave exactly like local compose Ollama."""
+    settings = Settings.model_validate({})
+
+    assert settings.provider.name == "ollama"
+    assert settings.provider.url == ""
+    assert settings.provider.api_key == ""
+
+
+def test_resolve_provider_conn_is_importable_from_public_path() -> None:
+    """rag-ent-api E-31 reuses these from rag_api.config.settings directly."""
+    from rag_api.config.settings import ProviderConn, resolve_provider_conn  # noqa: F401
+
+
+def test_resolve_provider_conn_ollama_default_endpoint() -> None:
+    from rag_api.config.settings import ProviderSettings, resolve_provider_conn
+
+    conn = resolve_provider_conn(ProviderSettings())
+
+    assert conn.base_url == "http://ollama:11434"
+    assert conn.api_key is None
+
+
+def test_resolve_provider_conn_ollama_empty_name_is_ollama() -> None:
+    from rag_api.config.settings import ProviderSettings, resolve_provider_conn
+
+    conn = resolve_provider_conn(ProviderSettings(name="", url="http://gpu-box:11434"))
+
+    assert conn.base_url == "http://gpu-box:11434"
+    assert conn.api_key is None
+
+
+def test_resolve_provider_conn_ollama_custom_url_no_auth() -> None:
+    from rag_api.config.settings import ProviderSettings, resolve_provider_conn
+
+    conn = resolve_provider_conn(
+        ProviderSettings(name="ollama", url="http://gpu-box:11434", api_key="ignored")
+    )
+
+    assert conn.base_url == "http://gpu-box:11434"
+    assert conn.api_key is None  # ollama never carries a key
+
+
+def test_resolve_provider_conn_openai_empty_url_means_sdk_default() -> None:
+    from rag_api.config.settings import ProviderSettings, resolve_provider_conn
+
+    conn = resolve_provider_conn(ProviderSettings(name="openai", api_key="sk-abc"))
+
+    assert conn.base_url is None
+    assert conn.api_key == "sk-abc"
+
+
+def test_resolve_provider_conn_unknown_provider_passes_url_and_key() -> None:
+    from rag_api.config.settings import ProviderSettings, resolve_provider_conn
+
+    conn = resolve_provider_conn(
+        ProviderSettings(name="vllm", url="http://vllm:8000/v1", api_key="k")
+    )
+
+    assert conn.base_url == "http://vllm:8000/v1"
+    assert conn.api_key == "k"
+
+
+def test_resolve_provider_conn_jina_uses_else_branch() -> None:
+    from rag_api.config.settings import ProviderSettings, resolve_provider_conn
+
+    conn = resolve_provider_conn(ProviderSettings(name="jina", api_key="jina-key"))
+
+    assert conn.base_url is None
+    assert conn.api_key == "jina-key"
+
+
+def test_provider_conn_is_frozen() -> None:
+    from pydantic import ValidationError
+
+    from rag_api.config.settings import ProviderConn
+
+    conn = ProviderConn(base_url="http://x", api_key=None)
+    with pytest.raises(ValidationError):
+        conn.base_url = "http://y"
+
+
+def test_openai_api_key_env_injects_into_provider_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "settings.yaml"
+    path.write_text("provider:\n  name: openai\n")
+    monkeypatch.setenv("OPENAI_API_KEY", "env-openai-key")
+
+    settings = Settings.from_yaml(path)
+
+    assert settings.provider.api_key == "env-openai-key"

@@ -101,7 +101,7 @@ def _load_raw(path: Path = _SETTINGS_PATH) -> dict[str, Any]:
     """yaml 파일 읽기 + 환경변수 오버라이드 적용, 검증 이전의 raw dict 반환."""
     data = yaml.safe_load(open(path)) if path.exists() else {}
     if api_key := os.environ.get("OPENAI_API_KEY"):
-        data.setdefault("provider", {})["openai_api_key"] = api_key
+        data.setdefault("provider", {})["api_key"] = api_key
     # ... 기존 환경변수 오버라이드 전부 이 함수로 이동
     return data
 
@@ -204,3 +204,85 @@ dagster-rag-api:
 
 FastAPI 진입점(`rag_ent/main.py`)은 이미 `_setup()`에서 `get_settings()`를 가장 먼저
 부르므로 변경 불필요 — Dagster 진입점만 이 패턴이 새로 필요하다.
+
+## 7. provider 일반화 (US-50)
+
+`ProviderSettings`는 벤더 전용 필드를 두지 않고 **프로토콜(`name`) + 주소(`url`) + 인증
+(`api_key`)** 세 필드만 갖는다. 새 호스팅 임베딩 백엔드 추가가 `settings.yaml` 수정만으로
+끝나게 하는 것이 목적이다.
+
+```python
+class ProviderSettings(BaseModel):
+    name: str = "ollama"   # ollama / openai / jina / 그 외
+    url: str = ""          # 빈 값 = 그 provider의 기본 엔드포인트
+    api_key: str = ""
+```
+
+세 필드 모두 기본값이 있어 `provider` 블록을 통째로 생략하면 로컬 compose Ollama
+(`http://ollama:11434`, 인증 없음)와 완전히 동일하게 동작한다.
+
+### 7.1 `resolve_provider_conn()` — 필드명을 아는 유일한 지점
+
+```python
+class ProviderConn(BaseModel):   # frozen
+    base_url: str | None         # None = 클라이언트 SDK 기본 엔드포인트
+    api_key: str | None
+
+def resolve_provider_conn(provider: ProviderSettings) -> ProviderConn: ...
+```
+
+`rag_api.config.settings` 공개 경로로 노출된다. 임베딩 팩토리(`pipeline/steps/embed.py`) ·
+`/ready`(`api/routers/health.py`) · rag-ent-api 캡셔닝(E-31)이 모두 이 헬퍼만 거쳐 provider에
+접근한다 — `name` / `url` / `api_key`라는 필드명을 아는 코드가 두 저장소 통틀어 이 함수 하나뿐이
+되게 한다. 새 provider 필드가 생기면 이 함수와 `ProviderConn`만 고치면 된다.
+
+해석 규칙 (`name`은 정규화하지 않고 그대로 비교한다 — 빌트인 3종은 `settings.yaml`에 정확히
+소문자 `ollama` / `openai` / `jina`로 적어야 하고, 그 외 값은 표기 그대로 `/ready` 응답·`checks`
+키·임베딩 메타데이터에 쓰인다):
+
+| `name` | `base_url` (`url`이 빈 값일 때) | `api_key` |
+|--------|-------------------------------|-----------|
+| `ollama`(또는 빈 값) | `http://ollama:11434` | 없음(None) |
+| `openai` / `jina` / 미지 | `None`(SDK 기본) | `provider.api_key` |
+
+### 7.2 `url` 이원화 — Ollama는 bare host, OpenAI 호환은 `/v1` 포함
+
+- Ollama: `url`은 스킴+호스트만(`http://gpu-box:11434`). LlamaIndex `OllamaEmbedding`이 경로를
+  붙인다.
+- OpenAI 호환: `url`은 `/v1`을 포함한 완전한 base URL(`http://vllm:8000/v1`). `/embeddings`는
+  클라이언트가 붙인다.
+
+`/v1` 누락 자동 보정은 하지 않는다(US-50 결정). root-mount 서버(`/embeddings`를 루트에 노출)에서
+자동 append가 오히려 깨지므로, 문서와 `settings.yaml` 주석으로만 고정한다.
+
+### 7.3 미지 `name` → OpenAI 호환 폴백
+
+`name`이 `ollama` / `openai` / `jina` 중 어느 것도 아니면 **에러가 아니라**
+`llama-index-embeddings-openai-like`의 `OpenAILikeEmbedding`으로 처리한다(vLLM, Text Embeddings
+Inference, Gemini OpenAI 호환 레이어 등). 이때:
+
+- `url`을 필수로 요구한다(커스텀 주소이므로 없으면 `ConfigError`).
+- `provider`를 인식하지 못해 폴백한다는 `WARNING` 로그를 한 줄 남긴다 — `ollamaa` 같은 오타가
+  조용히 404로 새는 것을 눈에 띄게 하기 위함(US-50 결정: `INFO`가 아니라 `WARNING`).
+- `api_key`가 비어 있으면 무해한 placeholder(`sk-no-auth`)를 자동 주입한다(SDK가 빈 키를
+  거부하지만 인증 없는 자체 호스팅 서버는 값을 무시).
+
+### 7.4 모델명 enum 우회, 차원 미전달
+
+`openai` 본가도 `OpenAIEmbedding`이 아니라 `OpenAILikeEmbedding`을 쓴다 — `model` 인자의 enum
+검증을 우회해 최신/미등록 모델명도 그대로 통과시키기 위함. `url`이 비면 `api_base`를
+`https://api.openai.com/v1`로 채운다.
+
+임베딩 클라이언트에 `dimensions`(차원 수)를 전달하지 않는다(US-50 결정). `embedding.vector_size`
+는 Qdrant 컬렉션 벡터 크기 지정 전용으로만 쓰고, 모델이 반환하는 네이티브 차원을 그대로
+받는다 — 운영자가 둘을 일치시킬 책임이다(항상 전달하면 `ada-002`처럼 차원 지정을 지원하지 않는
+모델에서 에러가 나기 때문).
+
+### 7.5 Jina는 네이티브 — query/passage task 비대칭
+
+`jina`는 OpenAI 호환 경로가 아니라 네이티브(`llama-index-embeddings-jinaai`)로 붙인다.
+인제스트(passage)와 검색(query)이 서로 다른 `task` 값(`retrieval.passage` /
+`retrieval.query`)으로 나가야 검색 품질이 유지되기 때문이다. 해당 패키지는 `task`를 방향과
+무관하게 단일 값으로 보내므로, `embed.py`에서 방향별 메서드(`_get_query_embedding` /
+`_get_text_embeddings`)를 오버라이드해 task를 강제하는 얇은 서브클래스를 쓴다. Gemini 등 다른
+비대칭 벤더를 OpenAI 호환 경로로 붙이면 이 비대칭은 손실된다(각각 별도 US로 네이티브 분기 추가).

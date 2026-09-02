@@ -36,7 +36,7 @@ Displays infrastructure readiness from `GET /ready`.
 |                                                        |
 |  Qdrant    [OK]    Redis     [OK]                      |
 |  S3        [OK]    Postgres  [OK]                      |
-|  Ollama    [OK]              (only when provider=ollama)|
+|  <provider> [OK]           (label = "provider" field)  |
 +--------------------------------------------------------+
 ```
 
@@ -46,6 +46,7 @@ Response shape:
 ```json
 {
   "status": "ready",
+  "provider": "ollama",
   "checks": {
     "qdrant": true,
     "redis": true,
@@ -56,7 +57,9 @@ Response shape:
 }
 ```
 
-`ollama` key is only present in the response when `embedding.provider == "ollama"`. Hide the Ollama tile when the key is absent.
+- `provider` (top-level) is always present — the configured embedding provider name (`ollama` / `openai` / `jina` / any custom name). Use it as the label for the provider tile.
+- The provider probe result is under `checks[<provider>]` (the same string as the `provider` field). Every provider is probed the same way — `GET {v1_base}/models` on its OpenAI-compatible endpoint — and counts toward overall readiness (a failure flips `status` to `not_ready` / 503).
+- The only case with no provider key is a custom `name` configured without a `url` (a misconfiguration). Show the tile labeled by `provider` with a neutral "not checked" state — do not treat the missing key as a failure.
 
 ---
 
