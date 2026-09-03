@@ -14,7 +14,13 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from rag_api.api.routers import connectors, docs, health, kb, search
-from rag_api.exceptions import ConfigError, ConflictError, IngestValidationError, NotFoundError
+from rag_api.exceptions import (
+    ConfigError,
+    ConflictError,
+    HookAbort,
+    IngestValidationError,
+    NotFoundError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +157,11 @@ def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ConflictError)
     async def conflict_error_handler(_request: Request, exc: ConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(HookAbort)
+    async def hook_abort_handler(_request: Request, exc: HookAbort) -> JSONResponse:
+        logger.warning("Pipeline hook aborted request: %s", exc)
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
 
     @app.exception_handler(RuntimeError)
     async def runtime_error_handler(_request: Request, exc: RuntimeError) -> JSONResponse:

@@ -95,6 +95,7 @@ class FakePostgresStore:
         connector_id: str | None = None,
         file_size: int | None = None,
         doc_type: str | None = None,
+        doc_created_at: datetime | None = None,
     ) -> dict:
         doc_id = str(uuid.uuid4())
         now = datetime.now(UTC).isoformat()
@@ -119,7 +120,7 @@ class FakePostgresStore:
             "file_size": file_size,
             "doc_type": doc_type,
             "embedding_model": None,
-            "doc_created_at": None,
+            "doc_created_at": doc_created_at.isoformat() if doc_created_at else None,
             "title_hash": None,
             "content_simhash": None,
         }
@@ -279,6 +280,7 @@ class FakePostgresStore:
         connector_id: str,
         sync_status: str,
         last_synced_at: datetime | None = None,
+        last_error: str | None = None,
     ) -> None:
         if connector_id not in self._connectors:
             return
@@ -289,6 +291,8 @@ class FakePostgresStore:
             self._connectors[connector_id]["sync_started_at"] = None
         if last_synced_at is not None:
             self._connectors[connector_id]["last_synced_at"] = last_synced_at.isoformat()
+        if last_error is not None:
+            self._connectors[connector_id]["last_error"] = last_error[:500]
         self._connectors[connector_id]["updated_at"] = datetime.now(UTC).isoformat()
 
     def set_connector_status(self, connector_id: str, status: str, error: str | None = None) -> None:
@@ -398,6 +402,16 @@ def mock_redis():
             return True
 
     return FakeRedis()
+
+
+@pytest.fixture
+def reset_hooks():
+    """Isolate rag_api.hooks registrations per test."""
+    from rag_api import hooks
+
+    hooks._reset()
+    yield hooks
+    hooks._reset()
 
 
 @pytest.fixture

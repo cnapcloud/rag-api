@@ -12,8 +12,9 @@ from urllib.parse import quote
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from starlette.requests import Request
 
-from rag_api.exceptions import ConflictError, IngestValidationError, NotFoundError
+from rag_api.exceptions import ConflictError, HookAbort, IngestValidationError, NotFoundError
 from rag_api.pipeline.steps.parse import supported_extensions
 from rag_api.tracing.span import rest_span
 
@@ -35,7 +36,7 @@ def _build_storage_key(kb_id: str, filename: str) -> str:
 
 @router.post("/kb/{kb_id}/docs/upload", status_code=202)
 @rest_span
-async def upload_doc(kb_id: str, file: UploadFile = File(...)):
+async def upload_doc(kb_id: str, request: Request, file: UploadFile = File(...)):
     """Row-first single document upload.
 
     1. Create/update document row (status=uploading)
@@ -45,6 +46,7 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
     """
     import psycopg.errors
 
+    from rag_api.hooks import BeforeDocCreate, emit
     from rag_api.infra.postgres import create_doc, get_doc_by_source, list_kb_ids, update_doc_fields
     from rag_api.infra.s3 import upload_object
     from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -65,6 +67,11 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
 
     existing = get_doc_by_source(kb_id, source_uri)
     if existing is None:
+        emit(BeforeDocCreate(
+            kb_id=kb_id,
+            principal=getattr(request.state, "ingest_principal", None),
+            source_type="s3",
+        ))
         try:
             doc = create_doc(
                 kb_id=kb_id,
@@ -117,11 +124,13 @@ async def upload_doc(kb_id: str, file: UploadFile = File(...)):
 @rest_span
 async def upload_docs_batch(
     kb_id: str,
+    request: Request,
     files: list[UploadFile] = File(...),
 ):
     """Row-first batch document upload."""
     import psycopg.errors
 
+    from rag_api.hooks import BeforeDocCreate, emit
     from rag_api.infra.postgres import create_doc, get_doc_by_source, list_kb_ids
     from rag_api.infra.s3 import upload_object
     from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -131,8 +140,10 @@ async def upload_docs_batch(
     if kb_id not in list_kb_ids():
         raise NotFoundError(f"KB not found: {kb_id}")
 
+    principal = getattr(request.state, "ingest_principal", None)
+
     results = []
-    for file in files:
+    for idx, file in enumerate(files):
         try:
             filename = file.filename or f"upload_{uuid.uuid4()}"
             _check_ext(filename)
@@ -145,6 +156,7 @@ async def upload_docs_batch(
 
             existing = get_doc_by_source(kb_id, source_uri)
             if existing is None:
+                emit(BeforeDocCreate(kb_id=kb_id, principal=principal, source_type="s3"))
                 try:
                     doc = create_doc(
                         kb_id=kb_id,
@@ -201,6 +213,18 @@ async def upload_docs_batch(
                 kb_id, file.filename, e,
             )
             results.append({"title": file.filename or "unknown", "error": str(e), "status": "error"})
+        except HookAbort as e:
+            # A registered hook stopped this ingest. Mark the current file and every
+            # remaining file as errored, then stop the batch.
+            logger.warning(
+                "Batch upload stopped by hook: kb=%s file=%s remaining=%d err=%s",
+                kb_id, file.filename, len(files) - idx - 1, e,
+            )
+            for rejected in files[idx:]:
+                results.append(
+                    {"title": rejected.filename or "unknown", "error": str(e), "status": "error"}
+                )
+            break
 
     return {"results": results}
 

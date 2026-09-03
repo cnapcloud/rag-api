@@ -15,6 +15,11 @@ RAGError (base)
 └── ConflictError         → HTTP 409  Resource already exists
 ```
 
+`HookAbort` also lives in `src/rag_api/exceptions.py` but is **not** a `RAGError` — it is a
+separate axis for pipeline-hook aborts (a registered callback deliberately stops a new-document
+ingest). `rag_api/hooks.py` re-exports it. Maps to HTTP 403. See
+`docs/internal/design/pipeline-hooks.md`.
+
 Library exceptions are registered **directly** in `api/app.py` without intermediate wrapper classes:
 
 | Exception | HTTP | Source |

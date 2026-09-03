@@ -6,6 +6,7 @@ import base64
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -48,6 +49,7 @@ class GitHubConnector:
         self.max_file_bytes: int = int(config.get("max_file_size_mb", _MAX_FILE_SIZE_DEFAULT_MB)) * 1024 * 1024
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.timeout: int = int(config.get("request_timeout_sec", 30))
+        self._principal: Any = None
 
         token: str | None = config.get("auth_token_secret") or None
         self._auth_header: str | None = f"Bearer {token}" if token else None
@@ -128,8 +130,9 @@ class GitHubConnector:
 
         raise ValueError(f"No content available for: {path}")
 
-    def sync(self, kb_id: str, connector_id: str) -> None:
+    def sync(self, kb_id: str, connector_id: str, principal: Any = None) -> None:
         """Run Flow B for all supported source files in the repository."""
+        self._principal = principal
         with httpx.Client(
             timeout=self.timeout,
             follow_redirects=True,
@@ -175,6 +178,7 @@ class GitHubConnector:
         item: dict,
     ) -> None:
         """Flow B step [3] for one repository file."""
+        from rag_api.hooks import BeforeDocCreate, emit
         from rag_api.infra.postgres import create_doc, get_doc_by_source
         from rag_api.infra.s3 import upload_object
         from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -206,6 +210,7 @@ class GitHubConnector:
                 return
 
         if doc is None:
+            emit(BeforeDocCreate(kb_id=kb_id, principal=self._principal, source_type="github"))
             doc = create_doc(
                 kb_id=kb_id,
                 source=source_uri,

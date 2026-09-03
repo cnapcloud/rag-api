@@ -877,7 +877,26 @@ class TestDispatchSync:
         ):
             _dispatch_sync(connector)
 
-        mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
+        mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID, principal=None)
+
+    def test_principal_is_threaded_through_to_connector_sync(self):
+        from rag_api.api.routers.connectors import _dispatch_sync
+
+        connector = {
+            "connector_id": CONNECTOR_ID,
+            "kb_id": KB_ID,
+            "source_type": "web",
+            "config": {"seed_urls": ["https://example.com"]},
+        }
+        sentinel = object()
+
+        with (
+            patch("rag_api.connectors.web.WebConnector.sync") as mock_sync,
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
+        ):
+            _dispatch_sync(connector, principal=sentinel)
+
+        mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID, principal=sentinel)
 
     def test_github_connector_dispatched(self):
         from unittest.mock import MagicMock, patch
@@ -897,7 +916,7 @@ class TestDispatchSync:
             _dispatch_sync(connector)
 
         mock_cls.assert_called_once_with(connector["config"])
-        mock_instance.sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
+        mock_instance.sync.assert_called_once_with(KB_ID, CONNECTOR_ID, principal=None)
 
 
 # ──────────────────────────────────────────────
@@ -969,3 +988,101 @@ class TestExtractTitle:
         <body><h1>   </h1></body></html>
         """
         assert _extract_title(html, "fallback") == "HTML Title"
+
+
+# ──────────────────────────────────────────────
+# BeforeDocCreate hook (US-51)
+# ──────────────────────────────────────────────
+
+class TestBeforeDocCreateHook:
+
+    def test_emits_for_new_doc_with_principal_and_source_type(self, reset_hooks):
+        from rag_api.connectors.web import WebConnector
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        resp = _make_response()
+        client = _make_client(resp)
+        new_doc = {**_BASE_DOC, "status": "fetching"}
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object", return_value="etag-s3"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event"),
+            patch("rag_api.connectors.web._extract_title", return_value="Test Page"),
+        ):
+            connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
+            connector._principal = {"user": "alice"}
+            connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
+
+        assert len(events) == 1
+        assert events[0] == BeforeDocCreate(kb_id=KB_ID, principal={"user": "alice"}, source_type="web")
+
+    def test_hookabort_stops_create_and_propagates(self, reset_hooks):
+        from rag_api.connectors.web import WebConnector
+        from rag_api.hooks import BeforeDocCreate, HookAbort, register
+
+        register(BeforeDocCreate, lambda ev: (_ for _ in ()).throw(HookAbort("quota")))
+
+        resp = _make_response()
+        client = _make_client(resp)
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc") as mock_create,
+            patch("rag_api.infra.s3.upload_object") as mock_upload,
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event") as mock_enqueue,
+        ):
+            connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
+            with pytest.raises(HookAbort, match="quota"):
+                connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
+
+        mock_create.assert_not_called()
+        mock_upload.assert_not_called()
+        mock_enqueue.assert_not_called()
+
+    def test_no_emit_on_unchanged_page(self, reset_hooks):
+        from rag_api.connectors.web import WebConnector
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        existing_doc = {**_BASE_DOC, "content_version": "etag-v2", "title": "Same Title"}
+        resp = _make_response(etag="etag-v2")
+        client = _make_client(resp)
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing_doc),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.connectors.web._extract_title", return_value="Same Title"),
+        ):
+            connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
+            connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
+
+        assert events == []
+
+    def test_no_emit_on_fetch_failure_error_row(self, reset_hooks):
+        from rag_api.connectors.web import WebConnector
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        resp = MagicMock(spec=httpx.Response)
+        resp.raise_for_status = MagicMock(side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock()))
+        client = _make_client(resp)
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value={**_BASE_DOC, "status": "failed"}),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+        ):
+            connector = WebConnector({"seed_urls": [_URL], "min_content_chars": 0, "skip_seed_pages": False})
+            connector._process_page(client, KB_ID, CONNECTOR_ID, _URL, depth=1)
+
+        assert events == []

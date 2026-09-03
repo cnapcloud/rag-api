@@ -474,6 +474,52 @@ class TestTriggerSync:
         assert "error" in status_calls
         assert error_calls[0]
 
+    def test_captures_ingest_principal_for_background_task(self, client):
+        captured = {}
+
+        def fake_add_task(fn, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        with (
+            patch("rag_api.infra.postgres.get_connector", return_value={**_BASE_CONNECTOR}),
+            patch("rag_api.infra.postgres.set_connector_sync_status"),
+            patch("starlette.background.BackgroundTasks.add_task", side_effect=fake_add_task),
+        ):
+            resp = client.post(f"/api/connectors/{CONNECTOR_ID}/sync")
+
+        assert resp.status_code == 202
+        # No OIDC middleware in the bare app -> principal captured as None.
+        assert captured["kwargs"] == {"principal": None}
+
+
+class TestSyncHookAbort:
+    def test_hook_abort_leaves_status_untouched_and_records_last_error(self, client):
+        from rag_api.api.routers.connectors import _run_sync
+        from rag_api.hooks import HookAbort
+
+        status_calls = []
+        sync_status_calls = []
+
+        with (
+            patch("rag_api.api.routers.connectors._dispatch_sync", side_effect=HookAbort("KB document limit reached")),
+            patch("rag_api.api.routers.connectors._wait_for_indexing"),
+            patch("rag_api.connectors.abort.is_abort_requested", return_value=False),
+            patch("rag_api.connectors.abort.clear_abort"),
+            patch(
+                "rag_api.infra.postgres.set_connector_sync_status",
+                side_effect=lambda cid, s, **kw: sync_status_calls.append((s, kw)),
+            ),
+            patch(
+                "rag_api.infra.postgres.set_connector_status",
+                side_effect=lambda cid, s, error=None: status_calls.append(s),
+            ),
+        ):
+            _run_sync({**_BASE_CONNECTOR, "status": "active"})
+
+        assert status_calls == []  # never flipped to "error"
+        assert sync_status_calls == [("idle", {"last_error": "KB document limit reached"})]
+
 
 # ──────────────────────────────────────────────
 # GET /api/connectors/{connector_id}/sync/status

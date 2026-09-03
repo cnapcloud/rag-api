@@ -7,6 +7,7 @@ import logging
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -52,6 +53,7 @@ class ConfluenceConnector:
         self.max_attachment_bytes: int = max_mb * 1024 * 1024
         self.request_delay_ms: int = int(config.get("request_delay_ms", 100))
         self.timeout: int = int(config.get("request_timeout_sec", 30))
+        self._principal: Any = None
 
         token: str | None = config.get("auth_token_secret") or None
         if token and ":" in token:
@@ -96,8 +98,9 @@ class ConfluenceConnector:
         resp.raise_for_status()
         return resp.json()
 
-    def sync(self, kb_id: str, connector_id: str) -> None:
+    def sync(self, kb_id: str, connector_id: str, principal: Any = None) -> None:
         """Run Flow B for all pages (and their attachments) in the configured space."""
+        self._principal = principal
         with httpx.Client(
             timeout=self.timeout,
             follow_redirects=True,
@@ -157,6 +160,7 @@ class ConfluenceConnector:
         page: dict,
     ) -> None:
         """Flow B step [3] for one Confluence page and its attachments."""
+        from rag_api.hooks import BeforeDocCreate, emit
         from rag_api.infra.postgres import create_doc, get_doc_by_source
         from rag_api.infra.s3 import upload_object
         from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -192,6 +196,7 @@ class ConfluenceConnector:
                 return
 
         if doc is None:
+            emit(BeforeDocCreate(kb_id=kb_id, principal=self._principal, source_type="confluence"))
             doc = create_doc(
                 kb_id=kb_id,
                 source=source_uri,
@@ -283,6 +288,7 @@ class ConfluenceConnector:
         attachment: dict,
     ) -> None:
         """Flow B step [3] for one Confluence attachment."""
+        from rag_api.hooks import BeforeDocCreate, emit
         from rag_api.infra.postgres import create_doc, get_doc_by_source
         from rag_api.infra.s3 import upload_object
         from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -325,6 +331,7 @@ class ConfluenceConnector:
                 return
 
         if doc is None:
+            emit(BeforeDocCreate(kb_id=kb_id, principal=self._principal, source_type="confluence"))
             doc = create_doc(
                 kb_id=kb_id,
                 source=source_uri,

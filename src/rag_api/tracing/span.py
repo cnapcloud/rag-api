@@ -16,11 +16,12 @@ from opentelemetry.trace import Span
 
 def _is_unserializable_kwarg(v: Any) -> bool:
     """True for FastAPI kwarg types that shouldn't be JSON-serialized into a span attribute
-    (BackgroundTasks, single or batch UploadFile)."""
+    (BackgroundTasks, Request, single or batch UploadFile)."""
     from fastapi import UploadFile
     from starlette.background import BackgroundTasks
+    from starlette.requests import Request
 
-    if isinstance(v, BackgroundTasks | UploadFile):
+    if isinstance(v, BackgroundTasks | Request | UploadFile):
         return True
     return isinstance(v, list) and bool(v) and isinstance(v[0], UploadFile)
 
