@@ -46,8 +46,16 @@ def test_simhash_different_texts_differ():
 
 
 def test_simhash_near_duplicate_low_hamming():
-    base = "the quick brown fox jumps over the lazy dog " * 20
-    modified = base.replace("quick", "fast", 1)
+    # Use non-repetitive prose: compute_simhash dedupes shingles (frequency-independent), so a
+    # one-word edit in text that repeats a phrase 20x would still add net-new unique shingles
+    # while the removed ones survive in the other copies -- not a representative near-duplicate.
+    base = (
+        "SimHash maps similar documents to similar fingerprints by hashing overlapping "
+        "character n-grams and summing their signed bit contributions. Two texts that share "
+        "most of their content land within a small Hamming distance of each other, which is "
+        "exactly what the locality sensitive band index exploits to find candidates."
+    )
+    modified = base.replace("small", "tiny", 1)
     dist = hamming_distance(compute_simhash(base), compute_simhash(modified))
     assert dist <= 10
 

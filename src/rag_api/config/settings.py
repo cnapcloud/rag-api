@@ -148,9 +148,53 @@ class ChunkingSettings(BaseModel):
 
 
 class ProviderSettings(BaseModel):
-    name: str = "ollama"               # ollama / openai — embedding, ingestion.image_captioning 공통
-    ollama_url: str = "http://ollama:11434"
-    openai_api_key: str = ""
+    """임베딩(및 vendoring 앱의 ingestion.image_captioning) 백엔드 접속 정보.
+
+    프로토콜(name) + 주소(url) + 인증(api_key)만 담는다. 벤더 전용 필드를 두지 않으며, `name`은
+    자유 문자열이라 미지 값도 허용된다 — 미지 값은 에러가 아니라 OpenAI 호환 경로로 처리된다
+    (docs/internal/design/settings-composition.md provider 절). 세 필드 모두 기본값이 있어
+    `provider` 블록을 통째로 생략하면 로컬 compose Ollama 동작과 동일하다.
+    """
+
+    name: str = "ollama"               # ollama / openai / jina / 그 외(OpenAI 호환 폴백)
+    # 빈 값이면 "그 provider의 기본 엔드포인트"를 의미한다 (해석은 resolve_provider_conn 참고).
+    # Ollama는 bare host(`http://host:11434`), OpenAI 호환은 `/v1`을 포함한 완전한 base URL.
+    url: str = ""
+    api_key: str = ""
+
+
+class ProviderConn(BaseModel):
+    """resolve_provider_conn()의 반환 타입 — provider 필드명을 모르는 소비자가 쓰는 접속 정보.
+
+    `base_url=None`은 "클라이언트 SDK 기본 엔드포인트를 쓰라"는 의미다.
+    """
+
+    model_config = {"frozen": True}
+
+    base_url: str | None = None
+    api_key: str | None = None
+
+
+_OLLAMA_DEFAULT_URL = "http://ollama:11434"
+
+
+def resolve_provider_conn(provider: ProviderSettings) -> ProviderConn:
+    """`provider` 설정을 접속 정보로 해석한다.
+
+    provider 필드명(`name` / `url` / `api_key`)을 아는 코드베이스 내 유일한 지점이다 — 임베딩
+    팩토리 · `/ready` · (rag-ent-api) 캡셔닝이 모두 이 헬퍼만 거쳐 provider에 접근한다.
+    `resolve_provider_conn` / `ProviderConn`은 `rag_api.config.settings` 공개 경로로 노출되어
+    rag-ent-api E-31이 그대로 재사용한다.
+
+    - `ollama`(또는 빈 name) → `base_url`은 `url`(빈 값이면 `http://ollama:11434`), 인증 없음.
+    - 그 외(`openai` / `jina` / 미지) → `base_url`은 `url`(빈 값이면 `None` = 클라이언트 기본
+      엔드포인트), `api_key`는 `provider.api_key`.
+    """
+    name = (provider.name or "").strip()
+    url = (provider.url or "").strip()
+    if name in ("", "ollama"):
+        return ProviderConn(base_url=url or _OLLAMA_DEFAULT_URL, api_key=None)
+    return ProviderConn(base_url=url or None, api_key=provider.api_key or None)
 
 
 class EmbeddingSettings(BaseModel):
@@ -386,7 +430,7 @@ def _load_raw(path: Path = _SETTINGS_PATH) -> dict[str, Any]:
         data = {}
 
     if api_key := os.environ.get("OPENAI_API_KEY"):
-        data.setdefault("provider", {})["openai_api_key"] = api_key
+        data.setdefault("provider", {})["api_key"] = api_key
     if access_key := os.environ.get("S3_ACCESS_KEY"):
         data.setdefault("s3", {})["access_key"] = access_key
     if secret_key := os.environ.get("S3_SECRET_KEY"):

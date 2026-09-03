@@ -1,4 +1,4 @@
-.PHONY: install sync lock build push test lint typecheck compile clean
+.PHONY: install sync lock check-lock build push test lint typecheck compile clean docker-build docker-push
 
 UV = uv
 
@@ -18,6 +18,12 @@ sync:
 lock:
 	$(UV) lock
 
+# Fail fast if uv.lock is out of date w.r.t. pyproject.toml. The Docker build runs
+# `uv sync --frozen`, which installs strictly from uv.lock and never re-resolves, so a stale
+# lock silently ships an image missing newly-added deps. Run `make lock` (and commit) first.
+check-lock:
+	$(UV) lock --check
+
 test:
 	$(UV) run pytest -q
 
@@ -30,7 +36,7 @@ typecheck:
 compile:
 	$(UV) build
 
-docker-build:
+docker-build: check-lock
 	docker buildx build --platform linux/arm64 \
 		--cache-from type=registry,ref=$(CACHE_IMAGE) \
 		-t $(IMAGE) --load .
@@ -40,7 +46,7 @@ docker-build:
 # which has no local daemon for docker-build's --load / a plain `docker push` to find).
 # --cache-to/--cache-from with type=registry stores the layer cache as a separate
 # tag in the registry, so it survives the CI builder pod being ephemeral.
-docker-push:
+docker-push: check-lock
 	docker buildx build --platform linux/arm64 \
 		--provenance=false --sbom=false \
 		--cache-from type=registry,ref=$(CACHE_IMAGE) \

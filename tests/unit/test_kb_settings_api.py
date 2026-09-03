@@ -181,7 +181,7 @@ class TestPutOverrides:
         ):
             resp = client.put(
                 f"/api/kb/{KB_ID}/settings/overrides",
-                json={"overrides": {"provider.openai_api_key": "stolen"}},
+                json={"overrides": {"provider.api_key": "stolen"}},
             )
 
         assert resp.status_code == 422

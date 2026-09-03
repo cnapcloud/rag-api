@@ -114,7 +114,7 @@ rag-api 자체 `Settings`의 15개 top-level 그룹(§2.1의 `ingestion`/`chunki
 | `qdrant` | `host`, `port` | 인프라 접속 정보 |
 | `queue_worker` | `max_workers` | 프로세스 전역 `ThreadPoolExecutor` 크기 — 재사용 객체(base 문서 §7) |
 | `queue_poll` | `poll_interval_sec` | 프로세스 전역 폴링 루프 설정 |
-| `provider` | `openai_api_key`, `ollama_url` | 인프라 자격증명/접속 정보 |
+| `provider` | `name`, `url`, `api_key` | 인프라 자격증명/접속 정보 |
 | `embedding` | `model`, `vector_size` | Qdrant 컬렉션의 벡터 차원과 고정 결합 — KB별로 바꾸면 기존 인덱스와 차원 불일치 |
 | `retrieval` | `mode`, `top_k`, `hybrid.*`, `rerank.*` | 검색 시점 설정 — 이번 오버라이드 범위는 인제스트 파이프라인(ingestion/chunking/dedup)뿐, 검색 파라미터는 범위 밖 |
 | `mcp` | `transport`, `port` | 프로세스 기동 설정 |
@@ -171,7 +171,7 @@ class MinHashSettings(BaseModel):
 그대로 남는다** — 이 둘은 계층이 다르다. allow-list는 "이 top-level 섹션 자체가 override
 후보군인가"를 가르는 것이고, 필드 메타데이터는 "그 후보군 안에서 이 필드 하나는 예외로
 막을 것인가"를 가르는 것이다. allow-list를 없애고 필드 메타데이터(기본값 `override: True`)만
-남기면, `provider.openai_api_key`/`redis.password`/`s3.secret_key`처럼 지금은 애초에
+남기면, `provider.api_key`/`redis.password`/`s3.secret_key`처럼 지금은 애초에
 후보군에도 못 들어오는 인프라 자격증명 필드까지 "메타데이터가 없으니 기본 허용"으로 뚫려버린다
 — base 문서 §9.1이 "deny-list만으로는 안전하지 않다"며 allow-list를 deny-list보다 먼저
 적용하기로 한 이유(§10 대안 비교)가 그대로 재발하는 것이므로, allow-list는 반드시 유지한다.

@@ -46,3 +46,4 @@
 | [47](47-page-label-type-mismatch-500.md) | 다중 KB 검색 시 page_label 타입 불일치로 인한 500 에러 수정 | US-47 | done |
 | 48 | trafilatura favor_recall 모드가 인라인 서식 태그 주변 텍스트를 유실하는 버그 수정 | US-48 | 통합(backlog 참고) — done |
 | 49 | chunk_overlap - chunk_size cross-field 검증 추가 | US-49 | 통합(backlog 참고) — done |
+| 50 | 임베딩 provider 일반화 — 프로토콜 커넥션 + 미지 벤더 OpenAI 호환 폴백 + Jina 네이티브 | US-50 | 통합(backlog 참고) — done |

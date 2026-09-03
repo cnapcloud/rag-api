@@ -16,6 +16,12 @@ router = APIRouter()
 _PING_CHECKS = ("qdrant", "redis", "postgres")
 _NON_CRITICAL_CHECKS = ("s3",)  # ingest-only deps; failure is reported but doesn't flip overall status
 
+# Default OpenAI-compatible /v1 base per provider when provider.url is empty.
+_PROVIDER_V1_DEFAULTS = {
+    "openai": "https://api.openai.com/v1",
+    "jina": "https://api.jina.ai/v1",
+}
+
 
 @router.get("/health")
 async def liveness():
@@ -48,44 +54,39 @@ async def _s3_ok() -> bool:
         return False
 
 
-async def _ollama_ok(url: str) -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=3) as c:
-            r = await c.get(f"{url}/api/tags")
-        if r.status_code != 200:
-            logger.error("Readiness check failed: ollama: HTTP %s", r.status_code)
-            return False
-        return True
-    except Exception as e:
-        logger.error("Readiness check failed: ollama: %s", e)
-        return False
+async def _provider_ok(label: str, v1_base: str, api_key: str | None) -> bool:
+    """Reachability probe for an embedding backend via GET {v1_base}/models.
 
-
-async def _openai_ok(api_key: str) -> bool:
+    Every provider we support exposes the OpenAI-compatible /v1/models endpoint -- native
+    OpenAI, Jina, Ollama's compat layer, and self-hosted servers (vLLM, vllm-mlx, LM Studio,
+    TEI). A transport error, 5xx, or 404 (endpoint not where provider.url points) means
+    unreachable; 200 / 401 / 403 / 429 / other 4xx all mean the server answered.
+    """
+    url = v1_base.rstrip("/") + "/models"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         async with httpx.AsyncClient(timeout=5) as c:
-            r = await c.get(
-                "https://api.openai.com/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-        if r.status_code != 200:
-            logger.error("Readiness check failed: openai: HTTP %s", r.status_code)
+            r = await c.get(url, headers=headers)
+        if r.status_code >= 500 or r.status_code == 404:
+            logger.error("Readiness check failed: %s: HTTP %s", label, r.status_code)
             return False
         return True
     except Exception as e:
-        logger.error("Readiness check failed: openai: %s", e)
+        logger.error("Readiness check failed: %s: %s", label, e)
         return False
 
 
 @router.get("/ready")
 async def readiness():
-    from rag_api.config.settings import get_settings
+    from rag_api.config.settings import get_settings, resolve_provider_conn
     from rag_api.infra.postgres import ping as postgres_ping
     from rag_api.infra.qdrant import ping as qdrant_ping
     from rag_api.infra.redis import ping as redis_ping
 
     cfg = get_settings()
     provider = cfg.provider
+    provider_name = (provider.name or "").strip() or "ollama"
+    conn = resolve_provider_conn(provider)
 
     checks: dict[str, bool] = {
         "qdrant": await _ping_ok("qdrant", qdrant_ping),
@@ -94,17 +95,32 @@ async def readiness():
         "s3": await _s3_ok(),
     }
 
-    if provider.name == "ollama":
-        checks["ollama"] = await _ollama_ok(provider.ollama_url)
-    elif provider.name == "openai":
-        checks["openai"] = await _openai_ok(provider.openai_api_key)
+    # Embedding provider probe (GET {v1_base}/models), keyed by the configured provider name so
+    # rag-admin can label the tile. ollama's provider.url is a bare host (US-50 convention) so
+    # its /v1 compat layer is appended; openai/jina fall back to their SaaS base; an unknown
+    # name uses provider.url as-is (already /v1 by convention). An unknown name with no url is a
+    # misconfiguration (build_embed_model would reject it) -- left unprobed.
+    if provider_name == "ollama":
+        checks[provider_name] = await _provider_ok(
+            provider_name, f"{conn.base_url.rstrip('/')}/v1", None
+        )
+    elif provider_name in _PROVIDER_V1_DEFAULTS:
+        checks[provider_name] = await _provider_ok(
+            provider_name, conn.base_url or _PROVIDER_V1_DEFAULTS[provider_name], conn.api_key
+        )
+    elif conn.base_url:
+        checks[provider_name] = await _provider_ok(provider_name, conn.base_url, conn.api_key)
 
-    for name in _PING_CHECKS:
-        if not checks[name]:
-            logger.error("Readiness check failed: %s", name)
+    for infra in _PING_CHECKS:
+        if not checks[infra]:
+            logger.error("Readiness check failed: %s", infra)
 
-    critical_ok = all(v for name, v in checks.items() if name not in _NON_CRITICAL_CHECKS)
+    critical_ok = all(v for k, v in checks.items() if k not in _NON_CRITICAL_CHECKS)
     return JSONResponse(
         status_code=200 if critical_ok else 503,
-        content={"status": "ready" if critical_ok else "not_ready", "checks": checks},
+        content={
+            "status": "ready" if critical_ok else "not_ready",
+            "provider": provider_name,
+            "checks": checks,
+        },
     )

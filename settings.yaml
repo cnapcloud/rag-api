@@ -82,9 +82,9 @@ chunking:
   code_max_chars: 1500
 
 provider:
-  name: "ollama"                # ollama | openai — embedding, ingestion.image_captioning 공통
-  ollama_url: "http://localhost:11434"
-  openai_api_key: ""
+  name: "ollama"                 # ollama | openai | jina (소문자 정확히) | <그 외 = OpenAI 호환 폴백, 이름 그대로 표기됨>
+  url: ""                        # 빈 값 = provider 기본 엔드포인트 (ollama는 bare host / OpenAI 호환은 /v1 포함)
+  api_key: ""                    # openai / jina / OpenAI 호환 (OPENAI_API_KEY env로도 주입)
 
 embedding:
   model: "bge-m3"                # provider에 맞는 모델명 (ollama: bge-m3 / openai: text-embedding-3-small)
