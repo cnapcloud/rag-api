@@ -60,7 +60,7 @@ POST /api/search  (또는 MCP search 툴)
 retriever.search()   — kb_ids별 병렬 Qdrant 쿼리
     │  hybrid: dense(코사인) + sparse(BM25) 동시 검색
     │  similarity: dense 전용
-    │  → SearchResult[] per KB
+    │  → QueryResult[] per KB
     ↓
 merger.rrf_merge()   — multi-KB RRF 병합
     │  각 KB 결과를 순위 기반으로 단일 리스트로 합산

@@ -101,8 +101,8 @@ def _make_result(
     page_label=None,
     rerank_score=None,
 ):
-    from rag_api.rag.retriever import SearchResult
-    return SearchResult(
+    from rag_api.query.retriever import QueryResult
+    return QueryResult(
         chunk_id="chunk-1",
         kb_id=kb_id,
         doc_id="doc-id-1",

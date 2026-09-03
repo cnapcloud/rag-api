@@ -8,14 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from rag_api.api.app import create_app
-from rag_api.rag.retriever import SearchResult
+from rag_api.query.retriever import QueryResult
 
 
 def _make_result(
     chunk_id: str, merged: bool = False, chunk_index: int | None = 0,
     parent_chunk_id: str | None = None,
-) -> SearchResult:
-    return SearchResult(
+) -> QueryResult:
+    return QueryResult(
         chunk_id=chunk_id,
         kb_id="kb-test",
         doc_id="doc-id-1",
@@ -53,7 +53,7 @@ def test_search_returns_results(client):
     mock_settings.retrieval.similarity.min_score = 0.0
 
     with (
-        patch("rag_api.rag.retriever.search", new=AsyncMock(return_value=(mock_results[:2], 3, "jina", False))),
+        patch("rag_api.query.retriever.query", new=AsyncMock(return_value=(mock_results[:2], 3, "jina", False))),
         patch("rag_api.config.settings.get_settings", return_value=mock_settings),
     ):
         resp = client.post(
@@ -95,7 +95,7 @@ def test_search_similarity_mode_with_min_score(client):
     mock_settings.retrieval.similarity.min_score = 0.0
 
     with (
-        patch("rag_api.rag.retriever.search", new=AsyncMock(return_value=(mock_results, 2, "none", False))),
+        patch("rag_api.query.retriever.query", new=AsyncMock(return_value=(mock_results, 2, "none", False))),
         patch("rag_api.config.settings.get_settings", return_value=mock_settings),
     ):
         resp = client.post(

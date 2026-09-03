@@ -1036,7 +1036,7 @@ def save_parent_chunks(doc_id: str, kb_id: str, parents: list[ParentChunk]) -> N
 
 
 def get_parent_chunks(chunk_ids: list[str]) -> dict[str, dict]:
-    """Batch-fetch ancestor rows by chunk_id -> {chunk_id: row}. Used by rag/retriever.py's
+    """Batch-fetch ancestor rows by chunk_id -> {chunk_id: row}. Used by query/retriever.py's
     auto-merge (missing IDs are simply absent from the result — self-healing, design §5.2)."""
     if not chunk_ids:
         return {}

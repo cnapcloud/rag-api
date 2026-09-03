@@ -145,7 +145,7 @@ def clear_kb_settings_overrides(kb_id: str) -> None:
 | dedup | `dedup.enabled`, `dedup.chunk_compare.*`, `dedup.minhash.jaccard_threshold`/`title_fuzzy_threshold`/`title_only_min_jaccard_floor`, `dedup.simhash.hamming_identical_threshold`/`hamming_similar_threshold` | 가능 | 매 비교 호출 시 파라미터로 전달 |
 | dedup | `dedup.simhash.ngram`/`num_bands`/`simhash_bits` | **배제** | 이미 Postgres `simhash_bands`에 저장된 기존 문서의 지문과 계산 방식이 달라져 비교 불가능해짐(재인덱싱 없이는 위험) |
 | dedup | `dedup.minhash.user_words_path` | **배제** | Kiwi 토크나이저가 프로세스 전역 싱글턴(`dedup/tokenizer.py`)으로 1회 로드 — KB별 경로를 지원하려면 경로 키 캐시가 별도로 필요, 이번 범위 밖 |
-| retrieval | `retrieval.auto_merge.enabled`, `retrieval.auto_merge.merge_threshold` | 가능 | `_search_kb`가 KB 단위로 직접 `resolve_settings(kb_id)`를 호출해 적용 — 개별 KB 결과에만 영향 |
+| retrieval | `retrieval.auto_merge.enabled`, `retrieval.auto_merge.merge_threshold` | 가능 | `_query_kb`가 KB 단위로 직접 `resolve_settings(kb_id)`를 호출해 적용 — 개별 KB 결과에만 영향 |
 | retrieval | `retrieval.mode`, `retrieval.top_k`, `retrieval.hybrid.*`, `retrieval.similarity.min_score`, `retrieval.rerank.*` | **배제** | 여러 KB를 한 요청으로 합쳐 검색할 때 병합(RRF)·rerank는 요청 전체에 대해 정확히 한 번만 적용되므로 "어느 KB의 값을 쓸지"가 정의되지 않음 — 전역 설정 + 요청 인자(명시 시 최우선)로만 제어 (2026-07-29 논의) |
 
 **(US-45로 갱신)** 배제 목록은 더 이상 별도 리터럴 문자열 집합(`EXCLUDED_OVERRIDE_KEYS`)이

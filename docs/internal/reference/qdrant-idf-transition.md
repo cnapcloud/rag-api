@@ -37,7 +37,7 @@ sparse_vectors_config={
 }
 ```
 
-### 3. `src/rag/retriever.py`
+### 3. `src/rag_api/query/retriever.py`
 
 `LlamaIndex QdrantVectorStore` uses custom sparse functions instead of `fastembed_sparse_model`:
 

@@ -12,7 +12,7 @@ round-trip (e.g. `get_kb_settings_overrides(kb_id)` on a nonexistent `kb_id` jus
 and the test passes anyway, hiding a hard-rule violation
 (`.claude/rules/00-hard-rules.md` §3: no real infra in tests).
 
-**Why this bit US-03**: `rag/retriever.py::_search_kb` started calling `resolve_settings(kb_id)`
+**Why this bit US-03**: `query/retriever.py::_query_kb` started calling `resolve_settings(kb_id)`
 unconditionally (needed for KB-scoped `retrieval.auto_merge` overrides). Every existing
 `test_search.py` test that passed a real-looking `kb_id` kept passing locally with zero mocks
 for `get_kb_settings_overrides` — only `.venv/bin/python -c "..."` manually calling that

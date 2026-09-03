@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from rag_api.config.settings import Settings
-from rag_api.rag.reranker import rerank_async
-from rag_api.rag.retriever import SearchResult
+from rag_api.query.reranker import rerank_async
+from rag_api.query.retriever import QueryResult
 
 
-def _make_result(chunk_id: str, text: str, score: float) -> SearchResult:
-    return SearchResult(
+def _make_result(chunk_id: str, text: str, score: float) -> QueryResult:
+    return QueryResult(
         chunk_id=chunk_id,
         kb_id="kb-test",
         doc_id="doc-1",
@@ -68,8 +68,8 @@ async def test_rerank_internal_provider_calls_base_url() -> None:
     mock_client = _mock_async_client(response_json)
 
     with (
-        patch("rag_api.rag.reranker.get_settings", return_value=settings),
-        patch("rag_api.rag.reranker.httpx.AsyncClient", return_value=mock_client),
+        patch("rag_api.query.reranker.get_settings", return_value=settings),
+        patch("rag_api.query.reranker.httpx.AsyncClient", return_value=mock_client),
     ):
         reranked, provider, fallback_used = await rerank_async("query", results)
 
@@ -100,7 +100,7 @@ async def test_rerank_internal_provider_without_base_url_falls_back() -> None:
         _make_result("chunk-1", "second", 0.9),
     ]
 
-    with patch("rag_api.rag.reranker.get_settings", return_value=settings):
+    with patch("rag_api.query.reranker.get_settings", return_value=settings):
         reranked, provider, fallback_used = await rerank_async("query", results)
 
     assert provider == "internal"
@@ -129,7 +129,7 @@ async def test_rerank_unknown_provider_falls_back() -> None:
     )
     results = [_make_result("chunk-0", "first", 0.2)]
 
-    with patch("rag_api.rag.reranker.get_settings", return_value=fake_settings):
+    with patch("rag_api.query.reranker.get_settings", return_value=fake_settings):
         reranked, provider, fallback_used = await rerank_async("query", results)
 
     assert provider == "cohere"

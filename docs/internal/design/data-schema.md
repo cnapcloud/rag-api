@@ -273,4 +273,4 @@ instead of being processed immediately. Delay/dedup mechanics are covered in
 | Redis queue client | `src/infra/redis.py` |
 | KB 설정 오버라이드 리졸버 | `src/config/settings.py` — `resolve_settings(kb_id)` |
 | `parent_chunks` CRUD | `src/rag_api/infra/postgres.py` — `save_parent_chunks`, `get_parent_chunks`, `delete_parent_chunks_by_doc` |
-| Auto-merge 병합 로직 | `src/rag_api/rag/retriever.py` — `_auto_merge_parents` |
+| Auto-merge 병합 로직 | `src/rag_api/query/retriever.py` — `_auto_merge_parents` |

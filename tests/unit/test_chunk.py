@@ -214,7 +214,7 @@ def test_chunk_hierarchical_deterministic_ids_across_calls():
 def test_chunk_hierarchical_all_leaves_filtered_drops_leaf_parent_ancestors():
     """When min_chunk_chars filters out every leaf, the level immediately above leaves (whose
     child_count would be 0) is never stored (design §4.1, ZeroDivisionError guard in
-    rag/retriever.py's auto-merge ratio). Note: in practice this never even reaches upsert() —
+    query/retriever.py's auto-merge ratio). Note: in practice this never even reaches upsert() —
     chunk_op/runner.py abort the pipeline on empty result.nodes before parents are persisted —
     so a root row referencing since-dropped children (if any survives here) is dead, unreachable
     data, never looked up by _auto_merge_parents."""

@@ -236,7 +236,7 @@ class RerankerSettings(BaseModel):
 
 class HybridSearchSettings(BaseModel):
     # alpha/rrf_k도 RerankerSettings와 같은 이유로 deny-list — mode="hybrid"에서 alpha는
-    # KB별 검색 호출(_search_kb)에 값 자체는 들어가지만, rrf_k는 여러 KB의 결과를 합치는
+    # KB별 검색 호출(_query_kb)에 값 자체는 들어가지만, rrf_k는 여러 KB의 결과를 합치는
     # merge 단계(rrf_merge)에서 요청당 한 번만 쓰인다. 두 필드를 분리해서 alpha만 여는 것도
     # 검토했으나(2026-07-29 논의), 값 하나가 요청 인자로 이미 들어오면 그게 우선이라는 현재
     # 정책과 일관되게 이번 범위에서는 hybrid 섹션 전체를 닫고 전역 설정 + 요청 인자로만
@@ -258,7 +258,7 @@ class AutoMergeSettings(BaseModel):
 
     별도 스위치로 유지 — 청킹(저장, chunking.strategy="hierarchical")과 병합(검색)은 독립적으로
     껐다 켤 수 있어야 한다(예: 구조는 저장해두고 병합만 잠시 끄기). retrieval.* 중 KB별
-    오버라이드가 열려 있는 건 이 섹션뿐이다 — _search_kb가 KB 단위로 직접 resolve_settings()를
+    오버라이드가 열려 있는 건 이 섹션뿐이다 — _query_kb가 KB 단위로 직접 resolve_settings()를
     호출해 적용하는 유일한 retrieval 필드(kb-settings-override.md §5).
     """
 

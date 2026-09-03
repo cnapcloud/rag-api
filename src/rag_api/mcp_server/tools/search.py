@@ -10,7 +10,7 @@ from opentelemetry import trace
 
 from rag_api.config.settings import get_settings
 from rag_api.infra.postgres import list_kb_ids
-from rag_api.rag.retriever import search as retriever_search
+from rag_api.query.retriever import query as retriever_search
 from rag_api.tracing.span import traced_tool
 
 

@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from rag_api.rag.retriever import SearchResult
+from rag_api.query.retriever import QueryResult
 
 
 def rrf_merge(
-    result_lists: list[list[SearchResult]],
+    result_lists: list[list[QueryResult]],
     k: int = 60,
-) -> list[SearchResult]:
+) -> list[QueryResult]:
     """
     Reciprocal Rank Fusion으로 복수 KB 결과를 머지한다.
 
     score_rrf = Σ 1 / (k + rank_i)
     """
     scores: dict[str, float] = {}
-    chunk_map: dict[str, SearchResult] = {}
+    chunk_map: dict[str, QueryResult] = {}
 
     for results in result_lists:
         for rank, result in enumerate(results, start=1):
@@ -25,7 +25,7 @@ def rrf_merge(
 
     # RRF 점수로 정렬 후 score 필드에 반영
     sorted_ids = sorted(scores.keys(), key=lambda cid: scores[cid], reverse=True)
-    merged: list[SearchResult] = []
+    merged: list[QueryResult] = []
     for cid in sorted_ids:
         result = chunk_map[cid]
         result.score = round(scores[cid], 6)

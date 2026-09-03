@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class SearchResult:
+class QueryResult:
     chunk_id: str
     kb_id: str
     doc_id: str
@@ -60,10 +60,10 @@ def _build_index(kb_id: str, embed_model=None):
     return VectorStoreIndex.from_vector_store(vector_store, embed_model=em)
 
 
-def _node_to_result(kb_id: str, node) -> SearchResult:
+def _node_to_result(kb_id: str, node) -> QueryResult:
     meta = node.metadata
     source = meta.get("source", "")
-    return SearchResult(
+    return QueryResult(
         chunk_id=node.node_id,
         kb_id=kb_id,
         doc_id=meta.get("doc_id", ""),
@@ -82,7 +82,7 @@ def _node_to_result(kb_id: str, node) -> SearchResult:
     )
 
 
-def _filter_orphaned_chunks(results: list[SearchResult]) -> list[SearchResult]:
+def _filter_orphaned_chunks(results: list[QueryResult]) -> list[QueryResult]:
     """Drop chunks whose doc_id no longer has a Postgres row, purging them from Qdrant.
 
     Qdrant chunk deletion is best-effort on non-indexed statuses
@@ -121,8 +121,8 @@ def _filter_orphaned_chunks(results: list[SearchResult]) -> list[SearchResult]:
     return kept
 
 
-def _build_merged_result(a: dict, children: list[SearchResult]) -> SearchResult:
-    """children -> one SearchResult representing ancestor `a` (a Postgres parent_chunks row dict,
+def _build_merged_result(a: dict, children: list[QueryResult]) -> QueryResult:
+    """children -> one QueryResult representing ancestor `a` (a Postgres parent_chunks row dict,
     docs/internal/design/parent-child-chunking.md §5.1).
 
     Non-text/score fields are copied from children[0] — doc_id/kb_id/title/source_type/source/
@@ -130,7 +130,7 @@ def _build_merged_result(a: dict, children: list[SearchResult]) -> SearchResult:
     is set to None: a merged block no longer maps to a single sequence position.
     """
     base = children[0]
-    return SearchResult(
+    return QueryResult(
         chunk_id=a["chunk_id"], kb_id=base.kb_id, doc_id=base.doc_id, doc_type=base.doc_type,
         title=base.title, chunk_index=None, page_num=a["page_num"], page_label=a["page_label"],
         text=a["text"], score=sum(c.score for c in children) / len(children),
@@ -140,8 +140,8 @@ def _build_merged_result(a: dict, children: list[SearchResult]) -> SearchResult:
 
 
 def _auto_merge_parents(
-    results: list[SearchResult], threshold: float, max_depth: int,
-) -> list[SearchResult]:
+    results: list[QueryResult], threshold: float, max_depth: int,
+) -> list[QueryResult]:
     """Group leaf results by parent_chunk_id and replace groups meeting `threshold` with their
     ancestor's full text, repeating one level up (Postgres round-trip per level) until either no
     group merges or `max_depth` (non-leaf level count) is reached.
@@ -163,15 +163,15 @@ def _auto_merge_parents(
             break
         ancestors = get_parent_chunks(list(ids))
 
-        groups: dict[str, list[SearchResult]] = defaultdict(list)
-        passthrough: list[SearchResult] = []
+        groups: dict[str, list[QueryResult]] = defaultdict(list)
+        passthrough: list[QueryResult] = []
         for r in active:
             if r.parent_chunk_id and r.parent_chunk_id in ancestors:
                 groups[r.parent_chunk_id].append(r)
             else:
                 passthrough.append(r)
 
-        merged: list[SearchResult] = []
+        merged: list[QueryResult] = []
         any_merged = False
         for pid, children in groups.items():
             a = ancestors[pid]
@@ -191,14 +191,14 @@ def _auto_merge_parents(
     return settled + active
 
 
-def _search_kb(
+def _query_kb(
     kb_id: str,
     query: str,
     top_k: int,
     alpha: float,
     mode: str,
     min_score: float,
-) -> list[SearchResult]:
+) -> list[QueryResult]:
     from rag_api.config.settings import resolve_settings
 
     index = _build_index(kb_id)
@@ -231,7 +231,7 @@ def _search_kb(
     return results
 
 
-async def search(
+async def query(
     query: str,
     kb_ids: list[str],
     top_k: int | None = None,
@@ -240,7 +240,7 @@ async def search(
     min_score: float = 0.0,
     rerank_enabled: bool | None = None,
     top_n: int | None = None,
-) -> tuple[list[SearchResult], int, str, bool]:
+) -> tuple[list[QueryResult], int, str, bool]:
     """Search across multiple KBs in parallel, merge, and optionally rerank.
 
     Returns: (results, total_candidates, rerank_provider, fallback_used)
@@ -248,7 +248,7 @@ async def search(
     mode='hybrid': dense+sparse search, RRF merge (alpha applies)
     mode='similarity': dense-only search, cosine score (alpha ignored, min_score applies)
     """
-    from rag_api.rag.reranker import rerank_async
+    from rag_api.query.reranker import rerank_async
 
     cfg = get_settings().retrieval
     _top_k = top_k or cfg.top_k
@@ -260,12 +260,12 @@ async def search(
 
     loop = asyncio.get_running_loop()
     tasks = [
-        loop.run_in_executor(None, _search_kb, kb_id, query, _top_k, _alpha, mode, min_score)
+        loop.run_in_executor(None, _query_kb, kb_id, query, _top_k, _alpha, mode, min_score)
         for kb_id in kb_ids
     ]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    all_results: list[list[SearchResult]] = []
+    all_results: list[list[QueryResult]] = []
     for kb_id, res in zip(kb_ids, raw_results):
         if isinstance(res, Exception):
             logger.error("KB search failed: kb=%s err=%s", kb_id, res)
@@ -280,7 +280,7 @@ async def search(
             reverse=True,
         )[:_top_k]
     else:
-        from rag_api.rag.merger import rrf_merge
+        from rag_api.query.merger import rrf_merge
         merged = rrf_merge(all_results, k=cfg.hybrid.rrf_k)[:_top_k]
 
     merged = _filter_orphaned_chunks(merged)
