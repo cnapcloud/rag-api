@@ -1133,7 +1133,7 @@ Qdrant 쓰기를 끝낼 수 있다. 더 나쁜 경우는 `upsert()`(`pipeline/st
 
 **현재 대안**
 
-`rag/retriever.py`의 `_filter_orphaned_chunks`가 RRF 병합 직후(rerank 전) 결과에 나온 모든
+`query/retriever.py`의 `_filter_orphaned_chunks`가 RRF 병합 직후(rerank 전) 결과에 나온 모든
 `doc_id`를 Postgres에 배치 조회(`infra/postgres.get_existing_doc_ids`)해서, 존재하지 않는
 `doc_id`(빈 문자열 포함)의 청크는 결과에서 제외하고 `logger.warning`으로 `kb_id`/`doc_id`/
 `chunk_id`를 남긴다. 검색 응답에서 제외하는 데 그치지 않고 발견 즉시

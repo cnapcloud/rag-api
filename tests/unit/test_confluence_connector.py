@@ -514,7 +514,7 @@ class TestDispatchSync:
         with patch("rag_api.connectors.confluence.ConfluenceConnector.sync") as mock_sync:
             _dispatch_sync(connector)
 
-        mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID)
+        mock_sync.assert_called_once_with(KB_ID, CONNECTOR_ID, principal=None)
 
 
 # ──────────────────────────────────────────────
@@ -555,3 +555,93 @@ class TestSync:
         ):
             # Should not raise — exception is caught inside _process_page_attachments.
             c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
+
+
+# ──────────────────────────────────────────────
+# BeforeDocCreate hook (US-51)
+# ──────────────────────────────────────────────
+
+class TestBeforeDocCreateHook:
+
+    def test_new_page_emits_before_doc_create(self, reset_hooks):
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        c = _make_confluence_connector()
+        c._principal = {"user": "bob"}
+        client = _make_client()
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value={**_BASE_PAGE_DOC, "status": "fetching"}),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event"),
+            patch.object(c, "_process_page_attachments"),
+        ):
+            c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
+
+        assert events == [
+            BeforeDocCreate(kb_id=KB_ID, principal={"user": "bob"}, source_type="confluence")
+        ]
+
+    def test_new_attachment_emits_before_doc_create(self, reset_hooks):
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        c = _make_confluence_connector()
+        client = _make_client()
+        download_resp = MagicMock()
+        download_resp.content = b"%PDF-1.4 fake"
+        download_resp.raise_for_status = MagicMock()
+        client.get = MagicMock(return_value=download_resp)
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value={**_BASE_ATT_DOC, "status": "fetching"}),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event"),
+        ):
+            c._process_attachment(client, KB_ID, CONNECTOR_ID, _ATTACHMENT)
+
+        assert [e.source_type for e in events] == ["confluence"]
+
+    def test_hookabort_stops_page_create_and_propagates(self, reset_hooks):
+        from rag_api.hooks import BeforeDocCreate, HookAbort, register
+
+        register(BeforeDocCreate, lambda ev: (_ for _ in ()).throw(HookAbort("quota")))
+
+        c = _make_confluence_connector()
+        client = _make_client()
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc") as mock_create,
+            patch.object(c, "_process_page_attachments"),
+        ):
+            with pytest.raises(HookAbort, match="quota"):
+                c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
+
+        mock_create.assert_not_called()
+
+    def test_no_emit_on_unchanged_page(self, reset_hooks):
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        c = _make_confluence_connector()
+        client = _make_client()
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value={**_BASE_PAGE_DOC, "content_version": "3"}),
+            patch.object(c, "_process_page_attachments"),
+        ):
+            c._process_page(client, KB_ID, CONNECTOR_ID, _PAGE)
+
+        assert events == []

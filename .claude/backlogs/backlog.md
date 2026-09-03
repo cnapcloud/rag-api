@@ -6,6 +6,9 @@ US-01~US-49 대부분 완료. 커넥터(US-15~US-21, US-32~US-34, US-37/38), ded
 파서 확장(US-41~US-43), KB 설정 오버라이드(US-44/45)까지 done.
 진행 중: US-46 — REST/MCP 트레이싱 구조 통일(root span + business span 표준화).
 대기: US-06 — sensor dispatch lock이 zombie로 오탐되는 버그.
+최근 완료: US-51 — 파이프라인 훅(신규 문서 생성 직전 `BeforeDocCreate`/`HookAbort`/`emit`
+등록 기반 콜백 + `principal` 관통). 첫 소비자 rag-ent-api 쿼터는 그쪽 별도 백로그, 배포는
+rag-api 선행.
 최근 완료: US-50 — 임베딩 provider 일반화(프로토콜 기반 접속 + OpenAI 호환 폴백 + Jina
 네이티브). 배포는 rag-ent-api E-31과 동시 릴리스 필요.
 
@@ -66,3 +69,4 @@ US-01~US-49 대부분 완료. 커넥터(US-15~US-21, US-32~US-34, US-37/38), ded
 | [US-48](US-48-html-trafilatura-inline-tag-text-loss.md) | trafilatura favor_recall 모드가 인라인 서식 태그 주변 텍스트를 유실하는 버그 수정 | done |
 | [US-49](US-49-chunk-overlap-validation.md) | chunk_overlap - chunk_size cross-field 검증 추가 | done |
 | [US-50](US-50-provider-openai-compat-generalization.md) | 임베딩 provider 일반화 — 프로토콜 커넥션 + 미지 벤더 OpenAI 호환 폴백 + Jina 네이티브 | done |
+| [US-51](US-51-pipeline-hooks-before-doc-create.md) | 파이프라인 훅 — 신규 문서 생성 직전 등록 기반 콜백(BeforeDocCreate/HookAbort/emit) | done |

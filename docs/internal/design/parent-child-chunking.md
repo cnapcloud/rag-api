@@ -44,7 +44,7 @@ backlog/plan 단계에서 진행한다. 현재 청킹/검색 구조는
 |-----------|------|-----------|
 | 청킹 구현 | LlamaIndex `HierarchicalNodeParser` (`chunk_sizes`는 큰 것→작은 것 순 리스트, **N-level**) | 레벨이 몇 개든(`chunk_sizes` 길이) parent/child 분할과 레벨 간 관계 추적을 라이브러리에 위임한다. |
 | 노드 ID | `id_func` 오버라이드로 각 노드 ID를 생성 시점부터 `"{doc_id}:{idx}"`로 결정적 생성 (`idx`는 문서 전체에 걸친 전역 카운터, `simhash_bands.band_id`와 동일한 패턴) | relationship이 구축된 *뒤에* ID를 바꾸면 포인터가 깨진다 — 생성 시점부터 결정적 ID를 쓰는 것이 유일하게 안전한 순서(§3.1). `level`을 ID 문자열에 넣지 않는 이유는 순수 유일성 목적이었을 뿐 성능과 무관했기 때문 — `chunk_index`를 레벨별 리셋이 아니라 전역 카운터로 바꾸면 `level` 없이도 유일하다. `level`은 별도 컬럼으로만 유지(§4.1) — merge 알고리즘(§5.1)은 `level`을 읽지 않고 `parent_id` 체인만 사용한다. |
-| Auto-merge 로직 | `rag/retriever.py` 커스텀 재귀 함수 (`AutoMergingRetriever` 미사용) | Qdrant는 커스텀 flat payload를 쓰고 LlamaIndex 표준 노드 직렬화(`_node_content`)를 쓰지 않으므로, 검색 시점엔 `node.relationships`가 이미 사라진 상태다 — ancestor 정보는 인제스트 시점에 relationship을 한 번 읽어 `parent_chunk_id` 문자열로 옮겨둔 것만 남는다(§5). `AutoMergingRetriever`를 쓰려면 wrapper retriever + 완전한 노드 그래프 docstore가 추가로 필요해 커스텀 함수보다 비용이 크다 — N-level 재귀도 기존 단일 홉 로직을 반복문으로 감싸는 수준이라 여전히 더 가볍다(§7). |
+| Auto-merge 로직 | `query/retriever.py` 커스텀 재귀 함수 (`AutoMergingRetriever` 미사용) | Qdrant는 커스텀 flat payload를 쓰고 LlamaIndex 표준 노드 직렬화(`_node_content`)를 쓰지 않으므로, 검색 시점엔 `node.relationships`가 이미 사라진 상태다 — ancestor 정보는 인제스트 시점에 relationship을 한 번 읽어 `parent_chunk_id` 문자열로 옮겨둔 것만 남는다(§5). `AutoMergingRetriever`를 쓰려면 wrapper retriever + 완전한 노드 그래프 docstore가 추가로 필요해 커스텀 함수보다 비용이 크다 — N-level 재귀도 기존 단일 홉 로직을 반복문으로 감싸는 수준이라 여전히 더 가볍다(§7). |
 | Ancestor 저장 시점 | `upsert.py` 확장 | 이미 side-effect가 허용된 지점 — Qdrant leaf 업서트와 Postgres ancestor 저장을 한 함수 안에서 순서대로 처리. |
 
 신규로 필요한 컴포넌트는 Postgres 테이블 하나(`parent_chunks`, 자기참조 트리 — §4.1)와
@@ -106,13 +106,13 @@ Postgres에 존재하는 상태여야 검색 시점의 ancestor 존재 확인(§
 ### 3.2 검색
 
 ```
-retriever._search_kb(kb_id, query, ...)
+retriever._query_kb(kb_id, query, ...)
    │
    ▼
 index.as_retriever().retrieve(query)        기존과 동일 — leaf 결과 반환 (parent_chunk_id 포함)
    │
    ▼
-[auto_merge.enabled] _auto_merge_parents()  신규 순수 함수 (rag/retriever.py) — §5, 레벨을 타고
+[auto_merge.enabled] _auto_merge_parents()  신규 순수 함수 (query/retriever.py) — §5, 레벨을 타고
    │                                         올라가며 반복 적용. KB 단위로 수행 — 여러 KB를
    │                                         합치기(RRF) 전에 끝나야 함
    ▼
@@ -125,8 +125,8 @@ rrf_merge() / similarity sort               기존과 동일
 rerank (optional)                           기존과 동일
 ```
 
-`_auto_merge_parents()`는 `mode="hybrid"`/`"similarity"` 어느 쪽이든 `_search_kb()`가 만든
-`list[SearchResult]`를 그대로 받아 `parent_chunk_id` 문자열만으로 동작하므로, 어떤 모드로
+`_auto_merge_parents()`는 `mode="hybrid"`/`"similarity"` 어느 쪽이든 `_query_kb()`가 만든
+`list[QueryResult]`를 그대로 받아 `parent_chunk_id` 문자열만으로 동작하므로, 어떤 모드로
 만들어진 결과인지 신경 쓰지 않는다 — 두 모드 모두 동일하게 적용된다.
 
 ### 3.3 삭제
@@ -190,7 +190,7 @@ Index: `idx_parent_chunks_doc` on `(doc_id)`, `idx_parent_chunks_parent` on `(pa
 (cascade delete 및 상위 조회 성능용). `chunk_id`가 이미 `doc_id`를 포함하므로 별도
 `UNIQUE(doc_id, ...)` 제약은 불필요.
 
-노드 그래프(JSONB)는 저장하지 않는다 — auto-merge 로직이 `SearchResult`/plain dict 위에서
+노드 그래프(JSONB)는 저장하지 않는다 — auto-merge 로직이 `QueryResult`/plain dict 위에서
 동작하므로(§5.1) `text`/`child_count`/`parent_id`만으로 충분하다.
 
 ### 4.2 Qdrant — payload 확장 (`data-schema.md` §1에 반영 예정)
@@ -246,12 +246,12 @@ class ChunkResult:
 `parent_chunk_id`)을 의미한다. 서로 다른 ancestor에서 나온 leaf가 의미적으로 비슷하다고 묶이는
 일은 없다 — 목적은 검색 결과 압축이 아니라 §1.2의 "문맥 복원"이기 때문이다.
 
-### 5.1 그룹핑 및 병합 (`rag/retriever.py`, 신규 순수 함수, N-level 재귀)
+### 5.1 그룹핑 및 병합 (`query/retriever.py`, 신규 순수 함수, N-level 재귀)
 
 ```python
 def _auto_merge_parents(
-    results: list[SearchResult], threshold: float, max_depth: int
-) -> list[SearchResult]:
+    results: list[QueryResult], threshold: float, max_depth: int
+) -> list[QueryResult]:
     from rag_api.infra.postgres import get_parent_chunks
 
     active, settled = results, []
@@ -261,15 +261,15 @@ def _auto_merge_parents(
             break
         ancestors = get_parent_chunks(list(ids))   # 배치 조회 -> dict[chunk_id, row]
 
-        groups: dict[str, list[SearchResult]] = defaultdict(list)
-        passthrough: list[SearchResult] = []
+        groups: dict[str, list[QueryResult]] = defaultdict(list)
+        passthrough: list[QueryResult] = []
         for r in active:
             if r.parent_chunk_id and r.parent_chunk_id in ancestors:
                 groups[r.parent_chunk_id].append(r)
             else:
                 passthrough.append(r)   # parent_chunk_id 없음(비활성 문서) 또는 orphan(§5.2)
 
-        merged: list[SearchResult] = []
+        merged: list[QueryResult] = []
         any_merged = False
         for pid, children in groups.items():
             a = ancestors[pid]
@@ -296,10 +296,10 @@ def _auto_merge_parents(
 §4.1에서 `child_count=0`인 ancestor는 애초에 저장하지 않으므로 `len(children) / a["child_count"]`가
 0으로 나뉠 일이 없다.
 
-`SearchResult`에 `parent_chunk_id: str | None = None`, `merged: bool = False` 필드를 추가한다.
+`QueryResult`에 `parent_chunk_id: str | None = None`, `merged: bool = False` 필드를 추가한다.
 
 `_build_merged_result(a, children)`는 `text`(ancestor 텍스트)/`score`(mean)/`parent_chunk_id`
-외의 나머지 `SearchResult` 필드는 `children[0]`(같은 문서 소속이므로 아무 하나나 대표)에서
+외의 나머지 `QueryResult` 필드는 `children[0]`(같은 문서 소속이므로 아무 하나나 대표)에서
 그대로 복사한다 — `doc_id`/`kb_id`/`title`/`source_type`/`source`/`doc_type`/`updated_at`은 같은
 문서 안에서 항상 동일하므로 문제없다. `page_num`/`page_label`도 `a["page_num"]`/`a["page_label"]`
 (§4.1, ancestor 자신이 속한 페이지 값)을 그대로 채우면 된다 — 청킹이 페이지(Document) 단위로
@@ -445,7 +445,7 @@ retrieval:
 | Settings 필드 | `src/rag_api/config/settings.py` — `ChunkingSettings.strategy`에 `"hierarchical"` 값 추가, `RetrievalSettings.auto_merge`, `OVERRIDABLE_SETTINGS_PREFIXES`에 `"retrieval."` 추가 + `retrieval.rerank.api_key` deny-list |
 | 청킹 (HierarchicalNodeParser) | `src/rag_api/pipeline/steps/chunk.py` |
 | Ancestor 저장/조회/삭제 SQL | `src/rag_api/infra/postgres.py` — `save_parent_chunks`, `get_parent_chunks`, `delete_parent_chunks_by_doc` |
-| Auto-merge 그룹핑/재귀 병합 로직 | `src/rag_api/rag/retriever.py` |
+| Auto-merge 그룹핑/재귀 병합 로직 | `src/rag_api/query/retriever.py` |
 | Qdrant 업서트 (parent_chunk_id payload) | `src/rag_api/pipeline/steps/upsert.py` |
 | 삭제 시 parent_chunks 정리 | `src/rag_api/pipeline/utils/purge.py` |
 | `chunk()` 반환 타입 변경에 따른 호출부 수정 (확인된 3곳) | `src/rag_api/pipeline/steps/dedup/chunk_compare.py`(leaf만 사용, `.nodes`), `src/rag_api/defs/ops/ingest_ops.py`, `src/rag_api/pipeline/runner.py` |
@@ -575,11 +575,11 @@ g0: 매칭 [merged_p0] = 1개 / g0의 child_count 3 (p0, p1, p2) = 0.33 < 0.5 �
 
 ```python
 [
-  SearchResult(chunk_id="doc_X_chunk", text="...", score=0.90),
-  SearchResult(chunk_id="c11", text="하이브리드 검색은 ... 방식이다.", score=0.88, parent_chunk_id="a1b2c3d4:1"),
-  SearchResult(chunk_id="c13", text="두 점수는 RRF(...)로 ... 결정된다.", score=0.85, parent_chunk_id="a1b2c3d4:1"),
-  SearchResult(chunk_id="doc_Y_chunk", text="...", score=0.80),
-  SearchResult(chunk_id="c22", text="Jina API 같은 ... 수 있다.", score=0.75, parent_chunk_id="a1b2c3d4:2"),
+  QueryResult(chunk_id="doc_X_chunk", text="...", score=0.90),
+  QueryResult(chunk_id="c11", text="하이브리드 검색은 ... 방식이다.", score=0.88, parent_chunk_id="a1b2c3d4:1"),
+  QueryResult(chunk_id="c13", text="두 점수는 RRF(...)로 ... 결정된다.", score=0.85, parent_chunk_id="a1b2c3d4:1"),
+  QueryResult(chunk_id="doc_Y_chunk", text="...", score=0.80),
+  QueryResult(chunk_id="c22", text="Jina API 같은 ... 수 있다.", score=0.75, parent_chunk_id="a1b2c3d4:2"),
 ]
 ```
 
@@ -588,13 +588,13 @@ g0: 매칭 [merged_p0] = 1개 / g0의 child_count 3 (p0, p1, p2) = 0.33 < 0.5 �
 
 ```python
 [
-  SearchResult(chunk_id="doc_X_chunk", text="...", score=0.90),
-  SearchResult(chunk_id="a1b2c3d4:1", text="하이브리드 검색은 Dense 벡터와 Sparse 벡터를 결합해 "
+  QueryResult(chunk_id="doc_X_chunk", text="...", score=0.90),
+  QueryResult(chunk_id="a1b2c3d4:1", text="하이브리드 검색은 Dense 벡터와 Sparse 벡터를 결합해 "
       "검색 정확도를 높이는 방식이다. Dense 벡터는 의미 기반 유사도를 포착하고, Sparse 벡터는 "
       "키워드 일치를 포착한다. 두 점수는 RRF(Reciprocal Rank Fusion)로 통합되어 최종 순위가 "
       "결정된다.", score=0.865, merged=True, parent_chunk_id="a1b2c3d4:0"),
-  SearchResult(chunk_id="doc_Y_chunk", text="...", score=0.80),
-  SearchResult(chunk_id="c22", text="Jina API 같은 ... 수 있다.", score=0.75, parent_chunk_id="a1b2c3d4:2"),
+  QueryResult(chunk_id="doc_Y_chunk", text="...", score=0.80),
+  QueryResult(chunk_id="c22", text="Jina API 같은 ... 수 있다.", score=0.75, parent_chunk_id="a1b2c3d4:2"),
 ]
 ```
 

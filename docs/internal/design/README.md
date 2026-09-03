@@ -25,6 +25,7 @@
 | 2026-07-18 | [kb-settings-override.md](kb-settings-override.md) | KB별 설정 오버라이드 — ingestion/chunking/dedup 값을 KB 단위로 오버라이드하는 리졸버·저장 스키마·파서 레지스트리 재설계·REST API |
 | 2026-07-19 | [kb-settings-override-schema.md](kb-settings-override-schema.md) | KB 설정 오버라이드 필드 스키마 설계 — 전체 속성 min/max·enum·override 메타데이터, `/settings/schema` 엔드포인트 (kb-settings-override.md는 별도 유지, 미갱신) |
 | 2026-07-29 | [parent-child-chunking.md](parent-child-chunking.md) | Parent-child 청킹 & Auto-Merge 검색 — HierarchicalNodeParser N-level 분할 + 커스텀 재귀 merge 로직(LlamaIndex AutoMergingRetriever 미사용), 자기참조 `parent_chunks` 트리 스키마, 삭제 처리, 예시 포함 |
+| 2026-09-03 | [pipeline-hooks.md](pipeline-hooks.md) | 파이프라인 훅 — 신규 문서 생성 직전 등록 기반 콜백(`BeforeDocCreate`/`HookAbort`/`emit`), `principal` 관통, vendoring 앱이 문서 개수 상한 등 정책을 붙이는 확장점 |
 
 ## 변경 이력
 

@@ -20,7 +20,7 @@
 │  → upsert → meta / delete                    │
 │  순수 함수. Dagster 래퍼는 src/defs/에 분리     │
 ├──────────────────────────────────────────────┤
-│  RAG                   src/rag/              │
+│  Query                 src/query/            │
 │  retriever (Qdrant hybrid search)            │
 │  merger (RRF)  reranker (Jina fallback)      │
 ├──────────────────────────────────────────────┤
@@ -33,9 +33,9 @@
 | 레이어 | 외부 의존 | 핵심 책임 |
 |--------|-----------|-----------|
 | CLI | FastAPI, pipeline | 커맨드 라우팅, 로컬 실행 |
-| API | pipeline, rag, infra | HTTP 계약, 요청 검증, 에러 매핑 |
+| API | pipeline, query, infra | HTTP 계약, 요청 검증, 에러 매핑 |
 | Pipeline | infra | 문서 처리 순수 함수 |
-| RAG | infra (Qdrant) | 검색·병합·리랭킹 |
+| Query | infra (Qdrant) | 검색·병합·리랭킹 |
 | Infra | 외부 서비스 | 저장소 CRUD, 큐 조작 |
 
 ---
@@ -49,7 +49,7 @@ CLI
 
 API routers
  └─ pipeline/steps/ (ingest, delete 트리거)
- └─ rag/ (search)
+ └─ query/ (search)
  └─ infra/ (kb/doc CRUD)
 
 Dagster defs/
@@ -60,7 +60,7 @@ pipeline/steps/
  └─ infra/ (S3, Qdrant, Postgres)
  └─ (외부: LlamaIndex, Jina)
 
-rag/
+query/
  └─ infra/qdrant.py
  └─ (외부: Jina Reranker API)
 ```
@@ -206,7 +206,7 @@ rag-api
 │   ├── infra
 │   ├── mcp_server
 │   ├── pipeline
-│   └── rag
+│   └── query
 └── tests
     ├── conftest.py
     ├── dagster

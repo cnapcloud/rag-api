@@ -750,11 +750,14 @@ def set_connector_sync_status(
     connector_id: str,
     sync_status: str,
     last_synced_at: datetime | None = None,
+    last_error: str | None = None,
 ) -> None:
     """Update sync_status and manage sync_started_at lifecycle.
 
     running -> sets sync_started_at = NOW()
     idle    -> clears sync_started_at = NULL; optionally sets last_synced_at
+    last_error, when given, records a sync-outcome note without touching status
+    (used when a pipeline hook stops the sync cleanly).
     """
     parts = ["sync_status = %s", "updated_at = NOW()"]
     params: list[Any] = [sync_status]
@@ -767,6 +770,10 @@ def set_connector_sync_status(
     if last_synced_at is not None:
         parts.append("last_synced_at = %s")
         params.append(last_synced_at)
+
+    if last_error is not None:
+        parts.append("last_error = %s")
+        params.append(last_error[:500])
 
     params.append(connector_id)
     with get_pool().connection() as conn:
@@ -1029,7 +1036,7 @@ def save_parent_chunks(doc_id: str, kb_id: str, parents: list[ParentChunk]) -> N
 
 
 def get_parent_chunks(chunk_ids: list[str]) -> dict[str, dict]:
-    """Batch-fetch ancestor rows by chunk_id -> {chunk_id: row}. Used by rag/retriever.py's
+    """Batch-fetch ancestor rows by chunk_id -> {chunk_id: row}. Used by query/retriever.py's
     auto-merge (missing IDs are simply absent from the result — self-healing, design §5.2)."""
     if not chunk_ids:
         return {}

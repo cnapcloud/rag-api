@@ -98,4 +98,4 @@ FastEmbed BM25를 직접 사용하지 않고, 순수 Python으로 구현한 TF �
 | 청킹 (chunk_op) | `src/pipeline/steps/chunk.py` |
 | 임베딩 (embed_op) | `src/pipeline/steps/embed.py` |
 | 자체 TF sparse 인코더 | `src/pipeline/utils/sparse.py` |
-| 검색 retriever | `src/rag/retriever.py` |
+| 검색 retriever | `src/rag_api/query/retriever.py` |

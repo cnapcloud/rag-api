@@ -302,3 +302,71 @@ class TestParseCodeExtensions:
 
         for ext in CODE_EXTENSIONS:
             assert ext in CODE_LANGUAGE_MAP, f"Missing language mapping for {ext}"
+
+
+# ──────────────────────────────────────────────
+# BeforeDocCreate hook (US-51)
+# ──────────────────────────────────────────────
+
+class TestBeforeDocCreateHook:
+    def _item(self, **kwargs) -> dict:
+        base = {"path": _FILE_PATH, "sha": _FILE_SHA, "size": _FILE_SIZE, "type": "blob"}
+        base.update(kwargs)
+        return base
+
+    def test_new_file_emits_before_doc_create(self, reset_hooks):
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        connector = _make_connector()
+        connector._principal = "svc-account"
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value={"doc_id": _DOC_ID}),
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event"),
+            patch.object(connector, "_download_file", return_value=b"x = 1"),
+        ):
+            connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
+
+        assert events == [
+            BeforeDocCreate(kb_id=KB_ID, principal="svc-account", source_type="github")
+        ]
+
+    def test_hookabort_stops_create_and_propagates(self, reset_hooks):
+        from rag_api.hooks import BeforeDocCreate, HookAbort, register
+
+        register(BeforeDocCreate, lambda ev: (_ for _ in ()).throw(HookAbort("quota")))
+        connector = _make_connector()
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc") as mock_create,
+            patch.object(connector, "_download_file") as mock_dl,
+        ):
+            with pytest.raises(HookAbort, match="quota"):
+                connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
+
+        mock_create.assert_not_called()
+        mock_dl.assert_not_called()
+
+    def test_no_emit_on_unchanged_file(self, reset_hooks):
+        from rag_api.hooks import BeforeDocCreate, register
+
+        events: list[BeforeDocCreate] = []
+        register(BeforeDocCreate, events.append)
+
+        connector = _make_connector()
+        existing = {**_BASE_DOC, "content_version": _FILE_SHA}
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=existing),
+            patch.object(connector, "_download_file"),
+        ):
+            connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
+
+        assert events == []

@@ -181,7 +181,7 @@ def search(
     """Hybrid search (CLI test)."""
     import asyncio
 
-    from rag_api.rag.retriever import search as retriever_search
+    from rag_api.query.retriever import query as retriever_search
 
     results, total, provider, fallback = asyncio.run(
         retriever_search(query=query, kb_ids=kb_ids, top_k=top_k, rerank_enabled=rerank)

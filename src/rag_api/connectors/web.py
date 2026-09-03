@@ -8,6 +8,7 @@ import re
 import time
 from collections import deque
 from fnmatch import fnmatch
+from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
@@ -169,6 +170,7 @@ class WebConnector:
         self.min_content_chars: int = int(
             config.get("min_content_chars", resolve_settings(kb_id).ingestion.min_content_chars)
         )
+        self._principal: Any = None
         self.auth_headers: dict[str, str] = config.get("auth_headers") or {}
         self.auth_basic: tuple[str, str] | None = (
             (str(cfg["username"]), str(cfg["password"]))
@@ -186,8 +188,9 @@ class WebConnector:
             urlparse(url).netloc for url in self.seed_urls if url
         )
 
-    def sync(self, kb_id: str, connector_id: str) -> None:
+    def sync(self, kb_id: str, connector_id: str, principal: Any = None) -> None:
         """Run Flow B for all pages reachable from seed_urls."""
+        self._principal = principal
         visited: set[str] = set()
         queued: set[str] = set()
         queue: deque[tuple[str, int]] = deque()
@@ -288,6 +291,7 @@ class WebConnector:
         Returns raw HTML if the page was fetched (for link discovery), None on hard failure.
         Unchanged pages and filtered pages return HTML but skip staging/enqueue.
         """
+        from rag_api.hooks import BeforeDocCreate, emit
         from rag_api.infra.postgres import create_doc, get_doc_by_source, update_doc_fields
         from rag_api.infra.s3 import upload_object
         from rag_api.pipeline.queue.enqueue import enqueue_upload_event
@@ -373,6 +377,7 @@ class WebConnector:
 
         # Create or set status=fetching.
         if doc is None:
+            emit(BeforeDocCreate(kb_id=kb_id, principal=self._principal, source_type="web"))
             doc = create_doc(
                 kb_id=kb_id,
                 source=source_uri,

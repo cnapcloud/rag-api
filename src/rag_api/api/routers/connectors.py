@@ -8,8 +8,9 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel, model_validator
+from starlette.requests import Request
 
-from rag_api.exceptions import ConflictError, NotFoundError
+from rag_api.exceptions import ConflictError, HookAbort, NotFoundError
 from rag_api.tracing.span import rest_span, set_redacted_input
 
 logger = logging.getLogger(__name__)
@@ -250,7 +251,7 @@ def _cascade_delete(connector_id: str) -> None:
 
 @router.post("/{connector_id}/sync", status_code=202)
 @rest_span
-async def trigger_sync(connector_id: str, background_tasks: BackgroundTasks):
+async def trigger_sync(connector_id: str, request: Request, background_tasks: BackgroundTasks):
     from rag_api.infra.postgres import get_connector, set_connector_sync_status
 
     connector = get_connector(connector_id)
@@ -263,8 +264,12 @@ async def trigger_sync(connector_id: str, background_tasks: BackgroundTasks):
     if connector["sync_status"] == "running":
         raise ConflictError(f"Sync already in progress: {connector_id}")
 
+    # request.state does not survive into the background task -- capture the
+    # ingest principal now as a plain value and thread it through _run_sync.
+    principal = getattr(request.state, "ingest_principal", None)
+
     set_connector_sync_status(connector_id, "running")
-    background_tasks.add_task(_run_sync, connector)
+    background_tasks.add_task(_run_sync, connector, principal=principal)
     return {"connector_id": connector_id, "sync_status": "running"}
 
 
@@ -285,13 +290,13 @@ def _wait_for_indexing(connector_id: str) -> None:
     logger.warning("Indexing wait timed out: connector_id=%s", connector_id)
 
 
-def _run_sync(connector: dict) -> None:
+def _run_sync(connector: dict, principal: Any = None) -> None:
     from rag_api.connectors.abort import clear_abort, is_abort_requested
     from rag_api.infra.postgres import set_connector_status, set_connector_sync_status
 
     connector_id = connector["connector_id"]
     try:
-        _dispatch_sync(connector)
+        _dispatch_sync(connector, principal=principal)
         if is_abort_requested(connector_id):
             logger.info("Connector sync aborted: connector_id=%s", connector_id)
         else:
@@ -299,6 +304,12 @@ def _run_sync(connector: dict) -> None:
             set_connector_status(connector_id, "active")
             logger.info("Connector sync complete: connector_id=%s", connector_id)
         set_connector_sync_status(connector_id, "idle", last_synced_at=datetime.now(UTC))
+    except HookAbort as e:
+        # A registered hook stopped the sync deliberately. Treat as a clean stop:
+        # record the reason on last_error but leave status untouched (not "error").
+        # Docs committed before the abort are kept (each doc commits individually).
+        logger.warning("Connector sync stopped by hook: connector_id=%s err=%s", connector_id, e)
+        set_connector_sync_status(connector_id, "idle", last_error=str(e))
     except Exception as e:
         if is_abort_requested(connector_id):
             logger.info("Connector sync interrupted by abort: connector_id=%s err=%s", connector_id, e)
@@ -310,24 +321,26 @@ def _run_sync(connector: dict) -> None:
         clear_abort(connector_id)
 
 
-def _dispatch_sync(connector: dict) -> None:
+def _dispatch_sync(connector: dict, principal: Any = None) -> None:
     from rag_api.infra.crypto import decrypt_config
 
     source_type = connector["source_type"]
     config = decrypt_config(connector.get("config") or {})
+    kb_id = connector["kb_id"]
+    connector_id = connector["connector_id"]
 
     if source_type == "web":
         from rag_api.connectors.web import WebConnector
 
-        WebConnector(config, kb_id=connector["kb_id"]).sync(connector["kb_id"], connector["connector_id"])
+        WebConnector(config, kb_id=kb_id).sync(kb_id, connector_id, principal=principal)
     elif source_type == "confluence":
         from rag_api.connectors.confluence import ConfluenceConnector
 
-        ConfluenceConnector(config).sync(connector["kb_id"], connector["connector_id"])
+        ConfluenceConnector(config).sync(kb_id, connector_id, principal=principal)
     elif source_type == "github":
         from rag_api.connectors.github import GitHubConnector
 
-        GitHubConnector(config).sync(connector["kb_id"], connector["connector_id"])
+        GitHubConnector(config).sync(kb_id, connector_id, principal=principal)
     else:
         logger.info(
             "Sync skipped: connector type not yet implemented: connector_id=%s source_type=%s",

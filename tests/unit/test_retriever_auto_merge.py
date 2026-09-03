@@ -1,4 +1,4 @@
-"""Unit tests for rag/retriever.py's parent-child auto-merge —
+"""Unit tests for query/retriever.py's parent-child auto-merge —
 docs/internal/design/parent-child-chunking.md §5."""
 
 from __future__ import annotations
@@ -7,13 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from rag_api.rag.retriever import SearchResult, _auto_merge_parents
+from rag_api.query.retriever import QueryResult, _auto_merge_parents
 
 _GET_PARENTS = "rag_api.infra.postgres.get_parent_chunks"
 
 
-def _result(chunk_id: str, score: float, parent_chunk_id: str | None = None) -> SearchResult:
-    return SearchResult(
+def _result(chunk_id: str, score: float, parent_chunk_id: str | None = None) -> QueryResult:
+    return QueryResult(
         chunk_id=chunk_id,
         kb_id="kb-1",
         doc_id="doc-a",

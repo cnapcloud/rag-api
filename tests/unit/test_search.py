@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock, patch
 
-from rag_api.rag.merger import rrf_merge
-from rag_api.rag.retriever import SearchResult, _filter_orphaned_chunks, search
+from rag_api.query.merger import rrf_merge
+from rag_api.query.retriever import QueryResult, _filter_orphaned_chunks, query
 
 
-def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> SearchResult:
-    return SearchResult(
+def _make_result(chunk_id: str, score: float, kb_id: str = "kb-test") -> QueryResult:
+    return QueryResult(
         chunk_id=chunk_id,
         kb_id=kb_id,
         doc_id="doc-id-1",
@@ -146,12 +146,12 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = []
 
         with (
-            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.query.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
             patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
-            asyncio.run(search("query", ["kb-test"], mode="similarity"))
+            asyncio.run(query("query", ["kb-test"], mode="similarity"))
 
         call_kwargs = mock_index.as_retriever.call_args.kwargs
         assert call_kwargs["vector_store_query_mode"] == "default"
@@ -168,12 +168,12 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = nodes
 
         with (
-            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.query.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
             patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
-            results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.4))
+            results, _, _, _ = asyncio.run(query("query", ["kb-test"], mode="similarity", min_score=0.4))
 
         assert len(results) == 2
         assert all(r.score >= 0.4 for r in results)
@@ -187,12 +187,12 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = nodes
 
         with (
-            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.query.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
             patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
-            results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.0))
+            results, _, _, _ = asyncio.run(query("query", ["kb-test"], mode="similarity", min_score=0.0))
 
         assert len(results) == 5
 
@@ -204,11 +204,11 @@ class TestSearchSimilarity:
         mock_retriever.retrieve.return_value = nodes
 
         with (
-            patch("rag_api.rag.retriever._build_index", return_value=mock_index),
+            patch("rag_api.query.retriever._build_index", return_value=mock_index),
             patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
             patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
             patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
         ):
-            results, _, _, _ = asyncio.run(search("query", ["kb-test"], mode="similarity", min_score=0.5))
+            results, _, _, _ = asyncio.run(query("query", ["kb-test"], mode="similarity", min_score=0.5))
 
         assert results == []

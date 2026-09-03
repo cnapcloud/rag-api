@@ -90,7 +90,7 @@ class SearchResponse(BaseModel):
 @rest_span
 async def search(req: SearchRequest):
     from rag_api.config.settings import get_settings
-    from rag_api.rag.retriever import search as retriever_search
+    from rag_api.query.retriever import query as retriever_search
 
     cfg = get_settings().retrieval
 

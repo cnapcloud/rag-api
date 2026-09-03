@@ -26,3 +26,13 @@ class NotFoundError(RAGError):
 
 class ConflictError(RAGError):
     """Resource already exists. Maps to HTTP 409."""
+
+
+class HookAbort(Exception):
+    """A registered pipeline hook callback deliberately stopped the pipeline action.
+
+    Intentionally NOT a subclass of RAGError: this is a separate axis from the
+    layered domain hierarchy above. Vendoring packages subclass it (e.g. a
+    document-quota error) and capture points catch HookAbort, not the concrete
+    subclass. Re-exported from rag_api.hooks. Maps to HTTP 403.
+    """
