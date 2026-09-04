@@ -77,7 +77,7 @@ chunking:
 
 provider:
   name: "ollama"                 # ollama | openai | jina | <그 외 = OpenAI 호환 폴백>
-  url: "http://ollama:11434" # 빈 값 = provider 기본 엔드포인트. ollama는 호스트에서 실행되므로
+  url: "http://<ollama-host-ip>:11434" # 빈 값 = provider 기본 엔드포인트. ollama는 호스트에서 실행되므로
                                  # docker에서 접근하려면 LAN IP 지정 (예: http://192.168.0.75:11434)
   api_key: ""                    # openai / jina / OpenAI 호환 (OPENAI_API_KEY env로도 주입)
 
