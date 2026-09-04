@@ -36,3 +36,25 @@ class HookAbort(Exception):
     document-quota error) and capture points catch HookAbort, not the concrete
     subclass. Re-exported from rag_api.hooks. Maps to HTTP 403.
     """
+
+
+class BatchUploadError(Exception):
+    """A batch document upload finished with at least one failed item.
+
+    Intentionally NOT a RAGError: like HookAbort this is a transport-level signal,
+    not a domain layer. The batch route processes every file (collect-and-continue)
+    and raises this once the loop is done if any item failed, so the response can
+    carry a non-2xx status without losing the per-item outcomes.
+
+    - ``results``: the full per-item list (ok entries + ``{title, error, status}``),
+      1:1 with the submitted files.
+    - ``detail``: the first real failure reason, verbatim, for a one-line UI message.
+    - ``by_hook``: True when a pipeline hook stopped the batch -> HTTP 403 (mirrors a
+      single upload); False for per-item validation/storage failures -> HTTP 422.
+    """
+
+    def __init__(self, results: list[dict], *, detail: str, by_hook: bool) -> None:
+        self.results = results
+        self.detail = detail
+        self.by_hook = by_hook
+        super().__init__(detail)

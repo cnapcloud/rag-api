@@ -79,7 +79,7 @@ class TestUploadDocHook:
 
 
 class TestUploadBatchHook:
-    def test_hookabort_fails_the_batch_fast_with_403(
+    def test_hookabort_records_blocked_plus_skipped_and_returns_403(
         self, client, kb, _s3_and_queue, reset_hooks
     ):
         seen: list[str] = []
@@ -87,7 +87,7 @@ class TestUploadBatchHook:
         def deny_after_first(ev: BeforeDocCreate) -> None:
             seen.append(ev.kb_id)
             if len(seen) >= 2:
-                raise HookAbort("KB document limit reached: 3/3")
+                raise HookAbort("KB document limit reached: 3/3 (authz.max_docs_count)")
 
         register(BeforeDocCreate, deny_after_first)
 
@@ -100,13 +100,22 @@ class TestUploadBatchHook:
             ],
         )
 
-        # A hook stop propagates like a single upload: 403 + plain detail, no results body.
         assert resp.status_code == 403
-        assert resp.json() == {"detail": "KB document limit reached: 3/3"}
-        # b.txt hit the hook; c.txt was never attempted.
+        body = resp.json()
+        assert body["detail"] == "KB document limit reached: 3/3 (authz.max_docs_count)"
+        # results stay 1:1 with the submitted files: a ok, b blocked, c skipped.
+        results = body["results"]
+        assert len(results) == 3
+        assert "error" not in results[0]
+        assert results[1]["title"] == "b.txt"
+        assert results[1]["error"] == "KB document limit reached: 3/3 (authz.max_docs_count)"
+        assert results[2]["title"] == "c.txt" and "Skipped" in results[2]["error"]
+        # c.txt never reached the hook
         assert seen == [KB_ID, KB_ID]
 
-    def test_first_file_blocked_returns_403(self, client, kb, _s3_and_queue, reset_hooks):
+    def test_first_file_blocked_returns_403_with_all_items(
+        self, client, kb, _s3_and_queue, reset_hooks
+    ):
         def deny(ev: BeforeDocCreate) -> None:
             raise HookAbort("KB document limit reached: 3/3")
 
@@ -121,10 +130,13 @@ class TestUploadBatchHook:
         )
 
         assert resp.status_code == 403
-        assert "limit reached" in resp.json()["detail"]
+        body = resp.json()
+        assert "limit reached" in body["detail"]
+        assert len(body["results"]) == 2
+        assert all(r["status"] == "error" for r in body["results"])
         _s3_and_queue.assert_not_called()
 
-    def test_unsupported_extension_fails_the_batch_fast_with_422(
+    def test_unsupported_extension_is_recorded_and_batch_continues_422(
         self, client, kb, _s3_and_queue, reset_hooks
     ):
         resp = client.post(
@@ -136,9 +148,15 @@ class TestUploadBatchHook:
             ],
         )
 
-        # Unsupported extension raises IngestValidationError -> 422, batch stops there.
+        # Unsupported extension fails that item; the batch still processes the rest.
         assert resp.status_code == 422
-        assert "Unsupported file format" in resp.json()["detail"]
+        body = resp.json()
+        assert "Unsupported file format" in body["detail"]
+        results = body["results"]
+        assert len(results) == 3
+        assert "error" not in results[0]
+        assert results[1]["title"] == "archive.zip" and results[1]["status"] == "error"
+        assert "error" not in results[2]
 
     def test_all_files_succeed_returns_202_with_results(
         self, client, kb, _s3_and_queue, reset_hooks
@@ -152,6 +170,7 @@ class TestUploadBatchHook:
         )
 
         assert resp.status_code == 202
-        results = resp.json()["results"]
-        assert len(results) == 2
-        assert all("doc_id" in r for r in results)
+        body = resp.json()
+        assert "detail" not in body
+        assert len(body["results"]) == 2
+        assert all("doc_id" in r for r in body["results"])

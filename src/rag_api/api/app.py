@@ -15,6 +15,7 @@ from starlette.requests import Request
 
 from rag_api.api.routers import connectors, docs, health, kb, search
 from rag_api.exceptions import (
+    BatchUploadError,
     ConfigError,
     ConflictError,
     HookAbort,
@@ -162,6 +163,19 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def hook_abort_handler(_request: Request, exc: HookAbort) -> JSONResponse:
         logger.warning("Pipeline hook aborted request: %s", exc)
         return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(BatchUploadError)
+    async def batch_upload_error_handler(_request: Request, exc: BatchUploadError) -> JSONResponse:
+        status_code = 403 if exc.by_hook else 422
+        failed = sum(1 for r in exc.results if "error" in r)
+        logger.warning(
+            "Batch upload finished with failures: by_hook=%s failed=%d total=%d",
+            exc.by_hook, failed, len(exc.results),
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content={"results": exc.results, "detail": exc.detail},
+        )
 
     @app.exception_handler(RuntimeError)
     async def runtime_error_handler(_request: Request, exc: RuntimeError) -> JSONResponse:
