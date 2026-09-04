@@ -58,13 +58,14 @@ chunking:
   min_chunk_chars: 30
   semantic_threshold: 0.8
 
+provider:
+  name: "ollama"                # ollama | openai | jina | <else = OpenAI-compatible fallback, name used as-is>
+  url: "http://<ollama-host>:11434"   # empty = provider default (ollama: bare host / OpenAI-compatible: include /v1)
+  api_key: ""                  # openai / jina / OpenAI-compatible (also injected from OPENAI_API_KEY)
+
 embedding:
-  provider: "ollama"            # ollama / openai
-  model: "bge-m3"
-  vector_size: 1024             # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
-  ollama_url: "http://<ollama-host>:11434"
-  openai_api_key: ""
-  openai_model: "text-embedding-3-small"
+  model: "bge-m3"              # model name for the provider (ollama: bge-m3 / openai: text-embedding-3-small)
+  vector_size: 1024            # bge-m3=1024, text-embedding-3-small=1536, ada-002=1536
 
 retrieval:
   mode: "hybrid"           # hybrid | similarity
