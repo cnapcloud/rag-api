@@ -14,7 +14,13 @@ from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.requests import Request
 
-from rag_api.exceptions import ConflictError, HookAbort, IngestValidationError, NotFoundError
+from rag_api.exceptions import (
+    BatchUploadError,
+    ConflictError,
+    HookAbort,
+    IngestValidationError,
+    NotFoundError,
+)
 from rag_api.pipeline.steps.parse import supported_extensions
 from rag_api.tracing.span import rest_span
 
@@ -143,6 +149,8 @@ async def upload_docs_batch(
     principal = getattr(request.state, "ingest_principal", None)
 
     results = []
+    stopped_by_hook = False
+    detail = ""  # first failure reason, verbatim -- the one-line message for the UI
     for idx, file in enumerate(files):
         try:
             filename = file.filename or f"upload_{uuid.uuid4()}"
@@ -207,24 +215,38 @@ async def upload_docs_batch(
                 "etag": etag,
                 "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
             })
+        except (IngestValidationError, ClientError) as e:
+            # Unsupported format / S3 failure for this one file. Record it and keep
+            # going -- the rest of the batch is independent.
+            logger.warning(
+                "Batch upload item rejected: kb=%s file=%s err=%s",
+                kb_id, file.filename, e,
+            )
+            results.append({"title": file.filename or "unknown", "error": str(e), "status": "error"})
+            detail = detail or str(e)
         except HookAbort as e:
-            # A registered hook stopped this ingest. Fail the whole batch fast: files
-            # already uploaded stay committed, files after this one are not attempted.
-            # api/app.py maps HookAbort to 403.
+            # A registered hook stopped this ingest. Every remaining file would hit the
+            # same block, so record the one that was actually blocked, mark the rest as
+            # skipped, and stop.
             logger.warning(
                 "Batch upload stopped by hook: kb=%s file=%s remaining=%d err=%s",
                 kb_id, file.filename, len(files) - idx - 1, e,
             )
-            raise
-        except (IngestValidationError, ClientError) as e:
-            # Unsupported format / S3 failure. Same fail-fast contract; log the batch
-            # context, then let the global handlers map it (422 / 502).
-            logger.warning(
-                "Batch upload stopped: kb=%s file=%s remaining=%d err=%s",
-                kb_id, file.filename, len(files) - idx - 1, e,
-            )
-            raise
+            results.append({"title": file.filename or "unknown", "error": str(e), "status": "error"})
+            for skipped in files[idx + 1:]:
+                results.append({
+                    "title": skipped.filename or "unknown",
+                    "error": f'Skipped: batch stopped at "{file.filename}"',
+                    "status": "error",
+                })
+            stopped_by_hook = True
+            detail = detail or str(e)
+            break
 
+    if any("error" in r for r in results):
+        # Loop is done; surface a non-2xx so status-only consumers see the failure,
+        # keeping the per-item results and a one-line reason in the body.
+        raise BatchUploadError(results, detail=detail, by_hook=stopped_by_hook)
     return {"results": results}
 
 

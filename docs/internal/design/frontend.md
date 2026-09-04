@@ -163,7 +163,7 @@ The 30-minute threshold should be a frontend config constant, not hardcoded.
 | List (paginated) | `GET /api/kb/{kb_id}/docs?page=1&page_size=20` |
 | List (filtered) | `GET /api/kb/{kb_id}/docs?status=failed&search=report&sort_by=updated_at&sort_order=desc` |
 | Upload single | `POST /api/kb/{kb_id}/docs/upload` — response: `{ doc_source, status_url, etag }` |
-| Upload batch | `POST /api/kb/{kb_id}/docs/upload/batch` — 전부 성공 시 202, response `{ results: [{ doc_id, source, etag, status_url }] }`. fail-fast: 첫 실패에서 중단하고 그 예외가 전파된다 — 훅 중단(quota 등) 403, 지원하지 않는 형식 422, S3 오류 502. 모두 본문은 `{ detail: "<사유>" }`. 실패 시 프론트는 `detail` 문자열만 표시한다(그 전에 업로드된 파일은 서버에 남으므로 목록 새로고침으로 반영). |
+| Upload batch | `POST /api/kb/{kb_id}/docs/upload/batch` — collect-and-continue. 전부 성공 시 202 `{ results: [{ doc_id, source, etag, status_url }] }`. 실패 항목이 있으면 403(훅 중단) 또는 422, 본문 `{ results: [...], detail: "<한 줄 사유>" }` — 성공 항목 `{ doc_id, ... }`, 실패 항목 `{ title, error, status: "error" }`, `results`는 제출한 파일과 1:1. 프론트: `${성공수} of ${results.length} file(s) uploaded` (중립색) + `detail` 을 그 아래 빨간 한 줄(넘치면 truncate + 툴팁)로. |
 | Delete | `DELETE /api/kb/{kb_id}/docs/{source}` |
 | Reindex selected | `POST /api/kb/{kb_id}/docs/reindex?source={source}` per item (`&force=true` to force re-embed) |
 | Reindex all | `POST /api/kb/{kb_id}/reindex` (`?force=true` to skip ETag comparison) |
