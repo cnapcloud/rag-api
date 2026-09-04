@@ -1,0 +1,129 @@
+server:
+  production: true
+  workers: 1
+
+dagster:
+  endpoint: "http://dagster-webserver:3000"
+
+s3:
+  endpoint: "http://minio:9000"
+  rag_bucket: "rag-api"
+  dagster_bucket: "dagster"
+  region: "us-east-1"
+  poll_interval_sec: 10
+  insecure: true
+
+postgres:
+  host: "postgresql"
+  port: 5432
+  dbname: "rag-api"
+  user: "rag-api"
+  password: "password"
+  pool_size: 5
+  connect_timeout: 30
+
+qdrant:
+  host: "qdrant"
+  port: 6333
+  insecure: true
+
+redis:
+  host: "redis"
+  port: 6379
+  db: 0
+
+queue_worker:
+  enabled: false                 # true disables dagster
+  max_workers: 4
+
+queue_poll:
+  poll_interval_sec: 5
+  max_per_poll: 5
+  retry_interval_sec: 10
+
+ingestion:
+  max_file_size_mb: 20
+  min_content_chars: 200
+  html_extraction_policy: "lenient"
+  parser_plugins: []
+
+dedup:
+  enabled: true
+
+  simhash:
+    ngram: 3
+    num_bands: 4
+    simhash_bits: 64
+    hamming_identical_threshold: 2
+    hamming_similar_threshold: 5
+
+  minhash:
+    jaccard_threshold: 0.65
+    title_fuzzy_threshold: 0.85
+    title_only_min_jaccard_floor: 0.25
+    user_words_path: "/app/data/kiwi_user_words.tsv"
+
+  chunk_compare:
+    chunk_match_threshold: 0.50
+    body_identical_threshold: 0.95
+    body_similar_threshold: 0.75
+    compare_all_candidates: false
+
+chunking:
+  strategy: "recursive"          # recursive | semantic | hierarchical
+  chunk_size: 1024               # strategy="hierarchical"이면 리스트로 지정, 예: [2048, 512]
+  chunk_overlap: 128             # chunk_size의 15%를 넘을 수 없음 (US-49)
+  semantic_threshold: 0.8
+
+provider:
+  name: "ollama"                 # ollama | openai | jina | <그 외 = OpenAI 호환 폴백>
+  url: "http://ollama:11434" # 빈 값 = provider 기본 엔드포인트. ollama는 호스트에서 실행되므로
+                                 # docker에서 접근하려면 LAN IP 지정 (예: http://192.168.0.75:11434)
+  api_key: ""                    # openai / jina / OpenAI 호환 (OPENAI_API_KEY env로도 주입)
+
+embedding:
+  model: "bge-m3"
+  vector_size: 1024
+
+retrieval:
+  mode: "hybrid"
+  top_k: 10
+  hybrid:
+    alpha: 0.5
+    rrf_k: 60
+  similarity:
+    min_score: 0.0
+  rerank:
+    enabled: true
+    provider: "jina"             # jina | internal (자체 호스팅 Cohere-compatible rerank 서버)
+    model: "jina-reranker-v2-base-multilingual"
+    top_n: 3
+    timeout_sec: 5
+    fallback_on_error: true
+  auto_merge:
+    enabled: false               # chunking.strategy="hierarchical"인 KB에서만 의미 있음
+    merge_threshold: 0.5
+
+knowledge_bases:
+  - id: "kb-01"
+    name: "지식베이스 01"
+    tags: ["general", "default"]
+    description: "첫 번째 지식베이스입니다."
+  - id: "kb-02"
+    name: "지식베이스 02"
+    description: "두 번째 지식베이스입니다."
+
+mcp:
+  enabled: true
+  transport: streamable-http
+  host: "0.0.0.0"
+  port: 8001
+
+tracing:
+  enabled: false
+  langfuse_baseurl: ""
+  service_name: "rag-api"
+
+logging:
+  level: INFO
+  names: [rag_api]

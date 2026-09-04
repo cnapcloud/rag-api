@@ -51,4 +51,3 @@ data/journal-*.pdf
 
 # Ad-hoc local experiments (not part of the codebase, may contain personal test files)
 experiments/
-docker/settings.yaml
