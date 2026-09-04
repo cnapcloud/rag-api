@@ -24,8 +24,9 @@ ollama pull bge-m3
 `docker/settings.yaml`에서 Ollama 주소를 환경에 맞게 수정한다.
 
 ```yaml
-embedding:
-  ollama_url: "http://<ollama-host>:11434"
+provider:
+  name: "ollama"
+  url: "http://<ollama-host>:11434"
 ```
 
 GPU 서버가 없어 Ollama를 직접 띄우기 어렵다면 OpenAI 임베딩으로 대체할 수 있다 (사전 요구사항의
@@ -44,7 +45,7 @@ embedding:
 ```
 
 `OPENAI_API_KEY`는 `docker/settings.yaml`이 아니라 `docker/.env`에 넣는다 (env var 오버라이드로
-`provider.openai_api_key`에 주입됨).
+`provider.api_key`에 주입됨).
 
 ```bash
 # docker/.env

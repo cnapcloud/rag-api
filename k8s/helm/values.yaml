@@ -143,9 +143,9 @@ settings: |
     semantic_threshold: 0.8
 
   provider:
-    name: "ollama"
-    ollama_url: "http://ollama.{{ .Release.Namespace }}.svc.cluster.local:11434"
-    openai_api_key: ""
+    name: "ollama"                # ollama | openai | jina | <else = OpenAI-compatible fallback>
+    url: "http://ollama.{{ .Release.Namespace }}.svc.cluster.local:11434"
+    api_key: ""                   # openai / jina / OpenAI-compatible (also injected from OPENAI_API_KEY)
 
   embedding:
     model: "bge-m3"
