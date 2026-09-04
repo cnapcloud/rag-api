@@ -64,3 +64,4 @@
 | [US-49](US-49-chunk-overlap-validation.md) | chunk_overlap - chunk_size cross-field 검증 추가 | done |
 | [US-50](US-50-provider-openai-compat-generalization.md) | 임베딩 provider 일반화 — 프로토콜 커넥션 + 미지 벤더 OpenAI 호환 폴백 + Jina 네이티브 | done |
 | [US-51](US-51-pipeline-hooks-before-doc-create.md) | 파이프라인 훅 — 신규 문서 생성 직전 등록 기반 콜백(BeforeDocCreate/HookAbort/emit) | done |
+| [US-52](US-52-batch-upload-failure-status-and-error-surfacing.md) | 배치 문서 업로드 실패 시 HTTP 상태 코드 정합성 + 실패 사유 노출 | done |

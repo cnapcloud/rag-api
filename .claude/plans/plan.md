@@ -48,3 +48,4 @@
 | 49 | chunk_overlap - chunk_size cross-field 검증 추가 | US-49 | 통합(backlog 참고) — done |
 | 50 | 임베딩 provider 일반화 — 프로토콜 커넥션 + 미지 벤더 OpenAI 호환 폴백 + Jina 네이티브 | US-50 | 통합(backlog 참고) — done |
 | [51](51-pipeline-hooks-before-doc-create.md) | 파이프라인 훅 — 신규 문서 생성 직전 등록 기반 콜백 (BeforeDocCreate/HookAbort/emit) | US-51 | done |
+| 52 | 배치 문서 업로드 실패 시 HTTP 상태 코드 정합성 + 실패 사유 노출 | US-52 | 통합(backlog 참고) — done |

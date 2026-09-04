@@ -207,24 +207,23 @@ async def upload_docs_batch(
                 "etag": etag,
                 "status_url": f"/api/kb/{kb_id}/docs/{doc_id}/status",
             })
-        except (IngestValidationError, ClientError) as e:
-            logger.warning(
-                "Batch upload item rejected: kb=%s file=%s err=%s",
-                kb_id, file.filename, e,
-            )
-            results.append({"title": file.filename or "unknown", "error": str(e), "status": "error"})
         except HookAbort as e:
-            # A registered hook stopped this ingest. Mark the current file and every
-            # remaining file as errored, then stop the batch.
+            # A registered hook stopped this ingest. Fail the whole batch fast: files
+            # already uploaded stay committed, files after this one are not attempted.
+            # api/app.py maps HookAbort to 403.
             logger.warning(
                 "Batch upload stopped by hook: kb=%s file=%s remaining=%d err=%s",
                 kb_id, file.filename, len(files) - idx - 1, e,
             )
-            for rejected in files[idx:]:
-                results.append(
-                    {"title": rejected.filename or "unknown", "error": str(e), "status": "error"}
-                )
-            break
+            raise
+        except (IngestValidationError, ClientError) as e:
+            # Unsupported format / S3 failure. Same fail-fast contract; log the batch
+            # context, then let the global handlers map it (422 / 502).
+            logger.warning(
+                "Batch upload stopped: kb=%s file=%s remaining=%d err=%s",
+                kb_id, file.filename, len(files) - idx - 1, e,
+            )
+            raise
 
     return {"results": results}
 
