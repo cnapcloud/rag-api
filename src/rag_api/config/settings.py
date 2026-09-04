@@ -12,7 +12,7 @@ from pydantic import ValidationError as PydanticValidationError
 from pydantic.fields import FieldInfo
 
 from rag_api.exceptions import IngestValidationError
-from rag_api.pipeline.steps.chunk import ChunkStrategy
+from rag_api.pipeline.steps.chunk_types import ChunkStrategy
 
 # ──────────────────────────────────────────────
 # 하위 모델
