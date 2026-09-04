@@ -35,6 +35,7 @@
   - [25. page_label이 PDF에 실제로 인쇄된 페이지 번호와 다를 수 있음 — /PageLabels 룰이 없는 문서는 항상 null](#25-page_label이-pdf에-실제로-인쇄된-페이지-번호와-다를-수-있음--pagelabels-룰이-없는-문서는-항상-null)
   - [26. upsert 단계의 delete-then-insert 구조로 reindex 중 insert 실패 시 기존 Qdrant 청크가 유실됨](#26-upsert-단계의-delete-then-insert-구조로-reindex-중-insert-실패-시-기존-qdrant-청크가-유실됨)
   - [27. trafilatura favor_recall 모드가 인라인 서식 태그(strong/b/em/i) 주변 텍스트를 통째로 유실](#27-trafilatura-favor_recall-모드가-인라인-서식-태그strongbemi-주변-텍스트를-통째로-유실)
+  - [28. config.settings의 llama_index import 체인 + .pyc 미프리컴파일로 Dagster code server 콜드 스타트가 gRPC probe 타임아웃](#28-configsettings의-llama_index-import-체인--pyc-미프리컴파일로-dagster-code-server-콜드-스타트가-grpc-probe-타임아웃)
 
 ---
 
@@ -1362,3 +1363,56 @@ US-48 참고.
 - 원본 trafilatura 버그를 최소 HTML로 결정론적으로 재현하는 시도는 실패했다(namu.wiki 페이지의
   구체적 DOM 구조에 의존하는 것으로 보임) — 그래서 회귀 테스트는 `_unwrap_inline_tags` 함수
   자체의 동작만 검증하고, trafilatura 내부 동작에 의존하는 통합 테스트는 추가하지 않았다.
+
+---
+
+## 28. config.settings의 llama_index import 체인 + .pyc 미프리컴파일로 Dagster code server 콜드 스타트가 gRPC probe 타임아웃
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | resolved |
+| 발견일 | 2026-09-04 |
+| 해결일 | 2026-09-04 |
+| 심각도 | MED |
+
+**증상**
+
+rag-ent-api 배포에서 Dagster code server 컨테이너 기동이 ~24초 걸려 gRPC health probe가
+타임아웃되고 pod가 재시작 루프에 빠졌다.
+
+**원인**
+
+두 요인이 code server 부팅 경로에서 겹쳤다.
+
+1. **import 무게**: `dagster code-server start -m rag_api.defs.definitions` 부팅 시
+   `defs/sensors/event_queue_sensor.py`가 모듈 레벨에서 `rag_api.config.settings`를 import
+   → `settings.py`가 `pipeline/steps/chunk.py`의 `ChunkStrategy`를 import → `chunk.py`가
+   모듈 최상단에서 `from llama_index.core import ...`를 하므로 llama_index 전체 트리가 부팅
+   경로에 얹혔다. `defs/` 나머지 op import는 전부 함수 본문 지연 import라 이 엣지 하나만 샜다.
+2. **`.pyc` 미프리컴파일**: `Dockerfile`이 빌더·런타임 양쪽에 `PYTHONDONTWRITEBYTECODE=1`,
+   `uv sync`에 bytecode 컴파일 옵션 없음, `compileall` 없음 → 이미지에 `.pyc`가 없어 매
+   프로세스 기동마다 import 트리 전체를 소스에서 재컴파일한다. llama_index가 저장소에서 가장 큰
+   순수 파이썬 파일 더미라, 콜드 컴파일 비용이 probe budget을 넘겼다.
+
+**해결**
+
+- (P2) `ChunkStrategy`를 의존성 0인 `pipeline/steps/chunk_types.py` leaf 모듈로 분리.
+  `settings.py`와 `chunk.py` 둘 다 거기서 import하고 `chunk.py`는 하위 호환용으로 재노출한다.
+  `import rag_api.defs.definitions` 후 `sys.modules`에 llama_index가 없는 것을 확인. rag-ent-api는
+  빌드 타임에 rag-api 소스를 벤더링하므로 코드 변경 없이 자동 적용된다.
+- (P1) `Dockerfile`(rag-api·rag-ent-api 둘 다) — 빌더 `ENV UV_COMPILE_BYTECODE=1` +
+  `RUN python -m compileall -q -j0 <first-party src>` 추가, 런타임 `PYTHONDONTWRITEBYTECODE`
+  제거. 콜드 스타트 재컴파일 배수 자체를 없앤다.
+
+**재발 방지**
+
+`defs/` 하위 op/job/sensor 모듈은 `pipeline.steps.*` import를 함수 본문 지연 import로 유지해야
+한다 — 모듈 레벨로 새면 이 엣지가 재발한다. `config.settings`가 `pipeline/`·`rag/`·`query/`
+타입을 필드 어노테이션에 쓰려면 `chunk_types.py`처럼 의존성 없는 leaf로 뺀다.
+
+**미해결 (이번 범위 밖)**
+
+`defs/definitions.py`의 `Definitions(...)` 생성 시 `load_connector_schedules()`가 import
+타임에 Postgres 쿼리를 실행하며 `postgres.connect_timeout`(기본 30초)에 묶인다. code server가
+Postgres보다 먼저 기동하는 배포에서는 이 경로만으로도 최대 30초 블로킹이 남는다 — 위 두 변경과
+독립적이며, probe가 계속 불안정하면 스케줄 로딩을 지연시키거나 이 경로의 timeout을 낮춰야 한다.

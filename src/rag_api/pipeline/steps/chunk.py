@@ -5,17 +5,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from itertools import count
-from typing import Literal
 
 from llama_index.core import Document
 from llama_index.core.schema import BaseNode
 
 from rag_api.exceptions import ConfigError
+from rag_api.pipeline.steps.chunk_types import ChunkStrategy  # re-exported for back-compat
 from rag_api.pipeline.steps.parser.extensions import CODE_EXTENSIONS, CODE_LANGUAGE_MAP
 
 logger = logging.getLogger(__name__)
-
-ChunkStrategy = Literal["recursive", "semantic", "hierarchical"]
 
 
 @dataclass

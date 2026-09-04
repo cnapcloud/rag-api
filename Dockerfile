@@ -1,6 +1,9 @@
 FROM python:3.12-slim-bookworm AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1
+# UV_COMPILE_BYTECODE: ship .pyc for every installed dependency so the Dagster
+# code server (and the API) don't recompile the whole import tree from source on
+# each process start -- that cold compile is what blocks the gRPC health probe.
+ENV UV_COMPILE_BYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
@@ -21,10 +24,15 @@ COPY migrations ./migrations
 COPY settings.yaml ./
 RUN uv sync --frozen --no-dev
 
+# Precompile the first-party package too (installed from ./src, so UV_COMPILE_BYTECODE
+# above only covers the .venv). compileall writes .pyc regardless of any -B / env flag.
+RUN python -m compileall -q -j0 /app/src
+
 
 FROM python:3.12-slim-bookworm AS runtime
 
-ENV PYTHONDONTWRITEBYTECODE=1
+# No PYTHONDONTWRITEBYTECODE here: the build already ships .pyc, and allowing writes
+# lets any cache miss self-heal on first import instead of recompiling every start.
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/app/.venv/bin:$PATH"
 
