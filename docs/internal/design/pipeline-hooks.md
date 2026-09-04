@@ -59,7 +59,8 @@ S3 스테이징)은 경로마다 다르다. vendoring 앱이 각 경로를 오�
         │   connectors._run_sync : except HookAbort                       │
         │       → set_connector_sync_status(idle) + last_error 경고        │
         │         (status="error" 아님 — 정상 종료로 취급)                  │
-        │   docs.upload_docs_batch : 현재+남은 항목 결과에 error 표시 후 break │
+        │   docs.upload_docs_batch : 로그 후 그대로 전파 (fail-fast) →        │
+        │       app.py 예외 핸들러 → HTTP 403 (뒤 파일은 시도 안 함)          │
         │   docs.upload_doc        : 전파 → app.py 예외 핸들러 → HTTP 403    │
         └───────────────────────────────────────────────────────────────┘
 ```
@@ -87,7 +88,7 @@ S3 스테이징)은 경로마다 다르다. vendoring 앱이 각 경로를 오�
 | 이벤트 타입 | `BeforeDocCreate` | 신규 문서 생성 직전 페이로드 (kb_id, principal, source_type) |
 | 중단 예외 | `HookAbort` | 콜백이 "이 동작을 의도적으로 멈춘다"고 알리는 기저 예외. 서브클래싱 가능 |
 | 생산자 | 커넥터 3종 + `docs.py` 업로드 2종 | 신규 `create_doc` 직전에 `emit(BeforeDocCreate(...))` |
-| 포획자 | `connectors._run_sync`, `docs.upload_docs_batch` | `HookAbort`를 잡아 경로별로 정상 처리 |
+| 포획자 | `connectors._run_sync` | `HookAbort`를 잡아 정상 종료로 처리 (배치·단일 업로드는 잡지 않고 전파 → 403) |
 
 ### 2.3 이벤트: `BeforeDocCreate`
 
@@ -114,7 +115,7 @@ S3 스테이징)은 경로마다 다르다. vendoring 앱이 각 경로를 오�
 | `connectors/confluence.py` | `_process_attachment` | 첨부 `create_doc` 직전 |
 | `connectors/github.py` | 파일 처리 메서드 | `create_doc` 직전 |
 | `api/routers/docs.py` | `upload_doc` | `existing is None` 분기 |
-| `api/routers/docs.py` | `upload_docs_batch` | 루프 내 `existing is None`; `HookAbort` 포획 |
+| `api/routers/docs.py` | `upload_docs_batch` | 루프 내 `existing is None`; `HookAbort`는 로그만 남기고 전파 (fail-fast) |
 
 > 커넥터 4곳의 스테이징 시퀀스(get_doc_by_source → 변경 감지 → create_doc → S3 → set_staged
 > → enqueue)는 사실상 중복이다. 이를 공통 베이스로 추출하면 `emit` 호출도 한 곳으로 모이지만,
@@ -159,6 +160,20 @@ OIDC 미들웨어 (vendoring 앱)
 `set_connector_sync_status`에 `last_error: str | None = None` 선택 인자를 추가했다 — 값이 주어지면
 `last_error`만 갱신하고 `status`는 건드리지 않는다(커넥터 `last_error`만 세팅하는 기존 함수가
 없었음). Dagster 스케줄 경로(`connector_sync_op`)는 이 인자를 넘기지 않으므로 동작 불변.
+
+### 2.7 배치 업로드의 `HookAbort` 처리 (US-52)
+
+`upload_docs_batch`는 파일을 순서대로 처리하다가 첫 실패에서 즉시 중단한다(fail-fast). `except
+HookAbort`와 `except (IngestValidationError, ClientError)` 두 분기는 배치 컨텍스트를 담은 경고
+로그(`file`, `remaining`)만 남기고 예외를 그대로 `raise`한다 — `api/app.py`의 전역 핸들러가
+각각 매핑한다: `HookAbort` → `403 {"detail": str(e)}`(단일 업로드와 동일), `IngestValidationError`
+(지원하지 않는 형식) → `422`, `ClientError`(S3) → `502`.
+
+중단 이전에 이미 처리된 파일은 반복마다 `create_doc` + `enqueue`가 개별 커밋되므로 그대로
+유지된다(응답 본문에는 성공 목록이 실리지 않음). 전부 성공하면 `{results: [...]}` + 라우트
+선언 기본값 `202`. 예전에는 `HookAbort`를 잡아 남은 파일 전부를 같은 error 문자열로 채운 뒤
+`202`를 반환했으나, 상태 코드만 보는 소비자가 실패를 놓치고 시도되지 않은 파일까지 개별
+차단된 것처럼 보이는 문제가 있어 fail-fast로 바꿨다.
 
 ## 3. API (시그니처만 — 구현 없음)
 

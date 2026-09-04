@@ -79,7 +79,7 @@ class TestUploadDocHook:
 
 
 class TestUploadBatchHook:
-    def test_hookabort_marks_current_and_remaining_as_error(
+    def test_hookabort_fails_the_batch_fast_with_403(
         self, client, kb, _s3_and_queue, reset_hooks
     ):
         seen: list[str] = []
@@ -87,7 +87,7 @@ class TestUploadBatchHook:
         def deny_after_first(ev: BeforeDocCreate) -> None:
             seen.append(ev.kb_id)
             if len(seen) >= 2:
-                raise HookAbort("KB document limit reached")
+                raise HookAbort("KB document limit reached: 3/3")
 
         register(BeforeDocCreate, deny_after_first)
 
@@ -100,11 +100,58 @@ class TestUploadBatchHook:
             ],
         )
 
+        # A hook stop propagates like a single upload: 403 + plain detail, no results body.
+        assert resp.status_code == 403
+        assert resp.json() == {"detail": "KB document limit reached: 3/3"}
+        # b.txt hit the hook; c.txt was never attempted.
+        assert seen == [KB_ID, KB_ID]
+
+    def test_first_file_blocked_returns_403(self, client, kb, _s3_and_queue, reset_hooks):
+        def deny(ev: BeforeDocCreate) -> None:
+            raise HookAbort("KB document limit reached: 3/3")
+
+        register(BeforeDocCreate, deny)
+
+        resp = client.post(
+            f"/api/kb/{KB_ID}/docs/upload/batch",
+            files=[
+                ("files", ("a.txt", b"aaa", "text/plain")),
+                ("files", ("b.txt", b"bbb", "text/plain")),
+            ],
+        )
+
+        assert resp.status_code == 403
+        assert "limit reached" in resp.json()["detail"]
+        _s3_and_queue.assert_not_called()
+
+    def test_unsupported_extension_fails_the_batch_fast_with_422(
+        self, client, kb, _s3_and_queue, reset_hooks
+    ):
+        resp = client.post(
+            f"/api/kb/{KB_ID}/docs/upload/batch",
+            files=[
+                ("files", ("notes.md", b"# notes", "text/markdown")),
+                ("files", ("archive.zip", b"PK\x03\x04", "application/zip")),
+                ("files", ("summary.md", b"# summary", "text/markdown")),
+            ],
+        )
+
+        # Unsupported extension raises IngestValidationError -> 422, batch stops there.
+        assert resp.status_code == 422
+        assert "Unsupported file format" in resp.json()["detail"]
+
+    def test_all_files_succeed_returns_202_with_results(
+        self, client, kb, _s3_and_queue, reset_hooks
+    ):
+        resp = client.post(
+            f"/api/kb/{KB_ID}/docs/upload/batch",
+            files=[
+                ("files", ("a.txt", b"aaa", "text/plain")),
+                ("files", ("b.txt", b"bbb", "text/plain")),
+            ],
+        )
+
         assert resp.status_code == 202
         results = resp.json()["results"]
-        assert len(results) == 3
-        assert "error" not in results[0]
-        assert results[1]["status"] == "error" and "limit reached" in results[1]["error"]
-        assert results[2]["status"] == "error" and "limit reached" in results[2]["error"]
-        # third file never reached the hook
-        assert seen == [KB_ID, KB_ID]
+        assert len(results) == 2
+        assert all("doc_id" in r for r in results)
