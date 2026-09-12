@@ -55,7 +55,7 @@ dependencies = [
     # Korean morphological analyzer (MinHash tokenization, stage 2 dedup)
     "kiwipiepy>=0.17.0",
     # MCP
-    "mcp>=1.0",
+    "mcp>=1.28.1,<2.0.0",
     # OpenTelemetry
     "opentelemetry-api>=1.25.0",
     "opentelemetry-sdk>=1.25.0",
