@@ -41,7 +41,7 @@ Redis는 ingest/delete 이벤트 큐로, Postgres는 KB/문서 메타데이터 �
 2. `.claude/specs/index.md`의 "진행 중" 표 (+ "마지막 채번 번호" 필드)
 
 "진행 중" 표에 없는, 완료된 항목(History)이나 개별 spec 폴더(`specs/US-NN-*/`의
-`backlog.md`/`plan.md`/`task.md`)는 해당 항목을 실제로 조사·작업할 때만 연다. MEMORY.md
+`spec.md`/`plan.md`/`task.md`)는 해당 항목을 실제로 조사·작업할 때만 연다. MEMORY.md
 인덱스가 가리키는 개별 상세 파일도 이번 작업과 직접 관련될 때만 연다.
 
 `.claude/skills/`는 세션 시작 시 미리 훑지 않는다 — analyst/designer/implementer/validator
