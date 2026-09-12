@@ -217,4 +217,4 @@ buildkit(`driver: kubernetes`)을 원격 빌더로 사용해 `linux/arm64,linux/
 ## 개발 참여
 
 기능/버그 수정을 진행하려면 [SPEC-DRIVEN-AI-DEVELOPMENT.md](SPEC-DRIVEN-AI-DEVELOPMENT.md)의 스펙 기반 개발 절차
-(요건 → 설계 → 작업 단위 → 구현 계획)를 따른다.
+(요건 → 설계 → 작업 단위 → 구현 계획 → 검증)를 따른다.
