@@ -25,8 +25,8 @@
 │  merger (RRF)  reranker (Jina fallback)      │
 ├──────────────────────────────────────────────┤
 │  Infra                 src/infra/            │
-│  minio.py  redis.py  qdrant.py  postgres.py  │
-│  s3.py (botocore)  connectors/               │
+│  s3.py (botocore)  redis.py  qdrant.py       │
+│  postgres.py  crypto.py  dagster_utils.py    │
 └──────────────────────────────────────────────┘
 ```
 

@@ -40,6 +40,6 @@ def get_redis_client() -> redis.Redis:
     return _client
 ```
 
-테스트에서는 `conftest.py`의 `mock_redis` / `mock_qdrant` / `mock_s3` 픽스처로 교체.
-실제 연결을 테스트에서 직접 생성하지 말 것.
+테스트에서는 `conftest.py`의 `mock_redis` / `mock_qdrant` / `mock_minio` / `mock_postgres`
+픽스처로 교체. 실제 연결을 테스트에서 직접 생성하지 말 것.
 

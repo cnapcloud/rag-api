@@ -1,6 +1,6 @@
 # Memory Index
 
-Claude Code가 세션 간에 학습한 내용을 저장하는 공간. 코드/design 문서/`.claude/rules/`에서
+Claude Code가 세션 간에 학습한 내용을 저장하는 공간. 코드/design 문서/`.claude/skills/`에서
 파생 가능한 내용은 여기 두지 않는다 (원본이 stale해질 수 있는 사본을 만들지 않기 위함).
 
 - [pptx page_label 타입 함정](pptx_page_label_type_pitfall.md) — 서드파티 리더(PptxReader)가 page_label에 int를 넣어 str 스키마 계약을 깨고, 다중 KB 검색에서만 드러남 (2026-07-27, US-47)
