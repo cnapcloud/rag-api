@@ -61,7 +61,7 @@ uv run pytest -q tests/unit/test_foo.py   # 특정 파일만
 | `dagster_utils.py` | Dagster GraphQL 원격 제어 |
 
 `infra/redis.py`에 MinIO 코드가 복붙된 사고 전례(2026-06-07)가 있다. `infra/` 파일을
-고치기 전에는 plan.md에 적힌 대상 파일이라도 반드시 Read 또는 grep으로 실제 내용을 먼저
+고치기 전에는 task.md에 적힌 대상 파일이라도 반드시 Read 또는 grep으로 실제 내용을 먼저
 확인한다.
 
 ## Step 함수는 순수 함수로 유지
