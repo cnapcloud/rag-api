@@ -15,7 +15,7 @@ docs/internal/requirement/prd.md   요건 (섹션 번호가 앵커, 예: §10)
    ↑
 docs/internal/design/*.md          설계
    ↑
-.claude/specs/US-NN-<slug>/        backlog.md ↔ plan.md ↔ task.md(선택)
+.claude/specs/US-NN-<slug>/        spec.md ↔ plan.md ↔ task.md(선택)
 ```
 
 ## 진행 방식 — 개발자 ↔ AI
@@ -32,7 +32,7 @@ docs/internal/design/*.md          설계
    준비한다: `main`(클린 트리)에서만 시작할 수 있고, 타입 프리픽스(생략 시 `feature`)로
    `<type>/US-NN-<slug>` 전용 브랜치를 새로 만든다 — `patch`는 spec 작업 공간이 아니라
    임시 작업용으로만 남는다. 그 위에서 `analyst`가 번호를 채번받은
-   `.claude/specs/US-NN-<slug>/` 폴더에 `backlog.md`를 작성한다(요청 원문, F1/F2... 세부
+   `.claude/specs/US-NN-<slug>/` 폴더에 `spec.md`를 작성한다(요청 원문, F1/F2... 세부
    기능별로 AC ID가 붙은 완료 기준). 개발자는 "backlog 리뷰 시 확인할 것" 절 기준으로
    검토하고, 승인하면 커맨드가 `## 승인` 체크박스를 직접 `[x]`로 바꾼다 — `analyst`는
    스스로 체크하지 않는다(셀프 승인 금지). **승인 전에는 다음 단계로 넘어가지 않는다.**
@@ -65,7 +65,7 @@ docs/internal/design/*.md          설계
 `/spec-new` 3단계에서 `analyst`가 초안을 만들면, 승인(`## 승인` 체크박스를 `[x]`로 바꾸기)
 전에 아래를 확인한다.
 
-- `.claude/templates/backlog.md` 형식을 따랐는지 — 자유 형식이면 반려.
+- `.claude/templates/spec.md` 형식을 따랐는지 — 자유 형식이면 반려.
 - 제목 바로 다음 줄에 관련 설계 문서 링크 `> 설계: [design.md](...)`가 있는지. 관련 설계
   문서가 아직 없다면 이번 작업 범위에서 새로 썼는지.
 - 세부 기능(F1, F2, ...)마다 완료 기준이 뭉뚱그린 문장이 아니라, 실제 테스트 케이스/수동
@@ -92,9 +92,9 @@ plan.md/task.md는 backlog와 같은 spec 폴더 안에 있으므로(구식 방�
 "`done` 전환 시 확인" 항목과 동일):
 
 - design 문서의 하위요건 표(US 컬럼) 또는 변경 이력에 이번 작업 반영
-- backlog.md/plan.md의 설계 링크가 실제로 존재하는 문서를 가리키는지 확인
+- spec.md/plan.md의 설계 링크가 실제로 존재하는 문서를 가리키는지 확인
 - `.claude/specs/index.md`에서 해당 행을 "진행 중"→"History"로 이동
-- backlog.md 상단 **상태**를 `done`으로 갱신
+- spec.md 상단 **상태**를 `done`으로 갱신
 
 구현 중 설계와 다르게 만든 부분이 있으면 design 문서 본문도, 요건 자체가 바뀌었다면
 `prd.md`도 별도로(자동화 범위 밖) 함께 갱신해야 한다 — 이건 validator가 판단할 수 없는

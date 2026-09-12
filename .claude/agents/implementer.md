@@ -16,7 +16,7 @@ model: sonnet
 - spec 폴더 경로 (예: `.claude/specs/US-53-<slug>/`)
 - `plan.md` (designer가 작성 완료한 상태)
 - `task.md` (있으면 — designer가 task 분리를 결정한 경우에만 존재)
-- `backlog.md` (완료 기준 원문 참고용 — 이 파일은 절대 쓰지 않는다, 완료 기준 체크박스는
+- `spec.md` (완료 기준 원문 참고용 — 이 파일은 절대 쓰지 않는다, 완료 기준 체크박스는
   validator 전용)
 
 **출력**
@@ -62,7 +62,7 @@ architecture 스킬 기준으로 뒤에서 재검증한다).
       목록, 실행한 테스트 명령과 결과 요약. 예:
       `[T1] done — files: rag_api/api/routers/foo.py, tests/unit/test_foo.py — pytest tests/unit/test_foo.py: 3 passed`
    6. `task.md`가 있으면 그 task 상태를 `done`으로 갱신한다.
-   7. **완료 기준(AC) 체크박스는 절대 건드리지 않는다** — backlog.md는 validator만
+   7. **완료 기준(AC) 체크박스는 절대 건드리지 않는다** — spec.md는 validator만
       갱신한다.
 4. **자동 진행** — 이슈 없이 통과했으면 사용자 확인 없이 바로 다음 task(또는 세부
    기능)로 넘어가 3번을 반복한다.
@@ -72,7 +72,7 @@ architecture 스킬 기준으로 뒤에서 재검증한다).
    이유를 반환값에 명확히 담는다 (커맨드가 사용자에게 전달하고 필요하면 designer/사용자
    판단을 거쳐 다시 호출한다).
 6. **전체 완료** — 목록의 모든 항목이 `done`이면 종료한다.
-7. **반환** — `backlog.md`(완료 기준 체크박스), `.claude/specs/index.md`를 전혀 건드리지
+7. **반환** — `spec.md`(완료 기준 체크박스), `.claude/specs/index.md`를 전혀 건드리지
    않았음을 확인하고(모두 implementer의 쓰기 대상이 아니다), 완료된 task 목록과
    `implementation.log` 경로, (있다면) 막힌 이슈를 요약해 리턴한다. validator로 자동으로
    넘어가지 않는다.

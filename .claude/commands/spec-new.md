@@ -33,23 +33,23 @@ argument-hint: [feature|bugfix|patch:] <기능 설명>
    먼저 갱신 — 번호가 실제로 쓰였다는 사실을 먼저 기록. 12번에서 analyst가 "중복"으로
    판단해 중단하더라도 이 번호는 재사용하지 않고 버린다 — 번호 낭비보다 재사용 충돌이 더
    위험하다).
-10. `.claude/templates/backlog.md`를 그 폴더 안에 `backlog.md`로 복사한다 (내용은 아직
+10. `.claude/templates/spec.md`를 그 폴더 안에 `spec.md`로 복사한다 (내용은 아직
     템플릿 그대로 — analyst가 채운다).
 11. `Agent` 툴로 `analyst` 서브에이전트를 호출한다. 전달할 것:
     - spec 폴더 경로 (`.claude/specs/US-NN-<slug>/`)
     - 타입 프리픽스를 제외한 요청 설명 원문
 12. analyst의 반환 결과로 분기한다:
-    - **중복 판단** ("기존 US-NN에 통합 제안"으로 종료) — backlog.md를 채우지 않은 채
+    - **중복 판단** ("기존 US-NN에 통합 제안"으로 종료) — spec.md를 채우지 않은 채
       끝난다. `git checkout main`으로 돌아간 뒤 방금 만든 브랜치를 삭제한다
       (`git branch -D <type>/US-NN-<slug>`) — 의미 있는 커밋이 없었으므로 브랜치를 남겨
       두지 않는다. 승인을 묻지 않는다. 폴더/번호는 재사용하지 않는다. 사용자에게 어느
       기존 US로 통합할지 제안만 전달한다.
-    - **backlog.md 작성 완료** — 13번으로 진행.
-13. `.claude/specs/index.md`의 "진행 중" 표에 `| US-NN | <backlog.md 제목> | todo |` 한 줄을
+    - **spec.md 작성 완료** — 13번으로 진행.
+13. `.claude/specs/index.md`의 "진행 중" 표에 `| US-NN | <spec.md 제목> | todo |` 한 줄을
     이 세션이 직접 추가한다 (analyst가 아니라 command가 한다 — 번호 채번과 같은 이유로
     판단이 필요 없는 기계적 갱신).
-14. analyst가 채운 backlog.md 내용을 사용자에게 보여주고 승인 여부를 묻는다.
-15. 사용자가 승인하면, **이 세션이 직접** backlog.md의 `## 승인` 체크박스를 `[x]`로 갱신한다.
+14. analyst가 채운 spec.md 내용을 사용자에게 보여주고 승인 여부를 묻는다.
+15. 사용자가 승인하면, **이 세션이 직접** spec.md의 `## 승인` 체크박스를 `[x]`로 갱신한다.
     analyst/designer는 이 체크박스를 스스로 바꾸지 않는다 — 셀프 승인 금지.
 16. 승인 전까지는 `/spec-design`으로 넘어가지 않는다. 사용자가 수정을 요청하면 analyst를
-    다시 호출하거나 backlog.md를 직접 고쳐 반영한 뒤 다시 승인을 묻는다.
+    다시 호출하거나 spec.md를 직접 고쳐 반영한 뒤 다시 승인을 묻는다.
