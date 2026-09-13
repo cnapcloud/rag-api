@@ -50,7 +50,9 @@ class TestDeleteKB:
             resp = client.delete(f"/api/kb/{KB_ID}")
         assert resp.status_code == 404
 
+    # AC: F4-3 (US-53-search-cache/T5)
     def test_reloads_dagster_when_connector_had_schedule(self, client):
+        """KB 삭제가 완료되면 해당 kb_id의 검색 캐시를 무효화한다."""
         with (
             patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
             patch("rag_api.infra.postgres.update_kb_status"),
@@ -60,6 +62,7 @@ class TestDeleteKB:
             patch("rag_api.infra.s3.delete_kb_prefix", return_value=3),
             patch("rag_api.infra.postgres.delete_kb_meta") as mock_delete_meta,
             patch("rag_api.infra.dagster_utils.reload_code_location") as mock_reload,
+            patch("rag_api.query.search_cache.invalidate_kb_best_effort") as mock_invalidate,
         ):
             resp = client.delete(f"/api/kb/{KB_ID}")
 
@@ -67,6 +70,7 @@ class TestDeleteKB:
         mock_list.assert_called_once_with(kb_id=KB_ID)
         mock_delete_meta.assert_called_once_with(KB_ID)
         mock_reload.assert_called_once()
+        mock_invalidate.assert_called_once_with(KB_ID)
 
     def test_returns_409_when_connector_sync_running(self, client):
         with (
@@ -91,6 +95,7 @@ class TestDeleteKB:
             patch("rag_api.infra.s3.delete_kb_prefix", return_value=0),
             patch("rag_api.infra.postgres.delete_kb_meta"),
             patch("rag_api.infra.dagster_utils.reload_code_location") as mock_reload,
+            patch("rag_api.query.search_cache.invalidate_kb_best_effort"),
         ):
             resp = client.delete(f"/api/kb/{KB_ID}")
 
@@ -112,8 +117,29 @@ class TestDeleteKB:
             patch("rag_api.infra.qdrant.drop_collection"),
             patch("rag_api.infra.s3.delete_kb_prefix", return_value=0),
             patch("rag_api.infra.postgres.delete_kb_meta"),
+            patch("rag_api.query.search_cache.invalidate_kb_best_effort"),
         ):
             resp = client.delete(f"/api/kb/{KB_ID}")
 
         assert resp.status_code == 200
         mock_abort.assert_called_once_with([active_doc])
+
+    # AC: F4-3 (US-53-search-cache/T5)
+    def test_invalidate_kb_failure_does_not_fail_delete(self, client):
+        """best-effort: 캐시 무효화가 실패해도 KB 삭제는 정상 완료된다."""
+        with (
+            patch("rag_api.infra.postgres.get_kb_meta", return_value=_BASE_KB),
+            patch("rag_api.infra.postgres.update_kb_status"),
+            patch("rag_api.infra.postgres.list_connectors", return_value=[]),
+            patch("rag_api.infra.postgres.get_active_ingest_docs_for_kb", return_value=[]),
+            patch("rag_api.infra.qdrant.drop_collection"),
+            patch("rag_api.infra.s3.delete_kb_prefix", return_value=0),
+            patch("rag_api.infra.postgres.delete_kb_meta"),
+            patch(
+                "rag_api.query.search_cache.invalidate_kb",
+                side_effect=RuntimeError("redis down"),
+            ),
+        ):
+            resp = client.delete(f"/api/kb/{KB_ID}")
+
+        assert resp.status_code == 200

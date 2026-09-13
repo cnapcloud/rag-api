@@ -46,15 +46,22 @@ docs/internal/design/*.md          설계 (토픽별, 개발자가 작성)
    이어서 `task.md`(vertical slice 단위 task 목록 + task별 구현 방법)를 쓴다 — task.md는
    더 이상 선택이 아니라 항상 만든다(완료 기준이 1개뿐이어도 최소 1개 task). spec.md의 모든
    AC가 어느 task에 매핑되는지 커버리지까지 확인한다. 둘 다 별도 승인 체크박스가 없어
-   필수 게이트는 아니지만, 검토를 원하면 이 시점에 한다.
+   필수 게이트는 아니지만, 검토를 원하면 이 시점에 한다. design.md/task.md가 이미 있으면
+   커맨드가 무작정 다시 쓰지 않는다 — `.claude/specs/index.md`의 Status를 보고(설계
+   중단 잔여물인지, 이미 완결된 설계인지, 구현까지 끝난 뒤인지) 멈추거나 개발자 지시를
+   기다린다. `/spec-validate`가 설계 문제로 되돌린 경우(Status `blocked`)만 원인을 자동
+   추출해 재작업을 이어간다.
 5. **`/spec-implement`** — `implementer`가 task 단위로 순회하며 구현+테스트를 진행한다.
    이슈 없이 통과하면 자동으로 다음 항목으로 넘어가고, design.md/task.md 설계 결함 등
-   이슈를 만나면 그 자리에서 멈춰 개발자 판단을 요청한다(상태가 `blocked`로 바뀐다).
+   이슈를 만나면 그 자리에서 멈춰 개발자 판단을 요청한다(상태가 `blocked`로 바뀐다). 전체
+   task가 끝나면 Status가 `implemented`로 바뀌고, 그 상태에서 다시 호출하면(이미 구현
+   완료) 커맨드가 바로 멈추고 `/spec-validate`를 안내한다.
 6. **`/spec-validate`** — `validator`가 spec.md의 모든 완료 기준(AC)을 실제로 테스트/수동
    확인으로 검증하고, `design.md`의 레이어/파일 판단도 architecture 기준으로 재검증한다.
-   전체 통과하면 **개발자 확인 없이 자동으로** spec.md 상단 **상태**를 `done`으로 바꾸고
-   `.claude/specs/index.md`를 History로 옮긴다 — 옛 방식처럼 체크리스트를 개발자가 매번
-   수동으로 훑을 필요가 없다. 일부 실패하면 유형(구현 문제 vs 설계 문제)에 따라
+   전체 통과하면 **개발자 확인 없이 자동으로** `.claude/specs/index.md`의 해당 행을
+   History로 옮긴다(상태는 index.md에서만 관리하며, spec.md엔 별도 상태 필드가 없다) —
+   옛 방식처럼 체크리스트를 개발자가 매번 수동으로 훑을 필요가 없다. 일부 실패하면
+   유형(구현 문제 vs 설계 문제)에 따라
    `/spec-implement` 또는 `/spec-design`을 다시 실행한다.
 
 ## 새 작업을 시작하기 전에
@@ -102,12 +109,12 @@ design.md/task.md는 spec.md와 같은 폴더 안에 있으므로(구식 방식�
   작업 반영
 - spec.md/design.md(spec 폴더 안의 구현 설계)의 설계 링크가 실제로 존재하는 문서를
   가리키는지 확인
-- `.claude/specs/index.md`에서 해당 행을 "진행 중"→"History"로 이동
-- spec.md 상단 **상태**를 `done`으로 갱신
+- `.claude/specs/index.md`에서 해당 행을 "진행 중"→"History"로 이동 (상태는 index.md가
+  유일한 저장소다 — spec.md엔 별도 상태 필드가 없다)
 
 구현 중 설계와 다르게 만든 부분이 있으면 design 문서 본문도, 요건 자체가 바뀌었다면
 `prd.md`도 별도로(자동화 범위 밖) 함께 갱신해야 한다 — 이건 validator가 판단할 수 없는
-개발자/설계자의 몫이다. `validator`가 남긴 `test_result.md`로 AC별 검증 방법과 결과를
+개발자/설계자의 몫이다. `validator`가 남긴 `validation.md`로 AC별 검증 방법과 결과를
 확인할 수 있다.
 
 ## 그 밖의 코딩 컨벤션

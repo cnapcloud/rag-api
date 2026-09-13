@@ -1,5 +1,17 @@
 # Data Schema Reference
 
+## 엔티티 요약
+
+빠른 모순 확인용 — 필드 단위 상세가 필요하면 아래 해당 섹션을 읽는다.
+
+- **Qdrant** — `PointStruct` (청크 단위 payload, collection = `{kb_id}`)
+- **Postgres** — `knowledge_bases`, `kb_settings_overrides`, `connectors`, `documents`,
+  `simhash_bands`, `minhash_bands`, `parent_chunks`
+- **Redis** — 큐+캐시 겸용(US-53): `rag:upload:queue`, `rag:delete:queue`, `rag:upload:delay`,
+  `rag:delete:delay` (큐) + `rag:cache:entry:*`(검색 결과 캐시)
+
+---
+
 ## 1. Qdrant — PointStruct (chunk level)
 
 Collection name = `{kb_id}` (one per KB)
@@ -244,9 +256,13 @@ Extension:
 
 ---
 
-## 3. Redis — Queue only
+## 3. Redis — Queue + Search Cache
 
-Redis is used exclusively for the ingest and delete event queues.
+Redis is used for the ingest/delete event queues **and** the search response cache (US-53) —
+a deliberate exception to the "storage role separation" principle (see
+[architecture/README.md](../architecture/README.md)). The two use cases live in the same
+Redis DB index but under disjoint key prefixes (`rag:upload:*`/`rag:delete:*` vs `rag:cache:*`)
+so they never collide.
 
 ```
 rag:upload:queue   List        -- ingest event queue; payload: {doc_id, force} (lpush/rpop)
@@ -258,6 +274,27 @@ rag:delete:delay   Sorted Set  -- delete retry queue; member=payload JSON, score
 A doc blocked by an active `running`/`deleting` state is pushed to the matching delay queue
 instead of being processed immediately. Delay/dedup mechanics are covered in
 [duplicate-request-handling.md](duplicate-request-handling.md).
+
+### 3.1 Search cache keys (US-53)
+
+```
+rag:cache:entry:{bucket_hash}:{query_hash}   String(JSON), TTL=ttl_seconds
+  {
+    "query": "<original query text>",
+    "kb_ids": ["<sorted kb_id list>"],
+    "response": { ... SearchResponse.model_dump() ... },
+    "query_embedding": [float, ...] | null,   -- only populated when match_mode=semantic
+    "created_at": <epoch float>
+  }
+rag:cache:bucket:{bucket_hash}                Set<query_hash>        -- semantic scan
+rag:cache:kb:{kb_id}                          Set<"{bucket_hash}:{query_hash}">  -- F4/F5 invalidation
+rag:cache:order                               ZSet<"{bucket_hash}:{query_hash}", score=epoch>  -- FIFO eviction
+```
+
+`bucket_hash` identifies the (sorted `kb_ids`, effective search options) combination;
+`query_hash` identifies the exact query string within that bucket. See
+[US-53 design.md](../../../.claude/specs/US-53-search-cache/design.md) for the full derivation
+and matching logic (`src/rag_api/query/search_cache.py`, `src/rag_api/infra/search_cache.py`).
 
 ---
 

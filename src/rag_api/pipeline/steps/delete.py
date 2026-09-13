@@ -69,6 +69,9 @@ def delete_doc(doc_id: str, run_id: str = "direct", force: bool = False) -> None
     _delete_qdrant_chunks(kb_id, doc_id, status)
     _delete_db_record(doc_id, status, kb_id=kb_id, storage_key=storage_key, force=force)
 
+    from rag_api.query.search_cache import invalidate_kb_best_effort
+    invalidate_kb_best_effort(kb_id)
+
     is_hard = status != "indexed" or force
     if is_hard:
         logger.info("Hard delete done: doc_id=%s kb=%s status_was=%s force=%s", doc_id, kb_id, status, force)

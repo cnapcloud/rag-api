@@ -1,6 +1,6 @@
 # US-NN: <제목> — 검증 결과
 
-> 담당: `validator` · spec 워크플로우 4단계(최종) · 템플릿: `.claude/templates/test_result.md`
+> 담당: `validator` · spec 워크플로우 4단계(최종) · 템플릿: `.claude/templates/validation.md`
 
 **대상**: [spec.md](spec.md) / [design.md](design.md) / [task.md](task.md)
 
@@ -20,7 +20,7 @@
 
 ## 결론
 
-- [ ] 전체 AC 통과 — spec.md **상태**를 `done`으로 전환 가능
+- [ ] 전체 AC 통과 — index.md 상태를 `done`으로 전환 가능
 - [ ] 일부 실패 — 아래 실패 목록을 command가 사용자에게 전달
 
 <실패 목록 (있으면): AC ID + 유형(`[구현]`/`[설계]`) + 이유. 없으면 이 줄 생략>

@@ -128,6 +128,9 @@ async def delete_kb(kb_id: str):
     deleted_count = delete_kb_prefix(kb_id)
     delete_kb_meta(kb_id)
 
+    from rag_api.query.search_cache import invalidate_kb_best_effort
+    invalidate_kb_best_effort(kb_id)
+
     if had_schedule:
         from rag_api.infra.dagster_utils import reload_code_location
         reload_code_location()

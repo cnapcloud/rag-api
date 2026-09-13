@@ -1,11 +1,11 @@
-"""POST /api/search — Hybrid Search + Rerank."""
+"""POST /api/search — Hybrid Search + Rerank. DELETE /api/search/cache — 검색 캐시 수동 클리어(US-53 F5)."""
 
 from __future__ import annotations
 
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from rag_api.exceptions import IngestValidationError
@@ -74,6 +74,7 @@ class SearchMeta(BaseModel):
     rerank_provider: str
     rerank_fallback: bool
     latency_ms: int
+    cache_status: Literal["hit", "miss", "disabled"]
 
 
 class SearchResponse(BaseModel):
@@ -90,9 +91,12 @@ class SearchResponse(BaseModel):
 @rest_span
 async def search(req: SearchRequest):
     from rag_api.config.settings import get_settings
+    from rag_api.query import search_cache
     from rag_api.query.retriever import query as retriever_search
 
-    cfg = get_settings().retrieval
+    settings = get_settings()
+    cfg = settings.retrieval
+    cache_cfg = settings.search_cache
 
     if not req.kb_ids:
         raise IngestValidationError("kb_ids must contain at least one entry.")
@@ -112,6 +116,25 @@ async def search(req: SearchRequest):
 
     rerank_enabled = req.options.rerank.enabled and cfg.rerank.enabled
 
+    effective_options = {
+        "mode": _mode,
+        "top_k": _top_k,
+        "hybrid_alpha": _alpha,
+        "hybrid_merge_strategy": req.options.hybrid.merge_strategy,
+        "min_score": _min_score,
+        "rerank_enabled": rerank_enabled,
+        "rerank_top_n": _top_n,
+    }
+
+    query_embedding: list[float] | None = None
+    if cache_cfg.enabled:
+        cached, query_embedding = search_cache.lookup(
+            req.query, req.kb_ids, effective_options, cache_cfg,
+        )
+        if cached is not None:
+            cached["meta"]["cache_status"] = "hit"
+            return SearchResponse(**cached)
+
     final_results, total_candidates, rerank_provider, fallback_used = await retriever_search(
         query=req.query,
         kb_ids=req.kb_ids,
@@ -121,11 +144,12 @@ async def search(req: SearchRequest):
         min_score=_min_score,
         rerank_enabled=rerank_enabled,
         top_n=_top_n,
+        query_embedding=query_embedding,
     )
 
     latency_ms = int((time.monotonic() - start) * 1000)
 
-    return SearchResponse(
+    response = SearchResponse(
         query=req.query,
         results=[
             SearchResultItem(
@@ -157,5 +181,33 @@ async def search(req: SearchRequest):
             rerank_provider=rerank_provider,
             rerank_fallback=fallback_used,
             latency_ms=latency_ms,
+            cache_status="miss" if cache_cfg.enabled else "disabled",
         ),
     )
+
+    if cache_cfg.enabled:
+        search_cache.store(
+            req.query, req.kb_ids, effective_options, cache_cfg,
+            response.model_dump(), query_embedding,
+        )
+
+    return response
+
+
+@router.delete("/search/cache")
+@rest_span
+async def clear_search_cache(kb_id: str | None = Query(default=None)):
+    """검색 캐시를 강제로 비운다(F5) — `kb_id` 지정 시 해당 KB만, 생략 시 전체.
+
+    존재하지 않는 kb_id나 이미 비어 있는 캐시도 정상 200(F5-3)으로 처리한다. Redis 자체 장애는
+    삼키지 않고 그대로 전파해 기존 `redis_lib.RedisError → 503` 전역 핸들러가 응답한다
+    (design.md 에러 모델 — F5는 운영자가 명시적으로 호출하는 API라 실패를 숨기지 않는다).
+    """
+    from rag_api.query import search_cache
+
+    if kb_id is not None:
+        cleared = search_cache.invalidate_kb(kb_id)
+    else:
+        cleared = search_cache.invalidate_all()
+
+    return {"status": "cleared", "kb_id": kb_id, "cleared_count": cleared}
