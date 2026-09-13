@@ -361,7 +361,12 @@ class TestCacheGate:
         if hook_result is None:
             search_cache.set_cache_gate(None)
         else:
-            search_cache.set_cache_gate(lambda kb_ids, r=hook_result: r)
+            fixed_result = hook_result
+
+            def _gate(kb_ids: list[str]) -> bool:
+                return fixed_result
+
+            search_cache.set_cache_gate(_gate)
         cfg = _cfg(enabled=enabled, match_mode="exact")
         expected_usable = search_cache._cache_usable(["kb-a"], cfg)
 

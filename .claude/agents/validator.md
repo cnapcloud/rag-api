@@ -45,6 +45,15 @@ model: sonnet
    - 나머지는 `uv run pytest -q <경로>`(전체는 `make test`) 또는 spec.md의 수동 확인
      절차로 검증한다 — 같은 테스트 경로에 매핑된 AC는 한 번만 실행하고 결과를 나눠 반영한다.
    - 실패는 `[구현]` 유형
+3-1. **lint/typecheck 회귀 검증** (C1 "관련 테스트 전체 통과"에 매핑)
+   - `make lint`, `make typecheck`를 현재 브랜치에서 실행하고 실패 목록을 기록한다.
+   - main 대비 새로 생긴 실패인지 구분한다: 워킹 트리가 깨끗하지 않으면 `git stash -u`,
+     `git checkout main`으로 전환해 같은 두 커맨드를 실행해 베이스라인을 뜬 뒤,
+     `git checkout -`(+ 필요 시 `git stash pop`)로 복귀한다.
+   - 베이스라인(main)에도 있던 실패(같은 파일:줄, 같은 에러)는 이 spec과 무관한 기존
+     부채이므로 FAIL 처리하지 않는다 — validation.md 비고에 "기존 부채, main에도
+     존재, 본 spec 범위 아님"으로만 기록한다.
+   - 베이스라인에 없고 현재 브랜치에만 있는 새 실패만 `[구현]` FAIL로 기록한다(C1).
 4. `validation.md`에 AC별 결과와 architecture 재검증 결과를 채운다(이전 실행 결과는
    덮어쓴다).
 5. PASS인 AC만 spec.md에서 `[x]`로 갱신한다. FAIL은 미체크로 되돌린다(이미 `[x]`였어도

@@ -21,19 +21,24 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 3. `git status --porcelain`으로 워킹 트리 확인. 변경 있으면 먼저 커밋/스태시하라고
    안내하고 중단(자동 커밋 안 함).
 4. `git checkout main && git pull --ff-only`. fast-forward 실패 시 중단하고 알림
-   (임의로 merge/rebase 안 함).
+   (임의로 merge/rebase 안 함). 이 상태(merge 전 main)에서 `make lint`, `make
+   typecheck`를 실행해 실패 목록을 베이스라인으로 저장해 둔다(여기서는 실패해도
+   중단하지 않는다 — main의 기존 부채를 기록해두는 용도).
 5. `git merge --no-ff --no-commit <spec 브랜치>`로 드라이런(충돌·회귀를 PR 전에
    미리 확인하는 용도 — 나중에 반드시 abort). 충돌 시 `git merge --abort` 후 충돌
    파일 목록을 전달하고 중단(임의로 해소 안 함).
-6. 드라이런 상태에서 전체 테스트 스위트 실행(`Makefile` test 타겟).
-   - 실패 → `git merge --abort` → `git checkout <spec 브랜치>`로 원복(main에 로컬 변경
-     없이, 실패해도 항상 spec 브랜치로 돌아온다). `implementation.md` "진행 기록"에
-     `blocked` 블록 append(AC, 유형, 실패 요약). 유형: main 통합/설계 전제 문제면
-     `[설계]`, 단순 구현 버그면 `[구현]`. `[구현]`이면 task.md 완료 기준 커버리지 표로
-     실패 AC의 Task를 찾아 implementation.md Task 현황에서 `done`→`blocked`로 되돌림.
+6. 드라이런 상태에서 `make test`, `make lint`, `make typecheck`를 실행한다.
+   - `make test` 실패, 또는 `make lint`/`make typecheck` 실패 중 4번 베이스라인에
+     없던 새 실패(같은 파일:줄, 같은 에러가 베이스라인에 있으면 기존 부채로 간주해
+     제외)가 있으면 실패로 처리: `git merge --abort` → `git checkout <spec 브랜치>`로
+     원복(main에 로컬 변경 없이, 실패해도 항상 spec 브랜치로 돌아온다).
+     `implementation.md` "진행 기록"에 `blocked` 블록 append(AC — lint/typecheck
+     신규 실패는 C1, 유형, 실패 요약). 유형: main 통합/설계 전제 문제면 `[설계]`,
+     단순 구현 버그면 `[구현]`. `[구현]`이면 task.md 완료 기준 커버리지 표로 실패
+     AC의 Task를 찾아 implementation.md Task 현황에서 `done`→`blocked`로 되돌림.
      index.md Status를 `blocked`로 갱신. 유형에 맞게 `/spec-design`/`/spec-implement`
      재실행 안내.
-   - 통과 → 7번.
+   - 통과(또는 lint/typecheck 실패가 전부 베이스라인에 있던 기존 부채) → 7번.
 7. `git merge --abort` → `git checkout <spec 브랜치>`로 원복(main에 로컬 변경 없음).
 8. `git push -u origin <spec 브랜치>` → `gh pr create --base main --head <spec 브랜치>
    --title "<spec.md 제목>" --body "..."`(본문: spec.md 요약 + attribution footer).
