@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: github-runner
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:

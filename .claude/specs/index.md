@@ -40,7 +40,7 @@ Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값�
 
 | Spec | Title | Status |
 |------|-------|--------|
-| US-55 | 검색 캐시 lookup/store 데코레이터 통합 + 캐시 게이트 훅(set_cache_gate) 추가 | validated |
+| US-55 | 검색 캐시 lookup/store 데코레이터 통합 + 캐시 게이트 훅(set_cache_gate) 추가 | pr_requested |
 
 ## History
 
