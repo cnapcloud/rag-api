@@ -26,23 +26,36 @@ chunk_size = get_settings().chunking.chunk_size
 
 ## 테스트에서 실제 인프라 연결 금지 + 작성 가이드
 
-외부 인프라(Redis, Qdrant, MinIO/S3, Postgres)는 항상 Mock 사용 — `tests/conftest.py`의
-`mock_redis`/`mock_qdrant`/`mock_minio`/`mock_postgres` 픽스처를 쓴다. 테스트 안에서 직접
-`redis.Redis(...)` 같은 실제 클라이언트를 생성하지 않는다.
+외부 인프라(Redis, Qdrant, MinIO/S3, Postgres)는 항상 `tests/conftest.py`의
+`mock_redis`/`mock_qdrant`/`mock_minio`/`mock_postgres` 픽스처로 Mock한다 — 테스트 안에서
+직접 `redis.Redis(...)` 같은 실제 클라이언트를 생성하지 않는다.
 
-파일/함수 구성 (기존 테스트 코드에서 뽑은 컨벤션):
-- 파일 위치: `tests/unit/test_<module>.py`(순수 함수/컴포넌트), `tests/dagster/`
-  (Dagster op/job), `tests/integration/`(여러 레이어를 걸치는 흐름) — 대상 소스 파일과
-  1:1로 매칭되는 이름을 쓴다.
-- 함수명은 `test_<대상>_<기대 동작>` 형태로 서술적으로 짓는다 (예:
-  `test_missing_base_url_raises`, `test_chunk_single_short_document`). 무엇을
-  검증하는지 한 줄 docstring을 단다 — 테스트 코드의 docstring/주석은 한국어도 가능하다
-  (영어 필수는 `logger.*()`/`print()` 출력에만 적용, 아래 참고).
-- 한 대상 함수/메서드에 관련 케이스가 여러 개 쌓이면 `class Test<대상>:`로 묶는다
-  (`test_confluence_connector.py`의 `TestProcessPage` 등 참고).
-- 입력 조합만 다르고 로직이 같은 케이스는 `@pytest.mark.parametrize`로 정리한다.
-- 예외가 기대되는 경로는 `pytest.raises(<구체적 예외 타입>)`으로 검증한다 — 예외 타입은
-  `exception-handling` 스킬의 계층을 따른다.
+파일 위치는 대상 소스 파일과 1:1로 매칭: `tests/unit/test_<module>.py`(순수 함수/컴포넌트),
+`tests/dagster/`(Dagster op/job), `tests/integration/`(여러 레이어를 걸치는 흐름).
+
+나머지 컨벤션(함수명/docstring/AC 태그/클래스 묶음/parametrize/예외 검증)은 예시로 대신한다
+— 테스트 코드의 docstring/주석은 한국어도 가능하다(영어 필수는 `logger.*()`/`print()`
+출력에만 적용):
+
+```python
+class TestSearchCacheLookup:
+    # spec task(task.md) 기반으로 추가/변경된 테스트만 AC 태그를 붙인다 — 형식:
+    # AC: <AC-ID> (<spec 폴더명>/<Task-ID>)
+    # AC: F3-5 (US-53-search-cache/T3)
+    def test_semantic_hit_above_threshold(self):
+        """유사도가 threshold 이상이면 semantic 캐시 hit을 반환한다."""
+        ...
+
+    @pytest.mark.parametrize("match_mode", ["exact", "semantic"])
+    def test_exact_mode_skips_embedding(self, match_mode):
+        """exact 모드에서는 임베딩 계산이 전혀 호출되지 않는다."""
+        ...
+
+    def test_missing_base_url_raises(self):
+        """base_url 누락 시 ConfigError를 던진다(예외 타입은 exception-handling 스킬 참고)."""
+        with pytest.raises(ConfigError):
+            ...
+```
 
 ```bash
 uv run pytest -q                          # 전체 (= make test)
