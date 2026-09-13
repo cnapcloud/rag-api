@@ -16,9 +16,23 @@
 
 ## 진행 중
 
-`/spec-new`로 항목이 생성되면 여기 한 줄 추가된다(status: todo). validator가 완료 기준을
-전부 확인해 backlog **상태**를 `done`으로 바꾸는 순간, 이 표에서 지우고 아래 History로
-그 행을 옮긴다. 즉 이 표에는 항상 아직 안 끝난 spec만 남는다.
+`/spec-new`로 항목이 생성되면 여기 한 줄 추가된다(status: `todo`). validator가 완료
+기준을 전부 확인해 backlog **상태**를 `done`으로 바꾸는 순간, 이 표에서 지우고 아래
+History로 그 행을 옮긴다. 즉 이 표에는 항상 아직 안 끝난 spec만 남는다.
+
+Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값이 아니라 History로
+옮겨지는 것 자체로 표현한다):
+
+| Status | 완료된 단계 |
+|---|---|
+| `todo` | (없음 — 방금 생성됨) |
+| `specified` | spec.md |
+| `designed` | design.md/task.md |
+| `implemented` | 전체 task |
+| `blocked` | 설계/구현/검증 중 이슈로 정지 |
+
+정확한 갱신 시점·조건은 이 값을 쓰는 각 command(`spec-new`/`spec-design`/
+`spec-implement`/`spec-validate`)가 유일한 소스다 — 여기서 다시 설명하지 않는다.
 
 | Spec | Title | Status |
 |------|-------|--------|
@@ -30,7 +44,7 @@
 > 아래 US-01~52 이관분은 옛 `backlogs/spec.md`에 완료 날짜가 없어 "Completed"에
 > 실제 날짜를 채우지 못했다 — US 번호 내림차순(번호가 클수록 최근)을 실제 완료 순서의
 > 근사치로 대신 사용한다. US-53 이후 신규 항목부터는 validator가 `done` 전환 시점의
-> 실제 날짜를 기록한다.
+> 실제 날짜를 기록한다.해specified
 
 | Spec | Title | Completed |
 |------|-------|-----------|

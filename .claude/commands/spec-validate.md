@@ -24,8 +24,9 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
      `.claude/specs/index.md`의 해당 행 Status를 `blocked`로 갱신한다(이 세션이 직접).
      `/spec-design`을 다시 실행해 design.md/task.md를 고치라고 안내한다.
    - **일부 실패 — `[구현]` 유형만** — 실패 AC 목록과 이유를 사용자에게 전달한다.
-     index.md 상태는 `in-progress`로 유지(또는 `blocked`였다면 되돌림). `/spec-implement`를
-     다시 실행해 남은 AC를 마저 구현하라고 안내한다.
+     index.md Status는 `implemented`로 유지한다(2-1번 `blocked` 게이트를 이미 통과했으므로
+     이 시점에 `blocked`일 수 없다). `/spec-implement`를 다시 실행해 남은 AC를 마저
+     구현하라고 안내한다.
    실패한 경우 모두 6번(`done` 전환)으로 넘어가지 않는다.
 5. **전체 통과 시 `done` 전환** — `traceability` 스킬의 done 전환 체크리스트를 따른다:
    - `docs/internal/design/`의 관련 토픽 문서가 있으면 그 표/변경 이력에 이번 spec
