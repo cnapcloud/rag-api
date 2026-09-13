@@ -213,8 +213,11 @@ class TestSearchCacheIntegration:
         mock_store.assert_called_once()
 
     # AC: F1-2 (US-53-search-cache/T4)
+    # AC: F3-2 (US-55-search-cache-gate-hook/T2)
     def test_cache_disabled_skips_lookup_and_store(self, client):
-        """search_cache.enabled=False면 lookup/store를 아예 호출하지 않는다."""
+        """search_cache.enabled=False면 lookup/store는 호출되지만(US-55) Redis(infra) 접근은
+        전혀 발생하지 않는다 — 게이트 판단이 함수 내부로 이동했으므로 호출 자체가 아니라
+        infra 접근 여부로 검증한다."""
         mock_results = [_make_result("chunk-0")]
         mock_settings = self._mock_settings(cache_enabled=False)
 
@@ -224,8 +227,8 @@ class TestSearchCacheIntegration:
                 "rag_api.query.retriever.query",
                 new=AsyncMock(return_value=(mock_results, 1, "jina", False)),
             ),
-            patch("rag_api.query.search_cache.lookup") as mock_lookup,
-            patch("rag_api.query.search_cache.store") as mock_store,
+            patch("rag_api.query.search_cache.infra_cache.get_entry") as mock_get_entry,
+            patch("rag_api.query.search_cache.infra_cache.set_entry") as mock_set_entry,
         ):
             resp = client.post(
                 "/api/search",
@@ -235,5 +238,5 @@ class TestSearchCacheIntegration:
         assert resp.status_code == 200
         data = resp.json()
         assert data["meta"]["cache_status"] == "disabled"
-        mock_lookup.assert_not_called()
-        mock_store.assert_not_called()
+        mock_get_entry.assert_not_called()
+        mock_set_entry.assert_not_called()

@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from rag_api.infra import search_cache as infra_cache
@@ -23,6 +24,26 @@ if TYPE_CHECKING:
     from rag_api.config.settings import SearchCacheSettings
 
 logger = logging.getLogger(__name__)
+
+_cache_gate: Callable[[list[str]], bool] | None = None
+
+
+def set_cache_gate(fn: Callable[[list[str]], bool] | None) -> None:
+    """캐시 게이트 훅을 등록/해제한다. `fn(kb_ids) -> bool`이 False를 반환하면 그 요청은
+    `cache_cfg.enabled`와 무관하게 캐시 조회/저장을 모두 건너뛴다. `None`으로 호출하면
+    훅을 해제하고 기존(cache_cfg.enabled만 보는) 동작으로 되돌린다."""
+    global _cache_gate
+    _cache_gate = fn
+
+
+def _cache_usable(kb_ids: list[str], cfg: SearchCacheSettings) -> bool:
+    """lookup/store가 공유하는 단일 판단 지점 (F2-1). cfg.enabled가 False면 그 자체로
+    False. True인 경우에만 게이트 훅을 본다 — 훅이 없으면 그대로 True(F1-1)."""
+    if not cfg.enabled:
+        return False
+    if _cache_gate is None:
+        return True
+    return _cache_gate(kb_ids)
 
 
 def build_bucket_hash(kb_ids: list[str], effective_options: dict[str, Any]) -> str:
@@ -70,6 +91,8 @@ def lookup(
     Redis 오류/역직렬화 오류는 내부에서 흡수해 캐시 미스처럼 폴백한다(fail-open).
     """
     try:
+        if not _cache_usable(kb_ids, cfg):
+            return None, None
         bucket_hash = build_bucket_hash(kb_ids, effective_options)
         query_hash = build_query_hash(bucket_hash, query)
 
@@ -116,6 +139,8 @@ def store(
 ) -> None:
     """검색 응답을 캐시에 저장한다. Redis 오류는 흡수한다(저장 실패가 응답을 막지 않음)."""
     try:
+        if not _cache_usable(kb_ids, cfg):
+            return
         bucket_hash = build_bucket_hash(kb_ids, effective_options)
         query_hash = build_query_hash(bucket_hash, query)
 

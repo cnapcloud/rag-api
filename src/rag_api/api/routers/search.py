@@ -126,14 +126,12 @@ async def search(req: SearchRequest):
         "rerank_top_n": _top_n,
     }
 
-    query_embedding: list[float] | None = None
-    if cache_cfg.enabled:
-        cached, query_embedding = search_cache.lookup(
-            req.query, req.kb_ids, effective_options, cache_cfg,
-        )
-        if cached is not None:
-            cached["meta"]["cache_status"] = "hit"
-            return SearchResponse(**cached)
+    cached, query_embedding = search_cache.lookup(
+        req.query, req.kb_ids, effective_options, cache_cfg,
+    )
+    if cached is not None:
+        cached["meta"]["cache_status"] = "hit"
+        return SearchResponse(**cached)
 
     final_results, total_candidates, rerank_provider, fallback_used = await retriever_search(
         query=req.query,
@@ -185,11 +183,10 @@ async def search(req: SearchRequest):
         ),
     )
 
-    if cache_cfg.enabled:
-        search_cache.store(
-            req.query, req.kb_ids, effective_options, cache_cfg,
-            response.model_dump(), query_embedding,
-        )
+    search_cache.store(
+        req.query, req.kb_ids, effective_options, cache_cfg,
+        response.model_dump(), query_embedding,
+    )
 
     return response
 
