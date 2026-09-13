@@ -19,6 +19,13 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    섞여 들어갈 수 있다).
 4. **main 최신화** — `git checkout main && git pull --ff-only`. fast-forward가 안 되면
    멈추고 사용자에게 알린다(임의로 merge/rebase하지 않는다).
+4-1. **이미 merge됐는지 확인(재실행 가드)** — `git merge-base --is-ancestor <spec 브랜치>
+   main`으로 확인한다. 이미 main의 조상이면(즉 이전 실행에서 7번 merge 커밋까지는
+   성공했는데 9번 bookkeeping 커밋 전에 중단된 상태) 5~7번(merge 시도/테스트/merge
+   커밋)을 전부 건너뛰고 바로 8번(`done` 전환)으로 간다 — 이 경우 6번 테스트는 이미
+   그 merge 커밋 시점에 통과된 것으로 간주하지 않는다: 재실행 시에도 8번으로 가기 전에
+   6번의 테스트 커맨드를 한 번 더 돌려 현재 main 상태가 그린인지 재확인한다(9번
+   bookkeeping 커밋이 빠진 것 외에 다른 변경이 없었는지 보장할 방법이 없으므로).
 5. **merge 시도(커밋 보류)** — `git merge --no-ff --no-commit <spec 브랜치>`로 merge를
    준비만 하고 커밋하지 않는다.
    - 충돌 발생 → `git merge --abort`로 되돌리고 충돌 파일 목록을 사용자에게 전달한다.
