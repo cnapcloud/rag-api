@@ -110,13 +110,12 @@ retrieval:
   auto_merge:
     enabled: false                # chunking.strategy="hierarchical"와 별도 스위치
     merge_threshold: 0.5
-
-search_cache:
-  enabled: false
-  ttl_seconds: 3600
-  max_entries: 1000
-  match_mode: "exact"        # exact | semantic
-  semantic_threshold: 0.95
+  cache:
+    enabled: false
+    ttl_seconds: 3600
+    max_entries: 1000
+    match_mode: "exact"        # exact | semantic
+    semantic_threshold: 0.95
 
 knowledge_bases:
   - id: "kb-01"

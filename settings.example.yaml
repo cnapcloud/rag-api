@@ -87,13 +87,12 @@ retrieval:
   auto_merge:
     enabled: false                # chunking.strategy="hierarchical"일 때만 의미 있음
     merge_threshold: 0.5
-
-search_cache:
-  enabled: false            # Redis에 최종 검색 응답을 캐시 (인제스트/삭제 큐 겸용 확장)
-  ttl_seconds: 3600
-  max_entries: 1000         # 초과 시 FIFO 축출
-  match_mode: "exact"       # exact | semantic
-  semantic_threshold: 0.95  # match_mode="semantic"일 때 코사인 유사도 히트 기준
+  cache:
+    enabled: false            # Redis에 최종 검색 응답을 캐시 (인제스트/삭제 큐 겸용 확장)
+    ttl_seconds: 3600
+    max_entries: 1000         # 초과 시 FIFO 축출
+    match_mode: "exact"       # exact | semantic
+    semantic_threshold: 0.95  # match_mode="semantic"일 때 코사인 유사도 히트 기준
 
 knowledge_bases:
   - id: "kb-01"

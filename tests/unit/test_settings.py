@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from rag_api.config.settings import Settings
+from rag_api.config.settings import Settings, validate_override_key
+from rag_api.exceptions import IngestValidationError
 
 _YAML_BODY = """
 s3:
@@ -607,8 +608,8 @@ def test_openai_api_key_env_injects_into_provider_api_key(
 
 
 def test_search_cache_settings_defaults() -> None:
-    """F1-1: search_cache 기본값은 캐시/시맨틱 매칭 모두 비활성 상태여야 한다."""
-    cache = Settings().search_cache
+    """F1-1: retrieval.cache 기본값은 캐시/시맨틱 매칭 모두 비활성 상태여야 한다."""
+    cache = Settings().retrieval.cache
 
     assert cache.enabled is False
     assert cache.ttl_seconds == 3600
@@ -618,23 +619,40 @@ def test_search_cache_settings_defaults() -> None:
 
 
 def test_search_cache_settings_override_from_yaml(tmp_path: Path) -> None:
-    """F1-1: settings.yaml에서 search_cache 값을 오버라이드할 수 있다."""
+    """F1-1: settings.yaml에서 retrieval.cache 값을 오버라이드할 수 있다."""
     path = tmp_path / "settings.yaml"
     path.write_text(
         """
-search_cache:
-  enabled: true
-  ttl_seconds: 60
-  max_entries: 5
-  match_mode: "semantic"
-  semantic_threshold: 0.8
+retrieval:
+  cache:
+    enabled: true
+    ttl_seconds: 60
+    max_entries: 5
+    match_mode: "semantic"
+    semantic_threshold: 0.8
 """
     )
 
     settings = Settings.from_yaml(path)
 
-    assert settings.search_cache.enabled is True
-    assert settings.search_cache.ttl_seconds == 60
-    assert settings.search_cache.max_entries == 5
-    assert settings.search_cache.match_mode == "semantic"
-    assert settings.search_cache.semantic_threshold == 0.8
+    assert settings.retrieval.cache.enabled is True
+    assert settings.retrieval.cache.ttl_seconds == 60
+    assert settings.retrieval.cache.max_entries == 5
+    assert settings.retrieval.cache.match_mode == "semantic"
+    assert settings.retrieval.cache.semantic_threshold == 0.8
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "retrieval.cache.enabled",
+        "retrieval.cache.ttl_seconds",
+        "retrieval.cache.max_entries",
+        "retrieval.cache.match_mode",
+        "retrieval.cache.semantic_threshold",
+    ],
+)
+def test_search_cache_settings_not_overridable(key: str) -> None:
+    """F1-2: retrieval.cache의 5개 항목 모두 KB별 오버라이드가 거부된다."""
+    with pytest.raises(IngestValidationError, match="Settings key not overridable"):
+        validate_override_key(Settings, key)

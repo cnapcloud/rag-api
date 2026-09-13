@@ -89,10 +89,10 @@ class TestClearEndToEnd:
         mock_settings.retrieval.rerank.enabled = False
         mock_settings.retrieval.rerank.top_n = 3
         mock_settings.retrieval.similarity.min_score = 0.0
-        mock_settings.search_cache.enabled = True
-        mock_settings.search_cache.match_mode = "exact"
-        mock_settings.search_cache.ttl_seconds = 3600
-        mock_settings.search_cache.max_entries = 1000
+        mock_settings.retrieval.cache.enabled = True
+        mock_settings.retrieval.cache.match_mode = "exact"
+        mock_settings.retrieval.cache.ttl_seconds = 3600
+        mock_settings.retrieval.cache.max_entries = 1000
 
         with (
             patch.object(redis_infra, "get_redis_client", return_value=mock_redis),
