@@ -20,20 +20,11 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 4. **main 최신화** — `git checkout main && git pull --ff-only`. fast-forward가 안 되면
    멈추고 사용자에게 알린다(임의로 merge/rebase하지 않는다).
 4-1. **이미 merge됐는지 확인(재실행 가드)** — `git merge-base --is-ancestor <spec 브랜치>
-   main`으로 확인한다. 이미 main의 조상이 아니면(정상 케이스) 5번으로 진행한다.
-
-   이미 main의 조상이면 — 이전 실행에서 7번 merge 커밋까지는 성공했는데 9번
-   bookkeeping 커밋 전에 중단된 상태다. 5~7번(merge 시도/merge 커밋)은 건너뛰지만
-   테스트는 **반드시 다시 돌린다**(9번이 빠진 것 외에 그사이 main이 그대로인지 보장할
-   방법이 없으므로) — 이때는 6번과 달리 `git merge --abort`로 되돌릴 대상이 없다(merge가
-   이미 커밋됐다):
-   - 테스트 통과 → 8번(`done` 전환)으로 간다.
-   - 테스트 실패 → **merge를 되돌리지 않는다.** 이미 main에 커밋된 상태이므로 임의로
-     revert하지 않고 여기서 멈춘다. 실패한 테스트 출력과 "merge 커밋은 이미 main에
-     존재하지만 bookkeeping 커밋 전에 중단됐고, 지금 다시 돌려보니 실패한다"는 사실을
-     그대로 사용자에게 전달한다 — 이 실패가 이번 spec 때문인지, 그사이 main에 다른
-     변경이 들어와서인지는 이 커맨드가 판단하지 않는다. index.md Status는 `validated`로
-     둔 채 사용자 지시를 기다린다(고칠 커밋을 추가할지, revert할지는 사용자가 정한다).
+   main`으로 확인한다. 이미 main의 조상이면 — 이전 실행에서 7번 merge 커밋까지는
+   성공했는데 9번 bookkeeping 커밋 전에 중단된 상태다. 되돌릴 merge가 아니므로 임의로
+   다시 진행하지 않는다: 그 사실을 사용자에게 알리고 여기서 멈춘다. index.md Status는
+   `validated`로 그대로 둔다 — bookkeeping(8~9번)을 이어서 할지는 사용자 지시를 받은
+   뒤 처리한다. 조상이 아니면(정상 케이스) 5번으로 진행한다.
 5. **merge 시도(커밋 보류)** — `git merge --no-ff --no-commit <spec 브랜치>`로 merge를
    준비만 하고 커밋하지 않는다.
    - 충돌 발생 → `git merge --abort`로 되돌리고 충돌 파일 목록을 사용자에게 전달한다.
