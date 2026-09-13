@@ -172,6 +172,7 @@ def meta_op(context: OpExecutionContext, valid_config: dict, upsert_result):
         doc_type=doc_type,
         embedding_model=cfg.model,
         chunk_strategy=resolve_settings(valid_config["kb_id"]).chunking.strategy,
+        kb_id=valid_config["kb_id"],
     )
     context.log.info(
         "ingest_job completed: doc_id=%s chunks=%d",

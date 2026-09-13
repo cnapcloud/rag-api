@@ -86,6 +86,7 @@ def run_ingest_pipeline(
             doc_type=doc_type,
             embedding_model=cfg.model,
             chunk_strategy=resolve_settings(kb_id).chunking.strategy,
+            kb_id=kb_id,
         )
         logger.info("Ingest done: doc_id=%s kb=%s chunks=%d", doc_id, kb_id, upsert_result.chunk_count)
         return upsert_result.chunk_count

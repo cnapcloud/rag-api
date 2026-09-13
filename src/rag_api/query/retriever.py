@@ -198,6 +198,7 @@ def _query_kb(
     alpha: float,
     mode: str,
     min_score: float,
+    query_embedding: list[float] | None = None,
 ) -> list[QueryResult]:
     from rag_api.config.settings import resolve_settings
 
@@ -214,7 +215,13 @@ def _query_kb(
             alpha=alpha,
         )
 
-    nodes = retriever.retrieve(query)
+    if query_embedding is not None:
+        from llama_index.core.schema import QueryBundle
+
+        retrieve_input = QueryBundle(query_str=query, embedding=query_embedding)
+    else:
+        retrieve_input = query
+    nodes = retriever.retrieve(retrieve_input)
     results = [
         _node_to_result(kb_id, node)
         for node in nodes
@@ -240,6 +247,7 @@ async def query(
     min_score: float = 0.0,
     rerank_enabled: bool | None = None,
     top_n: int | None = None,
+    query_embedding: list[float] | None = None,
 ) -> tuple[list[QueryResult], int, str, bool]:
     """Search across multiple KBs in parallel, merge, and optionally rerank.
 
@@ -247,6 +255,9 @@ async def query(
     rerank_enabled: None uses settings value.
     mode='hybrid': dense+sparse search, RRF merge (alpha applies)
     mode='similarity': dense-only search, cosine score (alpha ignored, min_score applies)
+    query_embedding: pre-computed query embedding to reuse (e.g. from search cache semantic
+    matching, US-53) instead of letting the retriever recompute it. None preserves the
+    pre-existing behavior (string query passed straight to retriever.retrieve()).
     """
     from rag_api.query.reranker import rerank_async
 
@@ -260,7 +271,9 @@ async def query(
 
     loop = asyncio.get_running_loop()
     tasks = [
-        loop.run_in_executor(None, _query_kb, kb_id, query, _top_k, _alpha, mode, min_score)
+        loop.run_in_executor(
+            None, _query_kb, kb_id, query, _top_k, _alpha, mode, min_score, query_embedding,
+        )
         for kb_id in kb_ids
     ]
     raw_results = await asyncio.gather(*tasks, return_exceptions=True)

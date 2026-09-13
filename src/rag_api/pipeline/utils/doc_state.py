@@ -83,8 +83,14 @@ def set_indexed(
     doc_type: str = "",
     embedding_model: str = "",
     chunk_strategy: str = "",
+    kb_id: str = "",
 ) -> None:
-    """Transition to indexed after successful ingest. Clears last_error field."""
+    """Transition to indexed after successful ingest. Clears last_error field.
+
+    kb_id: when given, invalidates any search cache entries covering this KB (best-effort,
+    US-53 F4-1) — a document reaching "indexed" means its content is now visible to search,
+    so previously cached responses for this KB may be stale.
+    """
     fields: dict = {
         "status": "indexed",
         "chunk_count": upsert_result.chunk_count,
@@ -100,6 +106,10 @@ def set_indexed(
         fields["chunk_strategy"] = chunk_strategy
     _pg.update_doc_fields(doc_id, fields)
     logger.info("Status set to indexed: doc_id=%s chunks=%d", doc_id, upsert_result.chunk_count)
+
+    if kb_id:
+        from rag_api.query.search_cache import invalidate_kb_best_effort
+        invalidate_kb_best_effort(kb_id)
 
 
 def restore_indexed(doc_id: str) -> None:

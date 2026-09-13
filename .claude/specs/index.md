@@ -22,7 +22,6 @@
 
 | Spec | Title | Status |
 |------|-------|--------|
-| [US-53](US-53-search-cache/spec.md) | 검색 응답 캐싱 — Redis 큐+캐시 겸용 확장 | in-progress |
 
 ## History
 
@@ -35,6 +34,7 @@
 
 | Spec | Title | Completed |
 |------|-------|-----------|
+| [US-53](US-53-search-cache/spec.md) | 검색 응답 캐싱 — Redis 큐+캐시 겸용 확장 | 2026-09-13 |
 | [US-52](US-52-batch-upload-failure-status-and-error-surfacing/spec.md) | 배치 문서 업로드 실패 시 HTTP 상태 코드 정합성 + 실패 사유 노출 | (이관, 날짜 미상) |
 | [US-51](US-51-pipeline-hooks-before-doc-create/spec.md) | 파이프라인 훅 — 신규 문서 생성 직전 등록 기반 콜백(BeforeDocCreate/HookAbort/emit) | (이관, 날짜 미상) |
 | [US-50](US-50-provider-openai-compat-generalization/spec.md) | 임베딩 provider 일반화 — 프로토콜 커넥션 + 미지 벤더 OpenAI 호환 폴백 + Jina 네이티브 | (이관, 날짜 미상) |

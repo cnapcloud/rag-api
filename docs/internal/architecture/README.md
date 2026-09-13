@@ -49,7 +49,7 @@
 
 - **문서 단위 격리**: 문서 1개 = Dagster Run 1개. 문서별 독립 실패/재시도
 - **다중 문서 병렬**: Sensor가 이벤트 N개 → `RunRequest` N개 반환 → Dagster가 `max_concurrent_runs` 내에서 병렬 실행
-- **저장소 역할 분리**: Qdrant(벡터 청크), Postgres(KB/문서 메타데이터), Redis(인제스트·삭제 큐 전용)
+- **저장소 역할 분리**: Qdrant(벡터 청크), Postgres(KB/문서 메타데이터), Redis(인제스트·삭제 큐 + 검색 결과 캐시 겸용, US-53)
 - **이중 큐 소비 모드**: Dagster 환경은 `event_queue_sensor`, Dagster 없는 환경은 `QueueWorker`(FastAPI 내장 asyncio 워커)가 동일한 Redis 큐를 소비
 - **순수 함수 Op**: 파이프라인 Op은 Dagster context 없이 동작하는 순수 함수. `runner.py`로 Dagster 없이도 직접 실행 가능
 
@@ -68,5 +68,5 @@ design 문서 전체 목록(생성일순 + 설명)은 [design/README.md](../desi
 
 | 문서 | 내용 |
 |------|------|
-| [design/data-schema.md](../design/data-schema.md) | Qdrant payload, Postgres 테이블, Redis 큐 키 구조 |
+| [design/data-schema.md](../design/data-schema.md) | Qdrant payload, Postgres 테이블, Redis 큐/캐시 키 구조 |
 | [design/doc-state-flow.md](../design/doc-state-flow.md) | 문서 상태 전이 및 API별 허용 조건 |
