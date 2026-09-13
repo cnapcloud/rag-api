@@ -20,11 +20,14 @@ description: spec-design/spec-implement/spec-validate 공통 — $ARGUMENTS로 s
 
 ## 2. 브랜치 확인
 
-확정된 spec의 spec.md 상단 **상태**가 `done`이 아니면, 현재 git 브랜치 이름에
-`US-NN-`이 포함되는지 확인한다(`/spec-new`가 `<type>/US-NN-<slug>`로 만든 전용
-브랜치). 포함돼 있지 않으면 여기서 멈추고 해당 브랜치로 전환하라고 안내한다 — 다른
-spec의 브랜치나 `main`에서 이어서 진행하면 이 spec과 무관한 브랜치에서 작업(파일 작성,
-코드 작성, 검증/AC 체크박스 갱신 등 호출한 커맨드가 하는 일)이 이뤄진다.
+`.claude/specs/index.md`를 확인한다 — 확정된 US-NN이 "History" 표에 있으면(완료됨,
+`done`) 브랜치 확인 없이 넘어간다. "진행 중" 표에 있으면(`done`이 아님) 현재 git
+브랜치 이름에 `US-NN-`이 포함되는지 확인한다(`/spec-new`가 `<type>/US-NN-<slug>`로
+만든 전용 브랜치). 포함돼 있지 않으면 여기서 멈추고 해당 브랜치로 전환하라고 안내한다
+— 다른 spec의 브랜치나 `main`에서 이어서 진행하면 이 spec과 무관한 브랜치에서 작업
+(파일 작성, 코드 작성, 검증/AC 체크박스 갱신 등 호출한 커맨드가 하는 일)이 이뤄진다.
+spec.md 상단 **상태**는 index.md와 항상 함께 갱신되는 값이지만, 이 판단은 index.md
+하나만 보고 내린다 — 매번 두 파일을 다 열 필요가 없다.
 
 ## 반환
 

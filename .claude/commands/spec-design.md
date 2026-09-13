@@ -14,11 +14,12 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 3. `design.md`나 `task.md`가 이미 있으면(재실행 케이스) 내용을 사용자에게 보여주고
    처음부터 다시 만들지, 이어서 손볼지 확인한다. 둘 다 없으면 그대로 4번으로 진행한다 —
    템플릿은 designer가 직접 읽어 새로 작성한다.
-3-1. **재작업 사유 추출** (spec.md 상단 **상태**가 `blocked`일 때만) — `test_result.md`에
-   `[설계]` 유형 FAIL 항목이 있으면 그 AC ID + 이유를 추출한다. 없으면(구현 단계에서
-   막힌 경우) `implementation.md` "진행 기록"의 가장 최근 `blocked` 블록(AC + 유형 +
-   이유)을 추출한다 — 어느 파일을 볼지는 상태만 보면 기계적으로 판단 가능하므로 이
-   세션이 직접 한다. 4번에서 designer에게 함께 전달한다.
+3-1. **재작업 사유 추출** (`.claude/specs/index.md`의 "진행 중" 표에서 이 spec의
+   Status가 `blocked`일 때만) — `test_result.md`에 `[설계]` 유형 FAIL 항목이 있으면 그
+   AC ID + 이유를 추출한다. 없으면(구현 단계에서 막힌 경우) `implementation.md` "진행
+   기록"의 가장 최근 `blocked` 블록(AC + 유형 + 이유)을 추출한다 — 어느 파일을 볼지는
+   상태만 보면 기계적으로 판단 가능하므로 이 세션이 직접 한다. 4번에서 designer에게
+   함께 전달한다.
 4. `Agent` 툴로 `designer` 서브에이전트를 호출한다. 전달할 것:
    - spec 폴더 경로 (`.claude/specs/US-NN-<slug>/`)
    - spec.md 경로 (승인 완료 상태임을 이미 확인했다고 함께 전달)
