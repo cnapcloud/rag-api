@@ -31,9 +31,13 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
      사용자가 직접 해소하게 하고 여기서 중단한다(임의로 충돌을 해소하지 않는다).
 6. **전체 테스트 스위트 실행** — 프로젝트 전체 테스트 커맨드로 확인한다(`Makefile`의
    test 타겟 참고).
-   - 실패 → `git merge --abort`로 merge를 취소한다. 실패한 테스트 출력을 사용자에게
-     전달하고, spec 브랜치에서 먼저 고친 뒤(필요하면 `/spec-implement` 재실행) 다시
-     `/spec-merge`를 실행하라고 안내한다. index.md Status는 `validated`로 그대로 둔다.
+   - 실패 → `git merge --abort`로 merge를 취소한다. `implementation.md`의 "진행 기록"에
+     `blocked` 블록을 append한다(AC, 유형 `[설계]`/`[구현]`, 실패 테스트 요약과 이유 —
+     implementer/validator가 남기는 형식과 동일). 유형 판단은 이 세션이 직접 한다:
+     merge 자체가 원인(다른 spec과의 통합 충돌)이거나 design.md의 전제가 main 최신
+     상태와 어긋난 경우 `[설계]`, 그 외 단순 구현 누락/버그는 `[구현]`. `.claude/specs/index.md`
+     Status를 `validated`에서 `blocked`로 갱신한다. 유형이 `[설계]`면 `/spec-design`,
+     `[구현]`이면 `/spec-implement`를 다시 실행해 해소하라고 안내한다.
    - 통과 → 7번으로 진행.
 7. **merge 커밋 확정** — `git commit`으로 5번에서 준비해둔 merge를 확정한다(메시지는
    기존 이력의 `merge: <spec 슬러그> into main (<한 줄 요약>)` 형식을 따른다). 이 커밋이

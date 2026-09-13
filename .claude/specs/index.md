@@ -31,7 +31,7 @@ Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값�
 | `designed` | design.md/task.md |
 | `implemented` | 전체 task |
 | `validated` | AC 전수 검증 통과 — `/spec-merge`로 main merge 대기 |
-| `blocked` | 설계/구현/검증 중 이슈로 정지 |
+| `blocked` | 설계/구현/검증/merge 중 이슈로 정지 |
 
 정확한 갱신 시점·조건은 이 값을 쓰는 각 command(`spec-new`/`spec-design`/
 `spec-implement`/`spec-validate`/`spec-merge`)가 유일한 소스다 — 여기서 다시
