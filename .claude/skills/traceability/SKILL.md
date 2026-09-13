@@ -1,6 +1,6 @@
 ---
 name: traceability
-description: prd/design 문서와 spec.md 간 링크 포맷, spec 폴더 내 파일 간 추적성 규칙. spec.md의 설계 링크를 쓸 때, 또는 spec 상태를 done으로 전환할 때 사용.
+description: prd/design 문서와 spec.md 간 링크 포맷, spec 폴더 내 파일 간 추적성 규칙. spec.md의 설계 링크를 쓸 때, 또는 spec 상태를 validated/done으로 전환할 때 사용.
 ---
 
 # Traceability — PRD ↔ 설계 ↔ spec 폴더
@@ -28,13 +28,19 @@ prd.md (§N, 고정 앵커) ← docs/internal/design/*.md ← specs/US-NN-<slug>
 - **design 표의 US 컬럼**: 하나의 design 문서를 여러 spec이 나눠 구현하면, 문서 안 하위요건
   표에 US 컬럼을 추가해 어떤 spec(US-NN)이 구현했는지 표시한다.
 
-## `done` 전환 시 확인
+## `validated` 전환 시 확인 (`/spec-validate`, AC 전수 통과 시)
 
 - [ ] design 표(US 컬럼) 또는 변경 이력에 이번 작업 반영
-- [ ] `.claude/specs/index.md`의 해당 행 status를 `done`으로 갱신 (spec.md에는 별도
-      상태 필드가 없다 — index.md가 유일한 상태 저장소)
 - [ ] spec.md/design.md(spec 폴더 안의 구현 설계)의 설계 링크가 실제로 존재하는 문서를
       가리키는지 확인
+- [ ] `.claude/specs/index.md`의 해당 행 status를 `validated`로 갱신 (아직 History로
+      옮기지 않는다 — main merge 전이므로 `done`은 아니다)
+
+## `done` 전환 시 확인 (`/spec-merge`, main merge + 전체 테스트 스위트 + 그 커밋까지
+성공한 뒤)
+
+- [ ] `.claude/specs/index.md`의 해당 행을 "진행 중" 표에서 지우고 "History" 표로 옮긴다
+      (spec.md에는 별도 상태 필드가 없다 — index.md가 유일한 상태 저장소)
 
 기존 `backlogs/`+`plans/`(US-01~52)는 `specs/US-NN-*/`로 전량 이관 완료됐다 — 이제 이
 스킬이 모든 spec에 적용된다(과거처럼 신규 항목에만 적용되는 예외 없음). US-01~52는

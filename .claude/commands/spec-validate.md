@@ -1,5 +1,5 @@
 ---
-description: spec.md 완료 기준(AC)을 전수 검증 — validator 서브에이전트 호출, 통과 시 done 전환
+description: spec.md 완료 기준(AC)을 전수 검증 — validator 서브에이전트 호출, 통과 시 validated 전환(main merge는 /spec-merge)
 argument-hint: [US-NN 또는 spec 폴더 경로]
 ---
 
@@ -27,12 +27,15 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
      index.md Status는 `implemented`로 유지한다(2-1번 `blocked` 게이트를 이미 통과했으므로
      이 시점에 `blocked`일 수 없다). `/spec-implement`를 다시 실행해 남은 AC를 마저
      구현하라고 안내한다.
-   실패한 경우 모두 6번(`done` 전환)으로 넘어가지 않는다.
-5. **전체 통과 시 `done` 전환** — `traceability` 스킬의 done 전환 체크리스트를 따른다:
+   실패한 경우 모두 5번(`validated` 전환)으로 넘어가지 않는다.
+5. **전체 통과 시 `validated` 전환** — `traceability` 스킬의 문서 정합성 체크리스트를 따른다:
    - `docs/internal/design/`의 관련 토픽 문서가 있으면 그 표/변경 이력에 이번 spec
      반영 여부 확인(반영 필요하면 이 세션이 직접 갱신) — 이 spec 폴더 안의 `design.md`
      (구현 설계)와는 별개다.
-   - `.claude/specs/index.md`의 "진행 중" 표에서 해당 행을 지우고 "History" 표 맨 위에
-     `| US-NN | <제목> | <오늘 날짜> |`로 옮긴다.
    - spec.md/design.md의 설계 링크가 실제로 존재하는 문서를 가리키는지 확인한다.
-6. validator가 작성한 `validation.md` 내용을 사용자에게 보여준다.
+   - `.claude/specs/index.md`의 "진행 중" 표에서 해당 행 Status를 `validated`로 갱신한다
+     (이 세션이 직접 — validator는 이 파일을 갱신하지 않는다). 아직 History로 옮기지
+     않는다 — main merge 성공 후 그 확인까지 끝나야 `done`이며, 그건 `/spec-merge`의
+     몫이다.
+6. validator가 작성한 `validation.md` 내용을 사용자에게 보여주고, `/spec-merge`로
+   main에 merge할 수 있다고 안내한다.

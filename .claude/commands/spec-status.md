@@ -34,9 +34,12 @@ argument-hint: [US-NN 또는 spec 폴더 경로 (생략 시 진행 중 전체)]
    - validation.md 있고 "일부 실패" → **검증 실패** — 실패 AC 목록 + 유형 표시. 다음
      액션: 유형이 `[설계]`면 `/spec-design`, `[구현]`이면 `/spec-implement`
    - index.md "History" 표에 있음 → **완료**
-   - validation.md "전체 통과"인데 index.md가 아직 "진행 중" 표에 남아있음 →
-     **검증 통과 — done 전환 누락** (정상 흐름이면 `/spec-validate`가 전체 통과 시 즉시
-     History로 옮기므로 드문 이상 케이스 — 그대로 표시하고 원인을 추측하지 않는다)
+   - validation.md "전체 통과"이고 index.md Status가 `validated` → **검증 통과 — merge
+     대기** — 다음 액션: `/spec-merge`
+   - validation.md "전체 통과"인데 index.md Status가 `validated`가 아니고 아직 "진행 중"
+     표에 남아있음 → **검증 통과 — validated 전환 누락** (정상 흐름이면 `/spec-validate`가
+     전체 통과 시 즉시 Status를 `validated`로 갱신하므로 드문 이상 케이스 — 그대로
+     표시하고 원인을 추측하지 않는다)
 4. **출력**
    - 대상이 하나면: 판정된 단계, 다음 액션, 판단 근거(어떤 파일의 어떤 값을 봤는지)를
      보여준다.
