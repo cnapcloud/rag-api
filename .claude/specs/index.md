@@ -8,7 +8,7 @@
 
 ## 마지막 채번 번호
 
-**US-53**
+**US-54**
 
 `/spec-new`가 새 번호를 줄 때 이 값 + 1을 쓰고, 쓰자마자 이 줄도 그 번호로 갱신한다.
 "진행 중" 표는 완료되면 History로 옮겨져 비어 있을 수 있으므로, 다음 번호는 표를
@@ -44,10 +44,11 @@ Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값�
 > 아래 US-01~52 이관분은 옛 `backlogs/spec.md`에 완료 날짜가 없어 "Completed"에
 > 실제 날짜를 채우지 못했다 — US 번호 내림차순(번호가 클수록 최근)을 실제 완료 순서의
 > 근사치로 대신 사용한다. US-53 이후 신규 항목부터는 validator가 `done` 전환 시점의
-> 실제 날짜를 기록한다.해specified
+> 실제 날짜를 기록한다.
 
 | Spec | Title | Completed |
 |------|-------|-----------|
+| [US-54](US-54-search-cache-retrieval-move/spec.md) | search_cache 설정을 retrieval.cache로 이동 + 개명 | 2026-09-13 |
 | [US-53](US-53-search-cache/spec.md) | 검색 응답 캐싱 — Redis 큐+캐시 겸용 확장 | 2026-09-13 |
 | [US-52](US-52-batch-upload-failure-status-and-error-surfacing/spec.md) | 배치 문서 업로드 실패 시 HTTP 상태 코드 정합성 + 실패 사유 노출 | (이관, 날짜 미상) |
 | [US-51](US-51-pipeline-hooks-before-doc-create/spec.md) | 파이프라인 훅 — 신규 문서 생성 직전 등록 기반 콜백(BeforeDocCreate/HookAbort/emit) | (이관, 날짜 미상) |

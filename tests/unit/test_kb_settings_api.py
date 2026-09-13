@@ -130,6 +130,11 @@ class TestGetSettingsSchema:
             "retrieval.rerank.top_n",
             "retrieval.rerank.timeout_sec",
             "retrieval.rerank.fallback_on_error",
+            "retrieval.cache.enabled",
+            "retrieval.cache.ttl_seconds",
+            "retrieval.cache.max_entries",
+            "retrieval.cache.match_mode",
+            "retrieval.cache.semantic_threshold",
         ):
             assert schema[key]["overridable"] is False, key
         assert schema["retrieval.auto_merge.enabled"]["overridable"] is True

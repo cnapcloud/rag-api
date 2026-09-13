@@ -51,7 +51,7 @@ def test_search_returns_results(client):
     mock_settings.retrieval.mode = "hybrid"
     mock_settings.retrieval.rerank.enabled = True
     mock_settings.retrieval.similarity.min_score = 0.0
-    mock_settings.search_cache.enabled = False
+    mock_settings.retrieval.cache.enabled = False
 
     with (
         patch("rag_api.query.retriever.query", new=AsyncMock(return_value=(mock_results[:2], 3, "jina", False))),
@@ -95,7 +95,7 @@ def test_search_similarity_mode_with_min_score(client):
     mock_settings.retrieval.mode = "similarity"
     mock_settings.retrieval.rerank.enabled = False
     mock_settings.retrieval.similarity.min_score = 0.0
-    mock_settings.search_cache.enabled = False
+    mock_settings.retrieval.cache.enabled = False
 
     with (
         patch("rag_api.query.retriever.query", new=AsyncMock(return_value=(mock_results, 2, "none", False))),
@@ -147,8 +147,8 @@ class TestSearchCacheIntegration:
         mock_settings.retrieval.mode = "hybrid"
         mock_settings.retrieval.rerank.enabled = True
         mock_settings.retrieval.similarity.min_score = 0.0
-        mock_settings.search_cache.enabled = cache_enabled
-        mock_settings.search_cache.match_mode = match_mode
+        mock_settings.retrieval.cache.enabled = cache_enabled
+        mock_settings.retrieval.cache.match_mode = match_mode
         return mock_settings
 
     # AC: F3-3, F3-4 (US-53-search-cache/T4)

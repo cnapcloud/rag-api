@@ -6,12 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rag_api.config.settings import SearchCacheSettings
+from rag_api.config.settings import CacheSettings
 from rag_api.query import search_cache
 
 
-def _cfg(**overrides) -> SearchCacheSettings:
-    return SearchCacheSettings(**overrides)
+def _cfg(**overrides) -> CacheSettings:
+    return CacheSettings(**overrides)
 
 
 class TestBucketHash:

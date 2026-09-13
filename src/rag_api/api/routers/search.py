@@ -96,7 +96,7 @@ async def search(req: SearchRequest):
 
     settings = get_settings()
     cfg = settings.retrieval
-    cache_cfg = settings.search_cache
+    cache_cfg = settings.retrieval.cache
 
     if not req.kb_ids:
         raise IngestValidationError("kb_ids must contain at least one entry.")
