@@ -32,7 +32,7 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 3-1. **재작업 사유 추출 + 유형 게이트** — `validation.md`가 있고 `[설계]` 유형 FAIL
    항목이 있으면 그 AC ID + 이유를 추출하고 4번으로 진행한다(이 경로는 validator가
    이미 `[설계]` 유형임을 확정한 뒤에만 Status를 `blocked`로 세팅하므로 유형 확인이
-   필요 없다). 그렇지 않으면(구현 단계에서 막힌 경우) `implementation.md` "진행 기록"의
+   필요 없다). 그렇지 않으면(구현/merge 단계에서 막힌 경우) `implementation.md` "진행 기록"의
    가장 최근 `blocked` 블록에서 AC + 유형 + 이유를 추출한다:
    - 유형이 `[구현]`이면 — 설계 문제가 아니므로 여기서 멈춘다. designer를 호출하지
      않는다. 추출한 이유를 사용자에게 전달하고 `/spec-implement`로 먼저 해소하라고
