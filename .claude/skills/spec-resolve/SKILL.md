@@ -1,6 +1,6 @@
 ---
 name: spec-resolve
-description: spec-design/spec-implement/spec-validate 공통 — $ARGUMENTS로 spec 폴더를 확정하고 현재 git 브랜치가 그 spec 전용 브랜치인지 확인한다.
+description: spec-design/spec-implement/spec-validate 공통 — $ARGUMENTS로 spec 폴더를 확정하고, done이면 중단, 아니면 현재 git 브랜치가 그 spec 전용 브랜치인지 확인한다.
 ---
 
 # Spec 폴더 확정 + 브랜치 확인
@@ -11,25 +11,26 @@ description: spec-design/spec-implement/spec-validate 공통 — $ARGUMENTS로 s
 
 ## 1. spec 폴더 확정
 
-`$ARGUMENTS`가 있으면 이를 기준으로 spec 폴더를 특정한다 (`US-NN` 형태면
-`.claude/specs/US-NN-*/`를 찾는다; 이미 폴더 경로면 그대로 사용). `$ARGUMENTS`가 없으면
-`.claude/specs/index.md`의 "진행 중" 표를 본다 — 행이 정확히 하나면 그 US로 정한다.
-여러 개 매치되거나(인자로 찾은 경우) 진행 중 표에 행이 여러 개거나 하나도 없으면
-사용자에게 어느 spec인지 확인한다 — 확인이 끝날 때까지 호출한 커맨드는 다음 단계로
-진행하지 않는다.
+`$ARGUMENTS`가 있으면 그걸로 spec 폴더를 특정한다(`US-NN`이면 `.claude/specs/US-NN-*/`
+검색, 폴더 경로면 그대로 사용). 없으면 `index.md` "진행 중" 표를 본다 — 행이 정확히
+하나면 그 US로 정하고, 아니면(0개/여러 개) 사용자에게 확인한다.
 
-## 2. 브랜치 확인
+## 2. 완료 여부 + 브랜치 확인
 
-`.claude/specs/index.md`를 확인한다 — 확정된 US-NN이 "History" 표에 있으면(완료됨,
-`done`) 브랜치 확인 없이 넘어간다. "진행 중" 표에 있으면(`done`이 아님) 현재 git
-브랜치 이름에 `US-NN-`이 포함되는지 확인한다(`/spec-new`가 `<type>/US-NN-<slug>`로
-만든 전용 브랜치). 포함돼 있지 않으면 여기서 멈추고 해당 브랜치로 전환하라고 안내한다
-— 다른 spec의 브랜치나 `main`에서 이어서 진행하면 이 spec과 무관한 브랜치에서 작업
-(파일 작성, 코드 작성, 검증/AC 체크박스 갱신 등 호출한 커맨드가 하는 일)이 이뤄진다.
-spec.md 상단 **상태**는 index.md와 항상 함께 갱신되는 값이지만, 이 판단은 index.md
-하나만 보고 내린다 — 매번 두 파일을 다 열 필요가 없다.
+`.claude/specs/index.md`에서 US-NN이 "History" 표에 있으면(`done`) 여기서 멈춘다 —
+"이미 완료된 spec이다. 추가 작업이 필요하면 `/spec-new`로 새 spec을 만들어라"라고
+안내하고, 호출한 커맨드는 이후 단계로 진행하지 않는다. `done`된 spec을 제자리에서 다시
+여는 건 이 워크플로우가 의도한 경로가 아니다 — History는 완료된 것만 쌓이는 곳이고,
+추가 변경은 새 US 번호로 한다.
+
+"진행 중" 표에 있으면(`done`이 아님) 현재 git 브랜치명에 `US-NN-`이 포함되는지
+확인한다(`/spec-new`가 `<type>/US-NN-<slug>`로 만든 전용 브랜치). 없으면 멈추고 해당
+브랜치로 전환하라고 안내한다 — 다른 브랜치에서 진행하면 무관한 곳에 작업이 남는다.
+
+(`/spec-status`처럼 조회 전용 커맨드는 이 2번을 쓰지 않고 1번만 쓴다 — done인 spec도
+조회는 항상 가능해야 한다.)
 
 ## 반환
 
-확정된 spec 폴더 경로. 위 두 조건(폴더 유일성, 브랜치 일치) 중 하나라도 걸려 멈췄다면
-호출한 커맨드는 이후 단계로 진행하지 않는다.
+확정된 spec 폴더 경로. 위 조건(폴더 유일성, done 여부, 브랜치 일치) 중 하나라도 걸려
+멈췄다면 호출한 커맨드는 이후 단계로 진행하지 않는다.
