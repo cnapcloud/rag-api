@@ -33,14 +33,21 @@ chunk_size = get_settings().chunking.chunk_size
 파일 위치는 대상 소스 파일과 1:1로 매칭: `tests/unit/test_<module>.py`(순수 함수/컴포넌트),
 `tests/dagster/`(Dagster op/job), `tests/integration/`(여러 레이어를 걸치는 흐름).
 
-나머지 컨벤션(함수명/docstring/AC 태그/클래스 묶음/parametrize/예외 검증)은 예시로 대신한다
-— 테스트 코드의 docstring/주석은 한국어도 가능하다(영어 필수는 `logger.*()`/`print()`
-출력에만 적용):
+**필수 — spec task(task.md) 기반으로 새로 추가/변경하는 테스트마다 예외 없이 둘 다 붙인다**
+(기존에 있던, 이번 task와 무관한 테스트는 건드리지 않는 한 소급 적용하지 않는다):
+
+- AC 태그 주석 한 줄 — 형식 `# AC: <AC-ID> (<spec 폴더명>/<Task-ID>)`. 테스트 함수/메서드
+  바로 위에 쓴다. 하나의 AC를 여러 테스트가 나눠 검증하면 각 테스트마다 동일한 태그를 반복해서
+  붙인다.
+- 한 줄 docstring — 테스트가 "무엇을 검증하는지"를 함수명보다 구체적으로 서술한다.
+
+이 두 가지를 빠뜨리면 리뷰/검증 단계에서 컨벤션 위반으로 되돌아온다. 나머지 컨벤션
+(함수명/클래스 묶음/parametrize/예외 검증)은 아래 예시 수준을 따르면 충분하다 — 테스트
+코드의 docstring/주석은 한국어도 가능하다(영어 필수는 `logger.*()`/`print()` 출력에만
+적용):
 
 ```python
 class TestSearchCacheLookup:
-    # spec task(task.md) 기반으로 추가/변경된 테스트만 AC 태그를 붙인다 — 형식:
-    # AC: <AC-ID> (<spec 폴더명>/<Task-ID>)
     # AC: F3-5 (US-53-search-cache/T3)
     def test_semantic_hit_above_threshold(self):
         """유사도가 threshold 이상이면 semantic 캐시 hit을 반환한다."""
@@ -88,9 +95,3 @@ def chunk(context: OpExecutionContext, documents): ...
 # 올바름 — Dagster 래퍼에서 context 처리, step은 순수 함수
 def chunk(documents, strategy, chunk_size, chunk_overlap) -> list[BaseNode]: ...
 ```
-
-## 이모지 금지, 로그/print 영어, 커밋 트레일러 금지
-
-세션 종류와 무관하게 항상 적용되는 규칙이라 `CLAUDE.md` "하드 룰"에 그대로 있다 — 여기서
-다시 베끼지 않는다. 로그 레벨/포맷 세부 규칙(`%s` 포맷, 컨텍스트 포함 등)만 `logging`
-스킬에 별도로 있다.
