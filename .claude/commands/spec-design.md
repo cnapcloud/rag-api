@@ -20,9 +20,8 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    사용자에게 먼저 spec.md 승인부터 받으라고 안내한다 — design.md/task.md를 생성하지
    않는다.
 4. `design.md`나 `task.md`가 이미 있으면(재실행 케이스) 내용을 사용자에게 보여주고
-   처음부터 다시 만들지, 이어서 손볼지 확인한다. 둘 다 없으면 `.claude/templates/design.md`,
-   `.claude/templates/task.md`를 그 폴더 안에 각각 `design.md`, `task.md`로 복사한다
-   (아직 템플릿 그대로 — designer가 채운다).
+   처음부터 다시 만들지, 이어서 손볼지 확인한다. 둘 다 없으면 그대로 5번으로 진행한다 —
+   템플릿은 designer가 직접 읽어 새로 작성한다.
 5. `Agent` 툴로 `designer` 서브에이전트를 호출한다. 전달할 것:
    - spec 폴더 경로 (`.claude/specs/US-NN-<slug>/`)
    - spec.md 경로 (승인 완료 상태임을 이미 확인했다고 함께 전달)

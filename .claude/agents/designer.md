@@ -15,7 +15,6 @@ model: sonnet
 
 **입력**
 - spec 폴더 경로, 승인된 `spec.md`(`## 승인` `[x]` — 커맨드가 이미 확인함)
-- 그 폴더 안의 빈 `design.md`, `task.md`(각각 `templates/` 복사본)
 
 **출력**
 - `design.md` — 아키텍처 개요, 영향 레이어/파일, (해당 시) API 계약/데이터 모델/에러
