@@ -1,5 +1,17 @@
 # Data Schema Reference
 
+## 엔티티 요약
+
+빠른 모순 확인용 — 필드 단위 상세가 필요하면 아래 해당 섹션을 읽는다.
+
+- **Qdrant** — `PointStruct` (청크 단위 payload, collection = `{kb_id}`)
+- **Postgres** — `knowledge_bases`, `kb_settings_overrides`, `connectors`, `documents`,
+  `simhash_bands`, `minhash_bands`, `parent_chunks`
+- **Redis** — 큐 전용: `rag:upload:queue`, `rag:delete:queue`, `rag:upload:delay`,
+  `rag:delete:delay` (그 외 용도 없음)
+
+---
+
 ## 1. Qdrant — PointStruct (chunk level)
 
 Collection name = `{kb_id}` (one per KB)
