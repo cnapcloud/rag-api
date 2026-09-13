@@ -24,9 +24,15 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
      `.claude/specs/index.md`의 해당 행 Status를 `blocked`로 갱신한다(이 세션이 직접).
      `/spec-design`을 다시 실행해 design.md/task.md를 고치라고 안내한다.
    - **일부 실패 — `[구현]` 유형만** — 실패 AC 목록과 이유를 사용자에게 전달한다.
-     index.md Status는 `implemented`로 유지한다(2-1번 `blocked` 게이트를 이미 통과했으므로
-     이 시점에 `blocked`일 수 없다). `/spec-implement`를 다시 실행해 남은 AC를 마저
-     구현하라고 안내한다.
+     `implementer.md`의 재개 로직(2번, "Task 현황"에서 `done`이 아닌 첫 항목부터 진행)이
+     이 회귀를 집어낼 수 있도록, task.md의 "완료 기준 커버리지" 표에서 실패한 AC를
+     담당하는 Task ID를 찾아 `implementation.md`의 "Task 현황" 표에서 그 Task를
+     `done` → `blocked`로 되돌리고, "진행 기록"에 `blocked` 블록(AC, 유형 `[구현]`,
+     validator가 남긴 이유)을 append한다. `.claude/specs/index.md` Status를 `blocked`로
+     갱신한다(2-1번 게이트는 "이전에 이미 blocked였던 task가 있으면 검증 자체를 막는다"는
+     뜻이지 "검증 스스로는 blocked를 만들 수 없다"는 뜻이 아니다 — `implemented`로 두면
+     `/spec-implement` 3번 게이트가 "이미 구현 완료"로 오인해 즉시 멈춰버린다).
+     `/spec-implement`를 다시 실행해 남은 AC를 마저 구현하라고 안내한다.
    실패한 경우 모두 5번(`validated` 전환)으로 넘어가지 않는다.
 5. **전체 통과 시 `validated` 전환** — `traceability` 스킬의 문서 정합성 체크리스트를 따른다:
    - `docs/internal/design/`의 관련 토픽 문서가 있으면 그 표/변경 이력에 이번 spec
