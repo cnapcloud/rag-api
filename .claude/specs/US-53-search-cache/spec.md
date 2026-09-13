@@ -1,8 +1,7 @@
 # US-53: 검색 응답 캐싱 — Redis 큐+캐시 겸용 확장
 
 > 담당: `analyst` · spec 워크플로우 1단계 · 템플릿: `.claude/templates/spec.md`
-
-**상태**: done
+> 상태는 `.claude/specs/index.md`에서만 관리한다(이 파일엔 별도 상태 필드를 두지 않는다).
 
 ## 요청 원문
 

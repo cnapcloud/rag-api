@@ -21,19 +21,17 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 4. validator의 반환 결과로 분기한다:
    - **전체 통과** — 5번으로 진행.
    - **일부 실패 — `[설계]` 유형 포함** — 실패 AC 목록과 이유를 사용자에게 전달한다.
-     spec.md 상단 **상태**와 `.claude/specs/index.md`의 해당 행 Status를 `blocked`로
-     갱신한다(이 세션이 직접). `/spec-design`을 다시 실행해 design.md/task.md를 고치라고
-     안내한다.
-   - **일부 실패 — `[구현]` 유형만** — 실패 AC 목록과 이유를 사용자에게 전달한다. 상태는
-     `in-progress`로 유지(또는 `blocked`였다면 되돌림). `/spec-implement`를 다시 실행해
-     남은 AC를 마저 구현하라고 안내한다.
+     `.claude/specs/index.md`의 해당 행 Status를 `blocked`로 갱신한다(이 세션이 직접).
+     `/spec-design`을 다시 실행해 design.md/task.md를 고치라고 안내한다.
+   - **일부 실패 — `[구현]` 유형만** — 실패 AC 목록과 이유를 사용자에게 전달한다.
+     index.md 상태는 `in-progress`로 유지(또는 `blocked`였다면 되돌림). `/spec-implement`를
+     다시 실행해 남은 AC를 마저 구현하라고 안내한다.
    실패한 경우 모두 6번(`done` 전환)으로 넘어가지 않는다.
 5. **전체 통과 시 `done` 전환** — `traceability` 스킬의 done 전환 체크리스트를 따른다:
    - `docs/internal/design/`의 관련 토픽 문서가 있으면 그 표/변경 이력에 이번 spec
      반영 여부 확인(반영 필요하면 이 세션이 직접 갱신) — 이 spec 폴더 안의 `design.md`
      (구현 설계)와는 별개다.
-   - spec.md 상단 **상태**를 `done`으로 갱신.
    - `.claude/specs/index.md`의 "진행 중" 표에서 해당 행을 지우고 "History" 표 맨 위에
      `| US-NN | <제목> | <오늘 날짜> |`로 옮긴다.
    - spec.md/design.md의 설계 링크가 실제로 존재하는 문서를 가리키는지 확인한다.
-6. validator가 작성한 `test_result.md` 내용을 사용자에게 보여준다.
+6. validator가 작성한 `validation.md` 내용을 사용자에게 보여준다.

@@ -15,7 +15,7 @@ model: sonnet
 
 **입력**
 - spec 폴더 경로, 승인된 `spec.md`(`## 승인` `[x]` — 커맨드가 이미 확인함)
-- (재작업 케이스) 기존 `design.md`/`task.md` + 재작업 사유(커맨드가 `test_result.md`
+- (재작업 케이스) 기존 `design.md`/`task.md` + 재작업 사유(커맨드가 `validation.md`
   또는 `implementation.md`에서 추출해 전달) — `index.md`의 "진행 중" 표에서 이 spec의
   Status가 `blocked`였을 때만 존재한다. 신규 케이스에는 없다.
 

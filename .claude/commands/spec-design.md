@@ -15,7 +15,7 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    처음부터 다시 만들지, 이어서 손볼지 확인한다. 둘 다 없으면 그대로 4번으로 진행한다 —
    템플릿은 designer가 직접 읽어 새로 작성한다.
 3-1. **재작업 사유 추출** (`.claude/specs/index.md`의 "진행 중" 표에서 이 spec의
-   Status가 `blocked`일 때만) — `test_result.md`에 `[설계]` 유형 FAIL 항목이 있으면 그
+   Status가 `blocked`일 때만) — `validation.md`에 `[설계]` 유형 FAIL 항목이 있으면 그
    AC ID + 이유를 추출한다. 없으면(구현 단계에서 막힌 경우) `implementation.md` "진행
    기록"의 가장 최근 `blocked` 블록(AC + 유형 + 이유)을 추출한다 — 어느 파일을 볼지는
    상태만 보면 기계적으로 판단 가능하므로 이 세션이 직접 한다. 4번에서 designer에게
@@ -29,9 +29,8 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
      task.md를 채우지 않은 채 끝난다. 이슈를 그대로 사용자에게 전달하고 spec.md 수정이
      필요한지 확인한다. 상태 갱신(6번)으로 넘어가지 않는다.
    - **design.md/task.md 작성 완료** — 6번으로 진행.
-6. spec.md 상단 **상태**를 `in-progress`로 갱신하고, `.claude/specs/index.md`의
-   "진행 중" 표에서 해당 US 행의 Status도 `in-progress`로 동기화한다 — 이 세션이 직접
-   한다 (designer는 이 두 파일을 갱신하지 않는다).
+6. `.claude/specs/index.md`의 "진행 중" 표에서 해당 US 행의 Status를 `in-progress`로
+   갱신한다 — 이 세션이 직접 한다 (designer는 이 파일을 갱신하지 않는다).
 7. designer가 작성한 design.md와 task.md를 사용자에게 보여준다. 이 둘에는 spec.md 같은
    별도 승인 체크박스가 없으므로 확인은 필수 게이트가 아니지만, 사용자가 수정을 요청하면
    designer를 다시 호출하거나 직접 고쳐 반영한다.

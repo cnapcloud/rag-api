@@ -1,6 +1,6 @@
 # US-53: 검색 응답 캐싱 — Redis 큐+캐시 겸용 확장 — 검증 결과
 
-> 담당: `validator` · spec 워크플로우 4단계(최종) · 템플릿: `.claude/templates/test_result.md`
+> 담당: `validator` · spec 워크플로우 4단계(최종) · 템플릿: `.claude/templates/validation.md`
 
 **대상**: [spec.md](spec.md) / [design.md](design.md) / [task.md](task.md)
 

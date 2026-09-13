@@ -1,8 +1,7 @@
 # US-NN: <제목>
 
 > 담당: `analyst` · spec 워크플로우 1단계 · 템플릿: `.claude/templates/spec.md`
-
-**상태**: todo | in-progress | done | blocked
+> 상태는 `.claude/specs/index.md`에서만 관리한다(이 파일엔 별도 상태 필드를 두지 않는다).
 
 > 설계: [<제목>](../../../docs/internal/design/<파일>.md) (있으면 — 없으면 이 줄 생략)
 

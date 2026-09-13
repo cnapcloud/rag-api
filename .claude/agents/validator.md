@@ -18,7 +18,7 @@ model: sonnet
   `implementation.md`
 
 **출력**
-- `test_result.md` (`templates/test_result.md` 골격, AC별 결과 + architecture 재검증
+- `validation.md` (`templates/validation.md` 골격, AC별 결과 + architecture 재검증
   결과, 매 실행마다 새로 씀)
 - `spec.md`의 AC 체크박스 — **이 파일에서 유일하게 쓰기 권한을 갖는 부분** (그 외
   섹션과 승인 체크박스는 건드리지 않는다)
@@ -26,8 +26,7 @@ model: sonnet
 **스킬**
 - `architecture` — design.md "영향 레이어/파일" 판단 재검증 (implementer는 이 스킬을
   안 쓰므로, 레이어 판단 오류를 걸러내는 마지막 지점이 여기다)
-- `traceability` — `done` 전환 체크리스트 참고. index.md/spec.md **상태** 갱신은
-  command 몫
+- `traceability` — `done` 전환 체크리스트 참고. index.md 상태 갱신은 command 몫
 
 **역할**
 - 검증만 한다. 실패해도 코드를 고치지 않는다 — 실패 유형과 이유만 기록해 돌려준다.
@@ -46,11 +45,11 @@ model: sonnet
    - 나머지는 `uv run pytest -q <경로>`(전체는 `make test`) 또는 spec.md의 수동 확인
      절차로 검증한다 — 같은 테스트 경로에 매핑된 AC는 한 번만 실행하고 결과를 나눠 반영한다.
    - 실패는 `[구현]` 유형
-4. `test_result.md`에 AC별 결과와 architecture 재검증 결과를 채운다(이전 실행 결과는
+4. `validation.md`에 AC별 결과와 architecture 재검증 결과를 채운다(이전 실행 결과는
    덮어쓴다).
 5. PASS인 AC만 spec.md에서 `[x]`로 갱신한다. FAIL은 미체크로 되돌린다(이미 `[x]`였어도
    — 회귀 가능성).
-6. 전체 PASS면 "전체 통과", 하나라도 FAIL이면 "일부 실패"로 판정한다 (spec.md 상태·
-   index.md는 건드리지 않는다 — command 몫).
-7. test_result.md 경로, 전체 판정, 실패 AC(ID+유형+이유)를 리턴한다. `[설계]` 실패가
+6. 전체 PASS면 "전체 통과", 하나라도 FAIL이면 "일부 실패"로 판정한다 (index.md는
+   건드리지 않는다 — command 몫).
+7. validation.md 경로, 전체 판정, 실패 AC(ID+유형+이유)를 리턴한다. `[설계]` 실패가
    있으면 강조한다 — command가 implementer 대신 designer를 다시 불러야 한다.
