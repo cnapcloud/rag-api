@@ -387,10 +387,28 @@ def mock_postgres(monkeypatch):
 
 @pytest.fixture
 def mock_redis():
-    """In-memory Redis substitute — queue operations only."""
+    """In-memory Redis substitute — queue operations + search cache primitives (US-53)."""
+    import fnmatch
+    import time
+
     lists: dict = {}
+    strings: dict = {}
+    sets: dict = {}
+    zsets: dict = {}  # key -> {member: score}
+    expiry: dict = {}  # key -> epoch seconds, any type
+
+    def _purge_if_expired(key):
+        exp = expiry.get(key)
+        if exp is not None and exp <= time.time():
+            strings.pop(key, None)
+            sets.pop(key, None)
+            zsets.pop(key, None)
+            expiry.pop(key, None)
+            return True
+        return False
 
     class FakeRedis:
+        # -- existing queue ops (unchanged signatures) --
         def rpop(self, key):
             lst = lists.get(key, [])
             return lst.pop() if lst else None
@@ -398,8 +416,112 @@ def mock_redis():
         def lpush(self, key, value):
             lists.setdefault(key, []).insert(0, value)
 
+        def lrem(self, key, count, value):
+            lst = lists.get(key, [])
+            if value in lst:
+                lst.remove(value)
+
         def ping(self):
             return True
+
+        # -- search cache primitives (US-53) --
+        def get(self, key):
+            _purge_if_expired(key)
+            return strings.get(key)
+
+        def set(self, key, value, ex=None):
+            strings[key] = value
+            if ex is not None:
+                expiry[key] = time.time() + ex
+            return True
+
+        def setex(self, key, ttl_seconds, value):
+            strings[key] = value
+            expiry[key] = time.time() + ttl_seconds
+            return True
+
+        def delete(self, *keys):
+            count = 0
+            for key in keys:
+                found = False
+                for store in (strings, sets, zsets):
+                    if key in store:
+                        del store[key]
+                        found = True
+                if found:
+                    count += 1
+                expiry.pop(key, None)
+            return count
+
+        def exists(self, key):
+            _purge_if_expired(key)
+            return int(key in strings or key in sets or key in zsets)
+
+        def expire(self, key, ttl_seconds):
+            if key in strings or key in sets or key in zsets:
+                expiry[key] = time.time() + ttl_seconds
+                return True
+            return False
+
+        def sadd(self, key, *values):
+            _purge_if_expired(key)
+            s = sets.setdefault(key, set())
+            before = len(s)
+            s.update(values)
+            return len(s) - before
+
+        def srem(self, key, *values):
+            s = sets.get(key)
+            if not s:
+                return 0
+            before = len(s)
+            s.difference_update(values)
+            return before - len(s)
+
+        def smembers(self, key):
+            _purge_if_expired(key)
+            return set(sets.get(key, set()))
+
+        def scan_iter(self, match=None):
+            all_keys = set(strings) | set(sets) | set(zsets)
+            for key in list(all_keys):
+                if _purge_if_expired(key):
+                    continue
+                if match is None or fnmatch.fnmatch(key, match):
+                    yield key
+
+        def zadd(self, key, mapping):
+            _purge_if_expired(key)
+            z = zsets.setdefault(key, {})
+            z.update(mapping)
+            return len(mapping)
+
+        def zrange(self, key, start, end):
+            _purge_if_expired(key)
+            z = zsets.get(key, {})
+            ordered = [m for m, _ in sorted(z.items(), key=lambda kv: kv[1])]
+            if end == -1:
+                return ordered[start:]
+            return ordered[start:end + 1]
+
+        def zrem(self, key, *members):
+            z = zsets.get(key)
+            if not z:
+                return 0
+            count = 0
+            for m in members:
+                if m in z:
+                    del z[m]
+                    count += 1
+            return count
+
+        def zcard(self, key):
+            _purge_if_expired(key)
+            return len(zsets.get(key, {}))
+
+        def force_expire(self, key):
+            """Test helper (not a real redis-py method): mark key as already expired."""
+            expiry[key] = 0.0
 
     return FakeRedis()
 

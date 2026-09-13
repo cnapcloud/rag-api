@@ -280,6 +280,25 @@ class RetrievalSettings(BaseModel):
     auto_merge: AutoMergeSettings = Field(default_factory=AutoMergeSettings)
 
 
+class SearchCacheSettings(BaseModel):
+    """검색 응답(리랭크까지 끝난 최종 SearchResponse) 캐시 — US-53.
+
+    Redis를 인제스트/삭제 큐 겸용으로 확장해 캐시 저장소로도 쓴다(의도적 원칙 예외,
+    docs/internal/architecture/README.md 참고). `match_mode="semantic"`은 질의 임베딩
+    코사인 유사도 기반 근사 매칭으로, 오탐 가능성이 있어 기본 비활성이다.
+    """
+
+    enabled: bool = False
+    ttl_seconds: int = Field(default=3600, ge=1, description="Cache TTL (sec)")
+    max_entries: int = Field(default=1000, ge=1, description="Max Cache Entries")
+    match_mode: Literal["exact", "semantic"] = Field(
+        default="exact", description="Cache Match Mode",
+    )
+    semantic_threshold: float = Field(
+        default=0.95, ge=0.0, le=1.0, description="Semantic Match Threshold",
+    )
+
+
 class LogSettings(BaseModel):
     level: str = "INFO"   # DEBUG | INFO | WARNING | ERROR
     # Top-level logger namespaces to eagerly configure (setup_logging()).
@@ -405,6 +424,7 @@ class Settings(BaseModel):
     provider: ProviderSettings = Field(default_factory=ProviderSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    search_cache: SearchCacheSettings = Field(default_factory=SearchCacheSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
     logging: LogSettings = Field(default_factory=LogSettings)

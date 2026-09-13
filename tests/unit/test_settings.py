@@ -604,3 +604,37 @@ def test_openai_api_key_env_injects_into_provider_api_key(
     settings = Settings.from_yaml(path)
 
     assert settings.provider.api_key == "env-openai-key"
+
+
+def test_search_cache_settings_defaults() -> None:
+    """F1-1: search_cache 기본값은 캐시/시맨틱 매칭 모두 비활성 상태여야 한다."""
+    cache = Settings().search_cache
+
+    assert cache.enabled is False
+    assert cache.ttl_seconds == 3600
+    assert cache.max_entries == 1000
+    assert cache.match_mode == "exact"
+    assert cache.semantic_threshold == 0.95
+
+
+def test_search_cache_settings_override_from_yaml(tmp_path: Path) -> None:
+    """F1-1: settings.yaml에서 search_cache 값을 오버라이드할 수 있다."""
+    path = tmp_path / "settings.yaml"
+    path.write_text(
+        """
+search_cache:
+  enabled: true
+  ttl_seconds: 60
+  max_entries: 5
+  match_mode: "semantic"
+  semantic_threshold: 0.8
+"""
+    )
+
+    settings = Settings.from_yaml(path)
+
+    assert settings.search_cache.enabled is True
+    assert settings.search_cache.ttl_seconds == 60
+    assert settings.search_cache.max_entries == 5
+    assert settings.search_cache.match_mode == "semantic"
+    assert settings.search_cache.semantic_threshold == 0.8
