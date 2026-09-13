@@ -1,15 +1,15 @@
 ---
 name: spec-resolve
-description: spec-design/spec-implement/spec-validate/spec-merge 공통 — $ARGUMENTS로 spec 폴더를 확정하고, done이면 중단, 아니면 현재 git 브랜치가 그 spec 전용 브랜치인지 확인한다.
+description: spec-design/spec-implement/spec-validate/spec-pr 공통 — $ARGUMENTS로 spec 폴더를 확정하고, done이면 중단, 아니면 현재 git 브랜치가 그 spec 전용 브랜치인지 확인한다.
 ---
 
 # Spec 폴더 확정 + 브랜치 확인
 
-`/spec-design`, `/spec-implement`, `/spec-validate`, `/spec-merge` 네 커맨드가 공통으로
+`/spec-design`, `/spec-implement`, `/spec-validate`, `/spec-pr` 네 커맨드가 공통으로
 거치는 앞단 절차다. 각 커맨드는 이 스킬을 호출해 아래 두 가지를 확정한 뒤 자신의 나머지
 단계로 넘어간다 — 커맨드마다 따로 적지 않는다. 워킹 트리 커밋 상태 확인은 여기 두지
 않는다 — 일반적인 관행대로 브랜치를 새로 만들 때(`/spec-new`)와 main에 merge하기
-직전(`/spec-merge`)에만 확인한다. design/implement/validate 단계 사이사이는 산출물이
+직전(`/spec-pr`)에만 확인한다. design/implement/validate 단계 사이사이는 산출물이
 쌓여도 개의치 않고, 커밋 시점은 사용자가 알아서 판단한다.
 
 ## 1. spec 폴더 확정

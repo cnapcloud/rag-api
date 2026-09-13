@@ -35,7 +35,7 @@ argument-hint: [US-NN 또는 spec 폴더 경로 (생략 시 진행 중 전체)]
      액션: 유형이 `[설계]`면 `/spec-design`, `[구현]`이면 `/spec-implement`
    - index.md "History" 표에 있음 → **완료**
    - validation.md "전체 통과"이고 index.md Status가 `validated` → **검증 통과 — merge
-     대기** — 다음 액션: `/spec-merge`
+     대기** — 다음 액션: `/spec-pr`
    - validation.md "전체 통과"인데 index.md Status가 `validated`가 아니고 아직 "진행 중"
      표에 남아있음 → **검증 통과 — validated 전환 누락** (정상 흐름이면 `/spec-validate`가
      전체 통과 시 즉시 Status를 `validated`로 갱신하므로 드문 이상 케이스 — 그대로

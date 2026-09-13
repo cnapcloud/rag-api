@@ -36,8 +36,8 @@ prd.md (§N, 고정 앵커) ← docs/internal/design/*.md ← specs/US-NN-<slug>
 - [ ] `.claude/specs/index.md`의 해당 행 status를 `validated`로 갱신 (아직 History로
       옮기지 않는다 — main merge 전이므로 `done`은 아니다)
 
-## `done` 전환 시 확인 (`/spec-merge`, main merge + 전체 테스트 스위트 + 그 커밋까지
-성공한 뒤)
+## `done` 전환 시 확인 (`/spec-pr`, PR이 실제로 GitHub에서 merge되고 그 뒤 전체
+테스트 스위트까지 성공한 것을 재확인한 뒤)
 
 - [ ] `.claude/specs/index.md`의 해당 행을 "진행 중" 표에서 지우고 "History" 표로 옮긴다
       (spec.md에는 별도 상태 필드가 없다 — index.md가 유일한 상태 저장소)

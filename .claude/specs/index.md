@@ -8,7 +8,7 @@
 
 ## 마지막 채번 번호
 
-**US-54**
+**US-55**
 
 `/spec-new`가 새 번호를 줄 때 이 값 + 1을 쓰고, 쓰자마자 이 줄도 그 번호로 갱신한다.
 "진행 중" 표는 완료되면 History로 옮겨져 비어 있을 수 있으므로, 다음 번호는 표를
@@ -16,10 +16,10 @@
 
 ## 진행 중
 
-`/spec-new`로 항목이 생성되면 여기 한 줄 추가된다(status: `todo`). `/spec-merge`가
-main merge + 전체 테스트 스위트 + 그 커밋까지 성공적으로 끝낸 순간에만 이 표에서
-지우고 아래 History로 그 행을 옮긴다. 즉 이 표에는 항상 아직 main에 merge되지 않은
-spec만 남는다.
+`/spec-new`로 항목이 생성되면 여기 한 줄 추가된다(status: `todo`). `/spec-pr`이 PR을
+생성하고, 그 PR이 GitHub에서 실제로 merge된 것까지 재확인한 순간에만 이 표에서 지우고
+아래 History로 그 행을 옮긴다. 즉 이 표에는 항상 아직 main에 merge되지 않은 spec만
+남는다.
 
 Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값이 아니라 History로
 옮겨지는 것 자체로 표현한다):
@@ -30,15 +30,17 @@ Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값�
 | `specified` | spec.md |
 | `designed` | design.md/task.md |
 | `implemented` | 전체 task |
-| `validated` | AC 전수 검증 통과 — `/spec-merge`로 main merge 대기 |
+| `validated` | AC 전수 검증 통과 — `/spec-pr`로 PR 생성 대기 |
+| `pr_requested` | `/spec-pr`이 GitHub PR을 생성함 — 실제 merge 대기, merge되면 `/spec-pr` 재실행으로 `done` 전환 |
 | `blocked` | 설계/구현/검증/merge 중 이슈로 정지 |
 
 정확한 갱신 시점·조건은 이 값을 쓰는 각 command(`spec-new`/`spec-design`/
-`spec-implement`/`spec-validate`/`spec-merge`)가 유일한 소스다 — 여기서 다시
+`spec-implement`/`spec-validate`/`spec-pr`)가 유일한 소스다 — 여기서 다시
 설명하지 않는다.
 
 | Spec | Title | Status |
 |------|-------|--------|
+| US-55 | 검색 캐시 lookup/store 데코레이터 통합 + 캐시 게이트 훅(set_cache_gate) 추가 | implemented |
 
 ## History
 

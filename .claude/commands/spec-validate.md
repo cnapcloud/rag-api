@@ -1,5 +1,5 @@
 ---
-description: spec.md 완료 기준(AC)을 전수 검증 — validator 서브에이전트 호출, 통과 시 validated 전환(main merge는 /spec-merge)
+description: spec.md 완료 기준(AC)을 전수 검증 — validator 서브에이전트 호출, 통과 시 validated 전환(main merge는 /spec-pr)
 argument-hint: [US-NN 또는 spec 폴더 경로]
 ---
 
@@ -41,7 +41,7 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    - spec.md/design.md의 설계 링크가 실제로 존재하는 문서를 가리키는지 확인한다.
    - `.claude/specs/index.md`의 "진행 중" 표에서 해당 행 Status를 `validated`로 갱신한다
      (이 세션이 직접 — validator는 이 파일을 갱신하지 않는다). 아직 History로 옮기지
-     않는다 — main merge 성공 후 그 확인까지 끝나야 `done`이며, 그건 `/spec-merge`의
+     않는다 — main merge 성공 후 그 확인까지 끝나야 `done`이며, 그건 `/spec-pr`의
      몫이다.
-6. validator가 작성한 `validation.md` 내용을 사용자에게 보여주고, `/spec-merge`로
+6. validator가 작성한 `validation.md` 내용을 사용자에게 보여주고, `/spec-pr`로
    main에 merge할 수 있다고 안내한다.
