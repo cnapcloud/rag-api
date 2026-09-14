@@ -23,9 +23,6 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    — 세 목록 모두 "(없음)"이면 6번으로 진행, 하나라도 있으면 6번(`validated` 전환)으로
    넘어가지 않는다.
 6. **전체 통과 시 `validated` 전환** — `traceability` 스킬의 문서 정합성 체크리스트를 따른다:
-   - `docs/internal/design/`의 관련 토픽 문서가 있으면 그 표/변경 이력에 이번 spec
-     반영 여부 확인(반영 필요하면 이 세션이 직접 갱신) — 이 spec 폴더 안의 `design.md`
-     (구현 설계)와는 별개다.
    - spec.md/design.md의 설계 링크가 실제로 존재하는 문서를 가리키는지 확인한다.
    - `.claude/specs/index.md`의 "진행 중" 표에서 해당 행 Status를 `validated`로 갱신한다
      (이 세션이 직접 — validator는 이 파일을 갱신하지 않는다). 아직 History로 옮기지

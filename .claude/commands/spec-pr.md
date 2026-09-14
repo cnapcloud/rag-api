@@ -61,10 +61,11 @@ CI 통과 후 사용자에게 별도로 물어(6번) "예"를 받은 경우에�
      `pr.md`에 "사용자가 지금은 merge 보류" 한 줄만 append한다(다음 재실행 시 다시
      물어봄).
    - **예** — 7번으로.
-7. **merge 전 완료 처리 (spec 브랜치에서)** — `traceability` 스킬 "done 전환" 체크
-   리스트대로 index.md를 "진행 중" → "History"로 옮기고(merge 커밋 해시는 아직
-   없으니 생략), `pr.md`를 "merge 확인 완료(done)"로 갱신한 뒤 커밋 + push한다
-   (`.claude/specs/`는 `pr-check.yml` 감시 경로 밖 — CI 영향 없이 같은 PR에 반영).
+7. **merge 전 완료 처리 (spec 브랜치에서)** — `.claude/specs/index.md`의 해당 행을
+   "진행 중"에서 "History"로 옮기고(merge 커밋 해시는 아직 없으니 생략; spec.md엔 별도
+   상태 필드를 두지 않는다 — index.md가 유일한 상태 저장소), `pr.md`를 "merge 확인
+   완료(done)"로 갱신한 뒤 커밋 + push한다(`.claude/specs/`는 `pr-build.yml` 감시 경로
+   밖 — CI 영향 없이 같은 PR에 반영).
 8. `gh pr merge <spec 브랜치> --merge`(제목: `merge: <spec 브랜치> into main
    (<요약>)`)로 실제 merge한다.
 9. `git checkout main && git pull --ff-only`로 main을 끌어올린다(7번을 거쳤으면

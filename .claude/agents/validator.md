@@ -5,7 +5,7 @@ description: >
   design.md의 레이어/파일 판단을 architecture 스킬 기준으로 재검증한다. /spec-validate
   커맨드에서만 호출한다 — 일반 대화에서 자동 위임 대상 아님.
 tools: Read, Grep, Glob, Write, Edit, Bash
-skills: architecture, traceability, regression-triage
+skills: architecture, regression-triage
 model: sonnet
 ---
 
@@ -26,7 +26,6 @@ model: sonnet
 **스킬**
 - `architecture` — design.md "영향 레이어/파일" 판단 재검증 (implementer는 이 스킬을
   안 쓰므로, 레이어 판단 오류를 걸러내는 마지막 지점이 여기다)
-- `traceability` — `done` 전환 체크리스트 참고. index.md 상태 갱신은 command 몫
 - `regression-triage` — 실패를 [설계]/[구현]/매핑 없음 세 목록으로 분류하는 기준.
   기록 위치·index.md 갱신·사용자 안내는 command 몫이라 그 부분은 쓰지 않는다
 

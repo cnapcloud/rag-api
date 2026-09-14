@@ -1,6 +1,6 @@
 ---
 name: traceability
-description: prd/design 문서와 spec.md 간 링크 포맷, spec 폴더 내 파일 간 추적성 규칙. spec.md의 설계 링크를 쓸 때, 또는 spec 상태를 validated/done으로 전환할 때 사용.
+description: prd/design 문서와 spec.md 간 링크 포맷, spec 폴더 내 파일 간 추적성 규칙. spec.md/design 문서의 설계 링크를 쓰거나, `/spec-validate`에서 그 링크의 유효성을 확인할 때 사용.
 ---
 
 # Traceability — PRD ↔ 설계 ↔ spec 폴더
@@ -11,38 +11,17 @@ description: prd/design 문서와 spec.md 간 링크 포맷, spec 폴더 내 파
 prd.md (§N, 고정 앵커) ← docs/internal/design/*.md ← specs/US-NN-<slug>/{spec.md, design.md, task.md}
 ```
 
-**용어 주의**: `docs/internal/design/*.md`(토픽별 설계 문서, 이 스킬에서 "design 문서"라고
-부르는 것)와 `specs/US-NN-<slug>/design.md`(이 spec 전용 구현 설계, designer가 작성)는
-이름이 비슷하지만 다른 파일이다. 아래 규칙에서 "design 문서"는 항상 전자를 가리킨다.
-
-기존 `backlogs/`+`plans/`처럼 별도 인덱스 두 개의 번호를 맞추던 방식은 spec 폴더 구조에서는
-불필요하다 — spec.md/design.md/task.md가 같은 폴더에 있으므로 번호가 항상 일치한다.
+**용어 주의**: `docs/internal/design/*.md`(토픽별 설계 문서, 아래에서 "design 문서")와
+`specs/US-NN-<slug>/design.md`(spec 전용 구현 설계, designer가 작성)는 이름이 비슷하지만
+다른 파일이다. 아래 규칙의 "design 문서"는 항상 전자를 가리킨다.
 
 ## 필수 규칙
 
-- **design 문서 → prd 링크**: design 문서(`docs/internal/design/*.md`) `# 제목` 바로
-  다음 줄에 `> 요건: [prd.md §N](...)`을 남긴다. 대응되는 PRD 섹션이 없는 순수 기술
-  문서는 생략 가능.
-- **spec.md 상단 `> 설계:` 링크**: 관련 design 문서가 있으면 반드시 연결한다. 없으면
-  그 줄 자체를 생략한다.
-- **design 표의 US 컬럼**: 하나의 design 문서를 여러 spec이 나눠 구현하면, 문서 안 하위요건
-  표에 US 컬럼을 추가해 어떤 spec(US-NN)이 구현했는지 표시한다.
+- design 문서를 쓰거나 고칠 때: `# 제목` 바로 다음 줄에 `> 요건: [prd.md §N](...)`을
+  남겨라. 대응 PRD 섹션이 없는 순수 기술 문서면 생략해도 된다.
+- spec.md를 쓸 때: 상단에 `> 설계:` 링크로 관련 design 문서를 연결하라. 관련 design
+  문서가 없으면 그 줄 자체를 넣지 마라.
 
-## `validated` 전환 시 확인 (`/spec-validate`, AC 전수 통과 시)
+## `/spec-validate`에서 AC 전수 통과 시 실행할 것
 
-- [ ] design 표(US 컬럼) 또는 변경 이력에 이번 작업 반영
-- [ ] spec.md/design.md(spec 폴더 안의 구현 설계)의 설계 링크가 실제로 존재하는 문서를
-      가리키는지 확인
-- [ ] `.claude/specs/index.md`의 해당 행 status를 `validated`로 갱신 (아직 History로
-      옮기지 않는다 — main merge 전이므로 `done`은 아니다)
-
-## `done` 전환 시 확인 (`/spec-pr`, PR이 실제로 GitHub에서 merge되고 그 뒤 전체
-테스트 스위트까지 성공한 것을 재확인한 뒤)
-
-- [ ] `.claude/specs/index.md`의 해당 행을 "진행 중" 표에서 지우고 "History" 표로 옮긴다
-      (spec.md에는 별도 상태 필드가 없다 — index.md가 유일한 상태 저장소)
-
-기존 `backlogs/`+`plans/`(US-01~52)는 `specs/US-NN-*/`로 전량 이관 완료됐다 — 이제 이
-스킬이 모든 spec에 적용된다(과거처럼 신규 항목에만 적용되는 예외 없음). US-01~52는
-`plan.md` 시절 산출물이라 `design.md`/`task.md` 분리 이전 형식으로 남아 있다 — 과거
-기록으로 두고 소급 이관하지 않는다.
+- [ ] spec.md/design.md의 설계 링크가 실제로 존재하는 문서를 가리키는지 확인하라.
