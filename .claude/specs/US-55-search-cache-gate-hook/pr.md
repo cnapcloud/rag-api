@@ -7,14 +7,16 @@
 
 ## 결과
 
-### PR 생성 성공
+### PR 생성/CI 실패
 
 | 항목 | 값 |
 |---|---|
-| PR | https://github.com/cnapcloud/rag-api/pull/2 |
-| 테스트 스위트(드라이런) | `make test` — 753 passed, 1 skipped |
-| index.md Status | `validated` → `pr_requested` |
-| 다음 액션 | PR이 GitHub에서 merge되면 `/spec-pr` 재실행 |
+| 실패 단계 | PR CI 체크 (`pr-check` 워크플로우, `make typecheck`) |
+| 유형 | `[구현]` (T1 매핑) + 매핑 없는 실패 2건(`implementation.md` "외부 이상 징후" 참고) |
+| 이유 | mypy 20 errors — T1 관련 파일(`query/search_cache.py:24` `SearchCacheSettings`→`CacheSettings` 개명 드리프트, `test_search_cache_query.py:364` 람다 타입 추론 실패)은 T1로 되돌림. 나머지(`infra/search_cache.py` 11건, `query/retriever.py:223` 1건)는 design.md가 "변경 없음"으로 명시한 파일이라 US-55 범위 밖 |
+| 되돌린 것 | git 작업 없음(드라이런 아님, GitHub CI 결과 확인만) |
+| index.md Status | `pr_requested` → `blocked` |
+| 다음 액션 | T1 관련 두 위치 고친 뒤 `/spec-implement` 재실행. 범위 밖 2건은 `/spec-implement` 재실행 시 같이 고칠지 물어봄 |
 
 ## 비고
 

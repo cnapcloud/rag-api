@@ -8,7 +8,7 @@
 
 | ID | 상태 |
 |---|---|
-| T1 | done |
+| T1 | blocked |
 | T2 | done |
 
 ## 진행 기록
@@ -33,4 +33,24 @@
   실패했다. design.md/task.md가 명시한 F3-2("Redis 접근이 전혀 없다")는 그대로 유효하므로,
   검증 지점을 `search_cache.lookup`/`store` mock에서 `infra_cache.get_entry`/`set_entry`
   mock으로 바꿔 Redis 미접근을 직접 검증하도록 수정했다(AC 매핑/레이어는 변경 없음).
+- **[T1] blocked** — AC: F1-2, F2-1 — 유형: [구현] — `/spec-pr` merge 확인 경로에서
+  PR #2 CI(`make typecheck`)가 실패(`FAILURE`)함. 실패 위치가 T1 관련 파일에 매핑됨:
+  - `src/rag_api/query/search_cache.py:24` — `Module "rag_api.config.settings" has no
+    attribute "SearchCacheSettings"; maybe "CacheSettings"?` — main에 먼저 merge된
+    US-54가 `SearchCacheSettings`를 `CacheSettings`로 개명/이동했는데 이 브랜치는 옛
+    이름을 그대로 참조하고 있음(main 통합 드리프트).
+  - `tests/unit/test_search_cache_query.py:364` — `Cannot infer type of lambda` — 커밋
+    d29a075에서 한 번 타입 애노테이션으로 고쳤다가 7fefdc1에서 되돌려져 재발함.
+  다음 시도: 두 위치를 main의 `CacheSettings`/타입 애노테이션에 맞춰 고친 뒤
+  `/spec-implement` 재실행.
+```
+
+## 외부 이상 징후
+
+같은 CI 실행(PR #2, `make typecheck`)에서 나온 실패 중 task.md의 Task 관련 파일에
+매핑되지 않는 것들 — design.md도 이 파일들을 "변경 없음"으로 명시함(US-55 범위 밖).
+
+```
+- `make typecheck` — `src/rag_api/infra/search_cache.py:100,102,103,106,107,109,120,136,137,138,139` — `zrem`/`srem`/`partition`/`_entry_key`/`_bucket_key` 인자가 redis 반환값(`bytes | str | tuple | list`)과 타입이 안 맞음(11건)
+- `make typecheck` — `src/rag_api/query/retriever.py:223` — `Incompatible types in assignment (expression has type "str", variable has type "QueryBundle")`
 ```
