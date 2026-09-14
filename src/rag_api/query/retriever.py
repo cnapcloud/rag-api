@@ -6,8 +6,12 @@ import asyncio
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from rag_api.config.settings import get_settings
+
+if TYPE_CHECKING:
+    from llama_index.core.schema import QueryBundle
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +219,7 @@ def _query_kb(
             alpha=alpha,
         )
 
+    retrieve_input: QueryBundle | str
     if query_embedding is not None:
         from llama_index.core.schema import QueryBundle
 

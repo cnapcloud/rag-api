@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from rag_api.infra import search_cache as infra_cache
 
 if TYPE_CHECKING:
-    from rag_api.config.settings import SearchCacheSettings
+    from rag_api.config.settings import CacheSettings
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def set_cache_gate(fn: Callable[[list[str]], bool] | None) -> None:
     _cache_gate = fn
 
 
-def _cache_usable(kb_ids: list[str], cfg: SearchCacheSettings) -> bool:
+def _cache_usable(kb_ids: list[str], cfg: CacheSettings) -> bool:
     """lookup/store가 공유하는 단일 판단 지점 (F2-1). cfg.enabled가 False면 그 자체로
     False. True인 경우에만 게이트 훅을 본다 — 훅이 없으면 그대로 True(F1-1)."""
     if not cfg.enabled:
@@ -83,7 +83,7 @@ def lookup(
     query: str,
     kb_ids: list[str],
     effective_options: dict[str, Any],
-    cfg: SearchCacheSettings,
+    cfg: CacheSettings,
 ) -> tuple[dict[str, Any] | None, list[float] | None]:
     """캐시 hit 시 (response, None), semantic miss로 임베딩만 계산했으면 (None, embedding),
     그 외 (None, None)을 반환한다.
@@ -133,7 +133,7 @@ def store(
     query: str,
     kb_ids: list[str],
     effective_options: dict[str, Any],
-    cfg: SearchCacheSettings,
+    cfg: CacheSettings,
     response_dict: dict[str, Any],
     query_embedding: list[float] | None = None,
 ) -> None:

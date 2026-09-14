@@ -12,7 +12,7 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    중단.
 2. `.claude/specs/index.md` "진행 중" 표에서 해당 행 Status로 분기:
    - `validated` → PR 생성 경로(3번).
-   - `pr_requested` → merge 확인 경로(1번).
+   - `pr_requested` → merge 확인 경로(3번).
    - `blocked` → `/spec-design` 또는 `/spec-implement`로 먼저 해소하라고 안내, 중단.
    - 그 외 → `/spec-validate`부터 통과시키라고 안내, 중단.
 
@@ -45,18 +45,18 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 
 ## Merge 확인 경로 (`pr_requested`)
 
-1. `gh pr view <spec 브랜치> --json state,url,statusCheckRollup`로 PR 상태를 확인한다
+3. `gh pr view <spec 브랜치> --json state,url,statusCheckRollup`로 PR 상태를 확인한다
    (git 로컬 ancestor 체크 대신 이 `state`를 유일한 판단 기준으로 쓴다 — squash merge는
    브랜치 커밋을 main의 ancestor로 남기지 않아 git만으로는 놓칠 수 있다).
-2. `state`가 `MERGED`면 5번으로 건너뛴다.
-3. (`state`가 `OPEN`) CI 체크 중 `FAILURE`/`ERROR`가 있으면 중단한다: `regression-triage`
+4. `state`가 `MERGED`면 7번으로 건너뛴다.
+5. (`state`가 `OPEN`) CI 체크 중 `FAILURE`/`ERROR`가 있으면 중단한다: `regression-triage`
    스킬대로 실패를 분류해 기록·안내하고(CI 로그 기준 매핑 판단), `pr.md`를 "PR 생성/CI
    실패" 섹션으로 갱신한다.
-4. (3에 해당 안 함, 즉 체크가 진행 중이거나 전부 통과인데 단순히 아직 merge만 안 된
+6. (5에 해당 안 함, 즉 체크가 진행 중이거나 전부 통과인데 단순히 아직 merge만 안 된
    상태) 현재 상태를 그대로 전달하고("아직 merge되지 않았다") 중단. Status 유지.
-5. `git checkout main && git pull --ff-only`로 merge된 상태까지 로컬 main을 끌어올린다
+7. `git checkout main && git pull --ff-only`로 merge된 상태까지 로컬 main을 끌어올린다
    (테스트는 재실행하지 않는다 — PR merge 전 GitHub CI가 이미 그린을 확인했다).
-6. `traceability` 스킬 "`done` 전환 시 확인" 체크리스트대로 index.md "진행 중" 표
+8. `traceability` 스킬 "`done` 전환 시 확인" 체크리스트대로 index.md "진행 중" 표
    행 삭제 → "History" 표 맨 위에 `| US-NN | <제목> | <오늘 날짜> |` 추가(워킹 트리만,
    미커밋).
-7. `pr.md` 갱신(merge 커밋 해시). "History 이동 커밋은 명시적 요청 시에만" 안내.
+9. `pr.md` 갱신(merge 커밋 해시). "History 이동 커밋은 명시적 요청 시에만" 안내.

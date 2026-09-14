@@ -6,31 +6,63 @@
 
 ## 완료 기준 검증
 
-| AC | 검증 방법 | 결과 | 비고 |
-|---|---|---|---|
-| F1-1 | `uv run pytest -q tests/unit/test_search_cache_query.py::TestCacheGate::test_no_hook_registered_lookup_uses_cache_cfg_only` 외 (전체 `test_search_cache_query.py` 실행, 55 passed) | PASS | 훅 미등록 시 `_cache_usable`이 `cfg.enabled`만 봄을 코드/테스트로 확인 |
-| F1-2 | 위 파일 `test_hook_returns_false_blocks_lookup_even_if_enabled`, `test_hook_returns_false_blocks_store_even_if_enabled` | PASS | 훅이 False 반환 시 `infra_cache` 미호출 확인 |
-| F1-3 | 위 파일 `test_hook_returns_true_behaves_like_no_hook` | PASS | |
-| F1-4 | 위 파일 `test_unregistering_hook_restores_no_hook_behavior` | PASS | 각 테스트 종료 시 `set_cache_gate(None)` 리셋 확인, 전역 상태 누수 없음 |
-| F2-1 | 위 파일 `test_cache_usable_matches_across_lookup_and_store_paths` | PASS | `lookup`/`store` 모두 동일한 `_cache_usable` 헬퍼 호출 |
-| F3-1 | `uv run pytest -q` 전체 스위트 (753 passed, 1 skipped) 중 `tests/unit/test_search_cache_query.py`, `tests/integration/test_search_api.py`의 exact/semantic hit/miss 테스트 | PASS | |
-| F3-2 | 위 전체 스위트 중 `tests/integration/test_search_api.py::TestSearchCacheIntegration::test_cache_disabled_skips_lookup_and_store` (infra_cache mock 기반으로 수정됨, 아래 architecture 재검증 참고) | PASS | `cache_cfg.enabled=False` 시 Redis(`infra_cache.get_entry`/`set_entry`) 미호출 확인 |
-| F3-3 | 위 전체 스위트 중 `/api/search` `meta.cache_status` 검증 테스트 | PASS | 라우터의 `cache_status` 계산 줄 변경 없음 확인 |
-| F3-4 | 위 전체 스위트 중 로그 메시지 검증 테스트 | PASS | `lookup`/`store` 기존 `logger.info`/`logger.warning` 문구 변경 없음 확인 |
-| F3-5 | `uv run pytest -q tests/unit/test_search_cache_query.py tests/integration/test_search_api.py tests/unit/test_search_cache_infra.py tests/integration/test_search_cache_admin_api.py` (55 passed) | PASS | US-53/US-54 관련 테스트 전체 통과 |
-| C1 | `uv run pytest -q` (전체 스위트, 753 passed, 1 skipped) | PASS | |
+| AC | Task | 검증 방법 | 결과 | 비고 |
+|---|---|---|---|---|
+| F1-1 | T1 | `uv run pytest -q tests/unit/test_search_cache_query.py` | PASS | |
+| F1-2 | T1 | `uv run pytest -q tests/unit/test_search_cache_query.py` | PASS | |
+| F1-3 | T1 | `uv run pytest -q tests/unit/test_search_cache_query.py` | PASS | |
+| F1-4 | T1 | `uv run pytest -q tests/unit/test_search_cache_query.py` | PASS | |
+| F2-1 | T1 | `uv run pytest -q tests/unit/test_search_cache_query.py` | PASS | |
+| F3-1 | T2 | `uv run pytest -q tests/unit/test_search_cache_query.py tests/integration/test_search_cache_admin_api.py tests/integration/test_search_api.py` | PASS | |
+| F3-2 | T2 | 위와 동일 (Redis 미접근 검증은 `infra_cache.get_entry`/`set_entry` mock으로 확인, T2 진행 기록 참고) | PASS | |
+| F3-3 | T2 | 위와 동일 | PASS | |
+| F3-4 | T2 | 위와 동일 | PASS | |
+| F3-5 | T2 | `uv run pytest -q tests/unit/test_search_cache_query.py tests/unit/test_search_cache_infra.py tests/integration/test_search_cache_admin_api.py` | PASS | |
+| C1 | T2 | `uv run pytest -q` (전체 스위트) | PASS | 753 passed, 1 skipped |
 
 ## architecture 재검증
 
-- [x] design.md에 적힌 레이어/파일이 실제 코드 위치와 일치한다 — `src/rag_api/query/search_cache.py`(Query 레이어), `src/rag_api/api/routers/search.py`(API 레이어) 확인
-- [x] 역방향 참조(하위 레이어가 상위 레이어를 참조)가 생기지 않았다 — `query/search_cache.py`는 `rag_api.infra.search_cache`만 import(`from rag_api.infra import search_cache as infra_cache`), API/CLI 역참조 없음. `SearchCacheSettings`는 `TYPE_CHECKING` 블록에서만 import(런타임 의존 없음). 의존 방향 CLI→API→Query→Infra 유지
-- [x] design.md/task.md 범위에 없는 파일이 추가로 수정되지 않았다 — `git diff --stat` 기준 수정 파일은 task.md가 명시한 `src/rag_api/query/search_cache.py`, `src/rag_api/api/routers/search.py`, `tests/unit/test_search_cache_query.py`, `tests/integration/test_search_api.py`뿐(그 외는 spec 폴더 문서/커맨드 관련 변경, 코드 범위 아님). `tests/integration/test_search_api.py` 수정은 task.md 목록엔 없었으나 implementation.md가 "사실 드리프트"로 명시적으로 기록·정당화함(F3-2 유효성 유지, 검증 지점만 infra mock으로 교체) — 레이어/AC 매핑 변경 없어 설계 위반 아님
+- [x] design.md에 적힌 레이어/파일이 실제 코드 위치와 일치한다
+- [x] 역방향 참조(하위 레이어가 상위 레이어를 참조)가 생기지 않았다
+- [x] design.md/task.md 범위에 없는 파일이 추가로 수정되지 않았다 (범위 이탈 여부)
 
 (불일치 없음)
 
+- `src/rag_api/query/search_cache.py`: `TYPE_CHECKING` import는 여전히
+  `rag_api.infra.search_cache`만 참조(모듈명 `SearchCacheSettings` → `CacheSettings`로
+  바뀐 것은 main의 US-54 개명을 따른 사실 드리프트 수정일 뿐, import 방향은 변경 없음).
+  Query → Infra 순방향 유지.
+- `src/rag_api/api/routers/search.py`: `query/search_cache.py`만 참조. API → Query
+  순방향 유지.
+- task.md 범위 밖으로 추가 수정된 `src/rag_api/infra/search_cache.py`,
+  `src/rag_api/query/retriever.py`는 `git diff` 확인 결과 각각 Infra/Query 레이어
+  내부의 타입 캐스팅·애노테이션 추가뿐이며 레이어 이동이나 역방향 참조를 만들지 않는다
+  (implementation.md "외부 이상 징후"에 사용자 확인 후 같이 고친 것으로 기록돼 있고,
+  design.md도 두 파일을 "변경 없음"으로 명시했던 것과 별개로 US-55 AC 매핑에는
+  영향이 없다).
+
+## 전체 회귀 검증
+
+| 검사 | 결과 |
+|---|---|
+| `make test` | PASS |
+| `make lint` | PASS |
+| `make typecheck` | PASS |
+
+(실패 없음 — 상세 표 생략)
+
+**판정**: PASS
+
 ## 결론
 
-- [x] 전체 AC 통과 — index.md 상태를 `done`으로 전환 가능
-- [ ] 일부 실패
+- [x] 전체 AC 통과 + 전체 회귀 검증 통과 — index.md 상태를 `validated`로 전환 가능
+- [ ] 일부 실패 — 아래 세 목록을 command가 그대로 사용자에게 전달하고 처리
 
-전체 통과.
+**[설계] 실패** (없으면 "(없음)")
+(없음)
+
+**[구현] 실패 — Task 되돌림 대상** (없으면 "(없음)")
+(없음)
+
+**매핑 없는 회귀 실패** (없으면 "(없음)")
+(없음)
