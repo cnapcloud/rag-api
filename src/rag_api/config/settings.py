@@ -266,6 +266,34 @@ class AutoMergeSettings(BaseModel):
     merge_threshold: float = Field(default=0.5, ge=0.0, le=1.0, description="Merge Threshold")
 
 
+class CacheSettings(BaseModel):
+    """검색 응답(리랭크까지 끝난 최종 SearchResponse) 캐시 — US-53, US-54(retrieval 하위로 이동).
+
+    Redis를 인제스트/삭제 큐 겸용으로 확장해 캐시 저장소로도 쓴다(의도적 원칙 예외,
+    docs/internal/architecture/README.md 참고). `match_mode="semantic"`은 질의 임베딩
+    코사인 유사도 기반 근사 매칭으로, 오탐 가능성이 있어 기본 비활성이다.
+
+    retrieval.* 중 유일하게 KB별 오버라이드가 열려 있는 auto_merge와 달리, 전역 단일 정책만
+    허용한다(요청 단위로 한 번만 결정되는 mode/top_k/rerank.*와 같은 이유) — 전체 deny-list.
+    """
+
+    enabled: bool = Field(default=False, json_schema_extra={"override": False})
+    ttl_seconds: int = Field(
+        default=3600, ge=1, description="Cache TTL (sec)", json_schema_extra={"override": False},
+    )
+    max_entries: int = Field(
+        default=1000, ge=1, description="Max Cache Entries",
+        json_schema_extra={"override": False},
+    )
+    match_mode: Literal["exact", "semantic"] = Field(
+        default="exact", description="Cache Match Mode", json_schema_extra={"override": False},
+    )
+    semantic_threshold: float = Field(
+        default=0.95, ge=0.0, le=1.0, description="Semantic Match Threshold",
+        json_schema_extra={"override": False},
+    )
+
+
 class RetrievalSettings(BaseModel):
     # mode/top_k도 rerank/hybrid와 동일한 이유(요청 단위로 한 번만 결정)로 deny-list.
     mode: Literal["hybrid", "similarity"] = Field(
@@ -278,25 +306,7 @@ class RetrievalSettings(BaseModel):
     similarity: SimilaritySearchSettings = Field(default_factory=SimilaritySearchSettings)
     rerank: RerankerSettings = Field(default_factory=RerankerSettings)
     auto_merge: AutoMergeSettings = Field(default_factory=AutoMergeSettings)
-
-
-class SearchCacheSettings(BaseModel):
-    """검색 응답(리랭크까지 끝난 최종 SearchResponse) 캐시 — US-53.
-
-    Redis를 인제스트/삭제 큐 겸용으로 확장해 캐시 저장소로도 쓴다(의도적 원칙 예외,
-    docs/internal/architecture/README.md 참고). `match_mode="semantic"`은 질의 임베딩
-    코사인 유사도 기반 근사 매칭으로, 오탐 가능성이 있어 기본 비활성이다.
-    """
-
-    enabled: bool = False
-    ttl_seconds: int = Field(default=3600, ge=1, description="Cache TTL (sec)")
-    max_entries: int = Field(default=1000, ge=1, description="Max Cache Entries")
-    match_mode: Literal["exact", "semantic"] = Field(
-        default="exact", description="Cache Match Mode",
-    )
-    semantic_threshold: float = Field(
-        default=0.95, ge=0.0, le=1.0, description="Semantic Match Threshold",
-    )
+    cache: CacheSettings = Field(default_factory=CacheSettings)
 
 
 class LogSettings(BaseModel):
@@ -424,7 +434,6 @@ class Settings(BaseModel):
     provider: ProviderSettings = Field(default_factory=ProviderSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
-    search_cache: SearchCacheSettings = Field(default_factory=SearchCacheSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
     logging: LogSettings = Field(default_factory=LogSettings)

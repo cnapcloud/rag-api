@@ -1,0 +1,50 @@
+name: pr-check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - "Dockerfile"
+      - "tests/**"
+      - "src/**"
+      - "migrations/**"
+      - ".github/workflows/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Ensure make is installed
+        run: which make || (apt-get update && apt-get install -y make) || (sudo apt-get update && sudo apt-get install -y make)
+
+      - uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        env:
+          # uv's default cache-to-venv hardlinking trips the nltk pathsec
+          # patch's multiply-linked-file guard (CWE-59 hardening); copy
+          # mode avoids creating those hardlinks in the first place.
+          UV_LINK_MODE: copy
+        run: make sync
+
+      - name: Test
+        run: make test
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck

@@ -6,12 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rag_api.config.settings import SearchCacheSettings
+from rag_api.config.settings import CacheSettings
 from rag_api.query import search_cache
 
 
-def _cfg(**overrides) -> SearchCacheSettings:
-    return SearchCacheSettings(**overrides)
+def _cfg(**overrides) -> CacheSettings:
+    return CacheSettings(**overrides)
 
 
 class TestBucketHash:
@@ -78,7 +78,7 @@ class TestLookupExactMode:
             "hybrid_merge_strategy": "rrf", "min_score": 0.0,
             "rerank_enabled": True, "rerank_top_n": 3,
         }
-        cfg = _cfg(match_mode="exact")
+        cfg = _cfg(enabled=True, match_mode="exact")
 
         with patch.object(
             search_cache.infra_cache, "get_entry", return_value={"response": {"query": "hello"}},
@@ -96,7 +96,7 @@ class TestLookupExactMode:
             "hybrid_merge_strategy": "rrf", "min_score": 0.0,
             "rerank_enabled": True, "rerank_top_n": 3,
         }
-        cfg = _cfg(match_mode="exact")
+        cfg = _cfg(enabled=True, match_mode="exact")
 
         with (
             patch.object(search_cache.infra_cache, "get_entry", return_value=None),
@@ -120,7 +120,7 @@ class TestLookupSemanticMode:
     # AC: F3-5 (US-53-search-cache/T3)
     def test_similarity_above_threshold_is_hit(self) -> None:
         """유사도가 threshold 이상이면 semantic 캐시 hit을 반환한다."""
-        cfg = _cfg(match_mode="semantic", semantic_threshold=0.95)
+        cfg = _cfg(enabled=True, match_mode="semantic", semantic_threshold=0.95)
         query_embedding = [1.0, 0.0]
         # cosine([1,0],[0.96,0.28]) ~= 0.96 >= 0.95
         candidate_embedding = [0.96, 0.28]
@@ -153,7 +153,7 @@ class TestLookupSemanticMode:
     # AC: F3-5 (US-53-search-cache/T3)
     def test_similarity_below_threshold_is_miss(self) -> None:
         """유사도가 threshold 미만이면 miss로 처리하고, 재사용할 질의 임베딩은 반환한다."""
-        cfg = _cfg(match_mode="semantic", semantic_threshold=0.95)
+        cfg = _cfg(enabled=True, match_mode="semantic", semantic_threshold=0.95)
         query_embedding = [1.0, 0.0]
         # cosine([1,0],[0.5,0.87]) ~= 0.5 < 0.95
         candidate_embedding = [0.5, 0.87]
@@ -221,7 +221,7 @@ class TestStore:
             "hybrid_merge_strategy": "rrf", "min_score": 0.0,
             "rerank_enabled": True, "rerank_top_n": 3,
         }
-        cfg = _cfg(match_mode="exact")
+        cfg = _cfg(enabled=True, match_mode="exact")
 
         with patch.object(search_cache.infra_cache, "set_entry") as mock_set_entry:
             search_cache.store(
@@ -230,6 +230,155 @@ class TestStore:
 
         payload = mock_set_entry.call_args.args[2]
         assert payload["query_embedding"] is None
+
+
+class TestCacheGate:
+    """set_cache_gate/_cache_usable 게이트 판단 로직 (US-55)."""
+
+    def setup_method(self) -> None:
+        search_cache.set_cache_gate(None)
+
+    def teardown_method(self) -> None:
+        search_cache.set_cache_gate(None)
+
+    def _options(self) -> dict:
+        return {
+            "mode": "hybrid", "top_k": 10, "hybrid_alpha": 0.5,
+            "hybrid_merge_strategy": "rrf", "min_score": 0.0,
+            "rerank_enabled": True, "rerank_top_n": 3,
+        }
+
+    # AC: F1-1 (US-55-search-cache-gate-hook/T1)
+    def test_no_hook_registered_lookup_uses_cache_cfg_only(self) -> None:
+        """훅 미등록 상태에서 cfg.enabled=True면 기존과 동일하게 infra_cache를 조회한다."""
+        cfg = _cfg(enabled=True, match_mode="exact")
+
+        with patch.object(
+            search_cache.infra_cache, "get_entry", return_value={"response": {"query": "hello"}},
+        ) as mock_get_entry:
+            response, _ = search_cache.lookup("hello", ["kb-a"], self._options(), cfg)
+
+        mock_get_entry.assert_called_once()
+        assert response == {"query": "hello"}
+
+    # AC: F1-1 (US-55-search-cache-gate-hook/T1)
+    def test_no_hook_registered_store_uses_cache_cfg_only(self) -> None:
+        """훅 미등록 상태에서 cfg.enabled=True면 기존과 동일하게 infra_cache에 저장한다."""
+        cfg = _cfg(enabled=True)
+
+        with patch.object(search_cache.infra_cache, "set_entry") as mock_set_entry:
+            search_cache.store("hello", ["kb-a"], self._options(), cfg, {"query": "hello"})
+
+        mock_set_entry.assert_called_once()
+
+    # AC: F1-2 (US-55-search-cache-gate-hook/T1)
+    def test_hook_returns_false_blocks_lookup_even_if_enabled(self) -> None:
+        """훅이 False를 반환하면 cfg.enabled=True여도 lookup이 (None, None)을 반환하고 조회하지 않는다."""
+        search_cache.set_cache_gate(lambda kb_ids: False)
+        cfg = _cfg(enabled=True, match_mode="exact")
+
+        with patch.object(search_cache.infra_cache, "get_entry") as mock_get_entry:
+            response, embedding = search_cache.lookup("hello", ["kb-a"], self._options(), cfg)
+
+        mock_get_entry.assert_not_called()
+        assert (response, embedding) == (None, None)
+
+    # AC: F1-2 (US-55-search-cache-gate-hook/T1)
+    def test_hook_returns_false_blocks_store_even_if_enabled(self) -> None:
+        """훅이 False를 반환하면 cfg.enabled=True여도 store가 저장을 건너뛴다."""
+        search_cache.set_cache_gate(lambda kb_ids: False)
+        cfg = _cfg(enabled=True)
+
+        with patch.object(search_cache.infra_cache, "set_entry") as mock_set_entry:
+            search_cache.store("hello", ["kb-a"], self._options(), cfg, {"query": "hello"})
+
+        mock_set_entry.assert_not_called()
+
+    # AC: F1-3 (US-55-search-cache-gate-hook/T1)
+    def test_hook_returns_true_behaves_like_no_hook(self) -> None:
+        """훅이 True를 반환하고 cfg.enabled=True면 훅 미등록 때와 동일하게 조회가 발생한다."""
+        search_cache.set_cache_gate(lambda kb_ids: True)
+        cfg = _cfg(enabled=True, match_mode="exact")
+
+        with patch.object(
+            search_cache.infra_cache, "get_entry", return_value={"response": {"query": "hello"}},
+        ) as mock_get_entry:
+            response, _ = search_cache.lookup("hello", ["kb-a"], self._options(), cfg)
+
+        mock_get_entry.assert_called_once()
+        assert response == {"query": "hello"}
+
+    # AC: F1-4 (US-55-search-cache-gate-hook/T1)
+    def test_unregistering_hook_restores_no_hook_behavior(self) -> None:
+        """훅을 None으로 해제하면 이후 요청은 F1-1과 동일(cfg.enabled만 보는) 동작으로 돌아온다."""
+        search_cache.set_cache_gate(lambda kb_ids: False)
+        search_cache.set_cache_gate(None)
+        cfg = _cfg(enabled=True, match_mode="exact")
+
+        with patch.object(
+            search_cache.infra_cache, "get_entry", return_value={"response": {"query": "hello"}},
+        ) as mock_get_entry:
+            response, _ = search_cache.lookup("hello", ["kb-a"], self._options(), cfg)
+
+        mock_get_entry.assert_called_once()
+        assert response == {"query": "hello"}
+
+    # AC: F1-2 (US-55-search-cache-gate-hook/T1)
+    def test_hook_exception_falls_open_on_lookup(self) -> None:
+        """훅이 예외를 던지면 기존 except Exception 블록에 흡수돼 (None, None)으로 폴백한다."""
+        def _raising_hook(kb_ids: list[str]) -> bool:
+            raise RuntimeError("boom")
+
+        search_cache.set_cache_gate(_raising_hook)
+        cfg = _cfg(enabled=True, match_mode="exact")
+
+        response, embedding = search_cache.lookup("hello", ["kb-a"], self._options(), cfg)
+
+        assert (response, embedding) == (None, None)
+
+    # AC: F1-2 (US-55-search-cache-gate-hook/T1)
+    def test_hook_exception_swallowed_on_store(self) -> None:
+        """훅이 예외를 던져도 store는 예외를 흡수하고 저장을 건너뛴다."""
+        def _raising_hook(kb_ids: list[str]) -> bool:
+            raise RuntimeError("boom")
+
+        search_cache.set_cache_gate(_raising_hook)
+        cfg = _cfg(enabled=True)
+
+        with patch.object(search_cache.infra_cache, "set_entry") as mock_set_entry:
+            search_cache.store("hello", ["kb-a"], self._options(), cfg, {"query": "hello"})
+
+        mock_set_entry.assert_not_called()
+
+    # AC: F2-1 (US-55-search-cache-gate-hook/T1)
+    @pytest.mark.parametrize("enabled,hook_result", [
+        (True, None), (True, True), (True, False), (False, None), (False, True), (False, False),
+    ])
+    def test_cache_usable_matches_across_lookup_and_store_paths(
+        self, enabled: bool, hook_result: bool | None,
+    ) -> None:
+        """동일한 (kb_ids, cfg.enabled, 훅) 조합에서 lookup/store가 동일한 게이트 판단을 따른다."""
+        if hook_result is None:
+            search_cache.set_cache_gate(None)
+        else:
+            fixed_result: bool = hook_result
+
+            def _hook(kb_ids: list[str]) -> bool:
+                return fixed_result
+
+            search_cache.set_cache_gate(_hook)
+        cfg = _cfg(enabled=enabled, match_mode="exact")
+        expected_usable = search_cache._cache_usable(["kb-a"], cfg)
+
+        with (
+            patch.object(search_cache.infra_cache, "get_entry", return_value=None) as mock_get_entry,
+            patch.object(search_cache.infra_cache, "set_entry") as mock_set_entry,
+        ):
+            search_cache.lookup("hello", ["kb-a"], self._options(), cfg)
+            search_cache.store("hello", ["kb-a"], self._options(), cfg, {"query": "hello"})
+
+        assert mock_get_entry.called == expected_usable
+        assert mock_set_entry.called == expected_usable
 
 
 class TestInvalidation:

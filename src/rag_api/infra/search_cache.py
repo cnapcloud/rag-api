@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,9 @@ def evict_if_needed(max_entries: int) -> None:
         oldest = client.zrange(ORDER_KEY, 0, 0)
         if not oldest:
             break
-        full_key = oldest[0]
+        # redis client는 decode_responses=True로 생성되므로 런타임엔 항상 str이다
+        # (redis-py 스텁이 withscores 등 오버로드까지 포괄하는 넓은 유니언을 반환해 좁혀준다).
+        full_key = cast(str, oldest[0])
         client.zrem(ORDER_KEY, full_key)
 
         bucket_hash, _, query_hash = full_key.partition(":")
@@ -117,7 +119,8 @@ def get_bucket_query_hashes(bucket_hash: str) -> list[str]:
     """시맨틱 매칭 스캔용 — 버킷에 속한 query_hash 목록."""
     from rag_api.infra.redis import get_redis_client
 
-    return list(get_redis_client().smembers(_bucket_key(bucket_hash)))
+    # decode_responses=True로 런타임엔 항상 str (위 evict_if_needed의 cast와 동일한 이유).
+    return cast(list[str], list(get_redis_client().smembers(_bucket_key(bucket_hash))))
 
 
 def invalidate_kb(kb_id: str) -> int:
@@ -129,7 +132,8 @@ def invalidate_kb(kb_id: str) -> int:
 
     client = get_redis_client()
     kb_key = _kb_index_key(kb_id)
-    full_keys = client.smembers(kb_key)
+    # decode_responses=True로 런타임엔 항상 str (evict_if_needed의 cast와 동일한 이유).
+    full_keys = cast(set[str], client.smembers(kb_key))
 
     count = 0
     for full_key in full_keys:
