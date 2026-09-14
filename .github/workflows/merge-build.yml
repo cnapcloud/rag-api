@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: github-runner
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
