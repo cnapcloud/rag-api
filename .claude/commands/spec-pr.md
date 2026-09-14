@@ -27,12 +27,8 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    파일 목록을 전달하고 중단(임의로 해소 안 함).
 6. 드라이런 상태에서 전체 테스트 스위트 실행(`Makefile` test 타겟).
    - 실패 → `git merge --abort` → `git checkout <spec 브랜치>`로 원복(main에 로컬 변경
-     없이, 실패해도 항상 spec 브랜치로 돌아온다). `implementation.md` "진행 기록"에
-     `blocked` 블록 append(AC, 유형, 실패 요약). 유형: main 통합/설계 전제 문제면
-     `[설계]`, 단순 구현 버그면 `[구현]`. `[구현]`이면 task.md 완료 기준 커버리지 표로
-     실패 AC의 Task를 찾아 implementation.md Task 현황에서 `done`→`blocked`로 되돌림.
-     index.md Status를 `blocked`로 갱신. 유형에 맞게 `/spec-design`/`/spec-implement`
-     재실행 안내.
+     없이, 실패해도 항상 spec 브랜치로 돌아온다). `regression-triage` 스킬대로 실패를
+     분류해 기록·안내하고 중단한다(7번으로 넘어가지 않음).
    - 통과 → 7번.
 7. `git merge --abort` → `git checkout <spec 브랜치>`로 원복(main에 로컬 변경 없음).
 8. `git push -u origin <spec 브랜치>` → `gh pr create --base main --head <spec 브랜치>
@@ -48,14 +44,9 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 2. 조상(merge됨)이면 6번으로 건너뛴다. 아니면 3번으로.
 3. 조상 아님(미merge) → `gh pr view <spec 브랜치> --json state,url,statusCheckRollup`로
    PR 상태를 확인한다.
-4. CI 체크 중 `FAILURE`/`ERROR`가 있으면 `blocked` 처리하고 중단한다:
-   - 유형 판단: 코드 문제 `[구현]` / main 통합·설계 전제 문제 `[설계]`
-   - `implementation.md` "진행 기록"에 `blocked` 블록 append(AC, 유형, 실패 요약)
-   - `[구현]`이면 task.md 커버리지 표로 Task ID를 찾아 `implementation.md` "Task
-     현황"도 `done`→`blocked`(생략하면 `/spec-implement` 재개가 못 찾음). `[설계]`는
-     이 단계 생략
-   - `index.md` Status를 `blocked`로, `pr.md`를 "PR 생성/CI 실패" 섹션으로 갱신
-   - 유형에 맞게 `/spec-design`/`/spec-implement` 재실행 안내
+4. CI 체크 중 `FAILURE`/`ERROR`가 있으면 중단한다: `regression-triage` 스킬대로 실패를
+   분류해 기록·안내하고(CI 로그 기준 매핑 판단), `pr.md`를 "PR 생성/CI 실패" 섹션으로
+   갱신한다.
 5. (4에 해당 안 함, 즉 체크가 진행 중이거나 전부 통과인데 단순히 아직 merge만 안 된
    상태) 현재 상태를 그대로 전달하고("아직 merge되지 않았다") 중단. Status 유지.
 6. `git checkout main && git pull --ff-only`로 merge된 상태까지 로컬 main을 끌어올린다
