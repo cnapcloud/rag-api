@@ -55,15 +55,21 @@ CI 통과 후 사용자에게 별도로 물어(6번) "예"를 받은 경우에�
 5. (4 아님) 체크가 하나도 없거나 아직 진행 중인 게 남아있으면 "체크가 끝날 때까지
    기다려 달라"고 안내하고 중단. Status 유지.
 6. (4/5 아님, 즉 체크가 하나 이상 있고 전부 완료+`SUCCESS`) `state`가 이미 `MERGED`면
-   그대로 7번으로. `OPEN`이면 지금 merge할지 물어본다:
-   - **아니오** — "CI 통과, merge 대기 중"이라고 보고하고 중단한다. Status 유지,
-     `pr.md`도 갱신하지 않는다.
-   - **예** — `gh pr merge <spec 브랜치> --merge`(이 repo는 merge commit 방식을 씀,
-     제목은 기존 관례 `merge: <spec 브랜치> into main (<요약>)`)로 실제 merge를
-     실행한 뒤 7번으로.
-7. `git checkout main && git pull --ff-only`로 merge된 상태까지 로컬 main을 끌어올린다
-   (테스트는 재실행하지 않는다 — PR merge 전 GitHub CI가 이미 그린을 확인했다).
-8. `traceability` 스킬 "`done` 전환 시 확인" 체크리스트대로 index.md "진행 중" 표
-   행 삭제 → "History" 표 맨 위에 `| US-NN | <제목> | <오늘 날짜> |` 추가(워킹 트리만,
-   미커밋).
-9. `pr.md` 갱신(merge 커밋 해시). "History 이동 커밋은 명시적 요청 시에만" 안내.
+   (다른 경로로 이미 merge된 경우) 9번으로 건너뛴다. `OPEN`이면 지금 merge할지
+   물어본다:
+   - **아니오** — "CI 통과, merge 대기 중"이라고 보고하고 중단한다. Status 유지.
+     `pr.md`에 "사용자가 지금은 merge 보류" 한 줄만 append한다(다음 재실행 시 다시
+     물어봄).
+   - **예** — 7번으로.
+7. **merge 전 완료 처리 (spec 브랜치에서)** — `traceability` 스킬 "done 전환" 체크
+   리스트대로 index.md를 "진행 중" → "History"로 옮기고(merge 커밋 해시는 아직
+   없으니 생략), `pr.md`를 "merge 확인 완료(done)"로 갱신한 뒤 커밋 + push한다
+   (`.claude/specs/`는 `pr-check.yml` 감시 경로 밖 — CI 영향 없이 같은 PR에 반영).
+8. `gh pr merge <spec 브랜치> --merge`(제목: `merge: <spec 브랜치> into main
+   (<요약>)`)로 실제 merge한다.
+9. `git checkout main && git pull --ff-only`로 main을 끌어올린다(7번을 거쳤으면
+   확인만; 6번에서 곧장 넘어온 경우엔 index.md/pr.md가 아직 "진행 중"일 수 있으니
+   main 직접 커밋 여부를 사용자에게 확인 후 처리 — 브랜치 보호로 push가 막힐 수
+   있음).
+10. 최종 결과(merge 커밋, PR URL)를 사용자에게 전달한다.
+

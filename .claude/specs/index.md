@@ -40,7 +40,6 @@ Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값�
 
 | Spec | Title | Status |
 |------|-------|--------|
-| US-55 | 검색 캐시 lookup/store 데코레이터 통합 + 캐시 게이트 훅(set_cache_gate) 추가 | validated |
 
 ## History
 
@@ -53,6 +52,7 @@ Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값�
 
 | Spec | Title | Completed |
 |------|-------|-----------|
+| [US-55](US-55-search-cache-gate-hook/spec.md) | 검색 캐시 lookup/store 데코레이터 통합 + 캐시 게이트 훅(set_cache_gate) 추가 | 2026-09-14 |
 | [US-54](US-54-search-cache-retrieval-move/spec.md) | search_cache 설정을 retrieval.cache로 이동 + 개명 | 2026-09-13 |
 | [US-53](US-53-search-cache/spec.md) | 검색 응답 캐싱 — Redis 큐+캐시 겸용 확장 | 2026-09-13 |
 | [US-52](US-52-batch-upload-failure-status-and-error-surfacing/spec.md) | 배치 문서 업로드 실패 시 HTTP 상태 코드 정합성 + 실패 사유 노출 | (이관, 날짜 미상) |
