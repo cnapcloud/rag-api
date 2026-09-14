@@ -36,6 +36,11 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        env:
+          # uv's default cache-to-venv hardlinking trips the nltk pathsec
+          # patch's multiply-linked-file guard (CWE-59 hardening); copy
+          # mode avoids creating those hardlinks in the first place.
+          UV_LINK_MODE: copy
         run: make sync
 
       - name: Test
