@@ -1,24 +1,20 @@
 ---
-description: validated 상태인 spec을 main으로 PR 요청 — 전체 테스트 스위트 통과 확인 후 PR 생성, 실제 GitHub merge 확인 후 index.md를 History로 이동. 커밋/push는 이 커맨드가 하지만 로컬 merge 커밋은 만들지 않는다
+description: validated spec을 main으로 PR 요청 — 테스트+AI 코드리뷰 확인 후 PR 생성, CI 통과 시 GitHub merge까지 진행(로컬 merge 커밋 없음)
 argument-hint: [US-NN 또는 spec 폴더 경로]
 ---
 
 `/spec-pr $ARGUMENTS`. 서브에이전트 호출 없이 git/GitHub 작업만 기계적으로 처리한다.
 로컬에서 main으로 직접 merge하지 않는다 — merge는 GitHub PR을 통해서만 이뤄진다.
-`git commit`은 어떤 단계에서도 실행하지 않는다(CLAUDE.md 하드 룰). `git push`/
-`gh pr create`는 이 커맨드 호출 자체가 명시적 지시이므로 실행한다. `gh pr merge`는
-CI 통과 후 사용자에게 별도로 물어(6번) "예"를 받은 경우에만 실행한다 — merge는
-여전히 GitHub PR 기능을 통해서만 이뤄진다(로컬 merge 커밋 없음).
 
 1. `spec-resolve` 스킬로 spec 폴더 확정 + 브랜치 확인. 스킬이 멈추면 그대로 전달하고
    중단.
 2. `.claude/specs/index.md` "진행 중" 표에서 해당 행 Status로 분기:
-   - `validated` → PR 생성 경로(3번).
-   - `pr_requested` → PR Build 확인(3번).
+   - `validated` → PR 생성(3번).
+   - `pr_requested` → CI 확인 및 병합(3번).
    - `blocked` → `/spec-design` 또는 `/spec-implement`로 먼저 해소하라고 안내, 중단.
    - 그 외 → `/spec-validate`부터 통과시키라고 안내, 중단.
 
-## PR 생성 경로 (`validated`)
+## PR 생성 (`validated`)
 
 3. `git status --porcelain`으로 워킹 트리 확인. 변경 있으면 먼저 커밋/스태시하라고
    안내하고 중단(자동 커밋 안 함).
@@ -41,11 +37,17 @@ CI 통과 후 사용자에게 별도로 물어(6번) "예"를 받은 경우에�
    - 없으면(또는 `CLOSED`/`MERGED`) `gh pr create --base main --head <spec 브랜치>
      --title "<spec.md 제목>" --body "..."`(본문: spec.md 요약 + attribution footer)로
      새로 만든다. PR URL 기록.
-9. index.md Status를 `validated` → `pr_requested`로 갱신("진행 중" 표에 유지).
-10. `templates/pr.md`대로 spec 폴더에 `pr.md` 작성(있으면 덮어씀). 사용자에게: 테스트
-    결과 요약, PR URL, "PR이 merge되면 `/spec-pr` 재요청" 안내. 종료.
+9. `code-review` 스킬을 `medium` 레벨·`--comment`로 이 PR에 대해 실행한다(코멘트만
+   남김 — merge를 막지 않음). Findings가 있으면 진행 여부를 확인한다:
+   - **아니오** — 중단, `validated` 유지(재실행 시 `gh pr create`는 건너뛰고
+     재리뷰만 수행).
+   - **예 / 없음** — 10번.
+10. index.md Status를 `validated` → `pr_requested`로 갱신("진행 중" 표에 유지).
+11. `templates/pr.md`대로 spec 폴더에 `pr.md` 작성(있으면 덮어씀). 사용자에게: 테스트
+    결과 요약, AI 리뷰 결과(findings 수), PR URL, "PR이 merge되면 `/spec-pr` 재요청"
+    안내. 종료.
 
-## PR Build 확인 (`pr_requested`)
+## CI 확인 및 병합 (`pr_requested`)
 
 3. `gh pr view <spec 브랜치> --json state,statusCheckRollup`로 PR 상태와 CI 체크를
    확인한다.
@@ -56,7 +58,8 @@ CI 통과 후 사용자에게 별도로 물어(6번) "예"를 받은 경우에�
    기다려 달라"고 안내하고 중단. Status 유지.
 6. (4/5 아님, 즉 체크가 하나 이상 있고 전부 완료+`SUCCESS`) `state`가 이미 `MERGED`면
    (다른 경로로 이미 merge된 경우) 9번으로 건너뛴다. `OPEN`이면 지금 merge할지
-   물어본다:
+   물어본다(7번의 index.md/pr.md 정리 커밋까지 포함해서 진행됨을 함께 안내 —
+   CLAUDE.md 하드 룰상 커밋은 이 확인으로만 승인됨):
    - **아니오** — "CI 통과, merge 대기 중"이라고 보고하고 중단한다. Status 유지.
      `pr.md`에 "사용자가 지금은 merge 보류" 한 줄만 append한다(다음 재실행 시 다시
      물어봄).
