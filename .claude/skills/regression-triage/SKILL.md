@@ -5,7 +5,7 @@ description: 구현 완료 후 발견된 테스트/빌드 실패를 [설계]/[�
 
 # Regression Triage — 실패 분류 + 기록
 
-목적: "구현이 끝난 뒤"(validate 검증, PR 드라이런 병합, PR CI) 어느 시점에서 발견되든
+목적: "구현이 끝난 뒤"(validate 검증, PR CI) 어느 시점에서 발견되든
 같은 방식으로 분류하고 같은 곳에 기록해, `/spec-implement`·`/spec-design`의 재개 로직이
 어디서 왔든 일관되게 집어낼 수 있게 한다.
 
@@ -55,8 +55,6 @@ PR 진행)로 넘어간다.
 - **`/spec-validate`**(기준) — `validator`가 AC 검증 + 전체 회귀 검증(`make test`/
   `lint`/`typecheck`)으로 찾은 실패를 이 분류로 반환하고, 커맨드가 위 기록/안내를
   수행한다.
-- **`/spec-pr` PR 생성 경로** — main에 대한 드라이런 병합 상태에서 돌린 전체 테스트
-  스위트 실패를 이 분류로 정리한다.
-- **`/spec-pr` merge 확인 경로** — GitHub PR CI 체크 실패(`FAILURE`/`ERROR`)를 이
-  분류로 정리한다. CI 로그는 파일:줄이 없을 수 있으니 실패 텍스트/스택트레이스 선에서
-  매핑을 판단한다.
+- **`/spec-pr` CI 확인 경로** — GitHub PR CI 체크 실패(`FAILURE`/`ERROR`)를 이 분류로
+  정리한다. CI 로그는 파일:줄이 없을 수 있으니 실패 텍스트/스택트레이스 선에서 매핑을
+  판단한다.

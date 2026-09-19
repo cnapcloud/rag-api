@@ -1,10 +1,12 @@
 ---
-description: validated spec을 main으로 PR 요청 — 테스트+AI 코드리뷰 확인 후 PR 생성, CI 통과 시 GitHub merge까지 진행(로컬 merge 커밋 없음)
+description: validated spec을 main으로 PR 요청 — AI 코드리뷰 확인 후 PR 생성, CI 통과 시 GitHub merge까지 진행(로컬 main 전환/merge 커밋 없음)
 argument-hint: [US-NN 또는 spec 폴더 경로]
 ---
 
 `/spec-pr $ARGUMENTS`. 서브에이전트 호출 없이 git/GitHub 작업만 기계적으로 처리한다.
 로컬에서 main으로 직접 merge하지 않는다 — merge는 GitHub PR을 통해서만 이뤄진다.
+로컬 main 브랜치는 건드리지 않는다(`checkout main`/`pull` 없음) — 항상 spec 브랜치
+위에서만 작업한다. main과의 통합 테스트는 GitHub CI가 전담한다.
 
 1. `spec-resolve` 스킬로 spec 폴더 확정 + 브랜치 확인. 스킬이 멈추면 그대로 전달하고
    중단.
@@ -18,18 +20,7 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
 
 3. `git status --porcelain`으로 워킹 트리 확인. 변경 있으면 먼저 커밋/스태시하라고
    안내하고 중단(자동 커밋 안 함).
-4. `git checkout main && git pull --ff-only`. fast-forward 실패 시 중단하고 알림
-   (임의로 merge/rebase 안 함).
-5. `git merge --no-ff --no-commit <spec 브랜치>`로 드라이런(충돌·회귀를 PR 전에
-   미리 확인하는 용도 — 나중에 반드시 abort). 충돌 시 `git merge --abort` 후 충돌
-   파일 목록을 전달하고 중단(임의로 해소 안 함).
-6. 드라이런 상태에서 전체 테스트 스위트 실행(`Makefile` test 타겟).
-   - 실패 → `git merge --abort` → `git checkout <spec 브랜치>`로 원복(main에 로컬 변경
-     없이, 실패해도 항상 spec 브랜치로 돌아온다). `regression-triage` 스킬대로 실패를
-     분류해 기록·안내하고 중단한다(7번으로 넘어가지 않음).
-   - 통과 → 7번.
-7. `git merge --abort` → `git checkout <spec 브랜치>`로 원복(main에 로컬 변경 없음).
-8. `git push -u origin <spec 브랜치>`. `gh pr view <spec 브랜치> --json url,state`로
+4. `git push -u origin <spec 브랜치>`. `gh pr view <spec 브랜치> --json url,state`로
    이미 열린 PR이 있는지 확인한다(CI 실패 등으로 `blocked`됐다가 고쳐서 다시
    `validated`로 돌아온 재요청일 수 있음):
    - `OPEN`인 PR이 있으면 `gh pr create`는 건너뛴다 — 같은 브랜치라 push만으로 그
@@ -37,15 +28,15 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    - 없으면(또는 `CLOSED`/`MERGED`) `gh pr create --base main --head <spec 브랜치>
      --title "<spec.md 제목>" --body "..."`(본문: spec.md 요약 + attribution footer)로
      새로 만든다. PR URL 기록.
-9. `code-review` 스킬을 `medium` 레벨·`--comment`로 이 PR에 대해 실행한다(코멘트만
+5. `code-review` 스킬을 `medium` 레벨·`--comment`로 이 PR에 대해 실행한다(코멘트만
    남김 — merge를 막지 않음). Findings가 있으면 진행 여부를 확인한다:
    - **아니오** — 중단, `validated` 유지(재실행 시 `gh pr create`는 건너뛰고
      재리뷰만 수행).
-   - **예 / 없음** — 10번.
-10. index.md Status를 `validated` → `pr_requested`로 갱신("진행 중" 표에 유지).
-11. `templates/pr.md`대로 spec 폴더에 `pr.md` 작성(있으면 덮어씀). 사용자에게: 테스트
-    결과 요약, AI 리뷰 결과(findings 수), PR URL, "PR이 merge되면 `/spec-pr` 재요청"
-    안내. 종료.
+   - **예 / 없음** — 6번.
+6. index.md Status를 `validated` → `pr_requested`로 갱신("진행 중" 표에 유지).
+7. `templates/pr.md`대로 spec 폴더에 `pr.md` 작성(있으면 덮어씀). 사용자에게: AI 리뷰
+   결과(findings 수), PR URL, "CI 결과는 다음 `/spec-pr` 재요청 때 확인, merge되면 다시
+   재요청" 안내. 종료.
 
 ## CI 확인 및 병합 (`pr_requested`)
 
@@ -71,9 +62,5 @@ argument-hint: [US-NN 또는 spec 폴더 경로]
    밖 — CI 영향 없이 같은 PR에 반영).
 8. `gh pr merge <spec 브랜치> --merge`(제목: `merge: <spec 브랜치> into main
    (<요약>)`)로 실제 merge한다.
-9. `git checkout main && git pull --ff-only`로 main을 끌어올린다(7번을 거쳤으면
-   확인만; 6번에서 곧장 넘어온 경우엔 index.md/pr.md가 아직 "진행 중"일 수 있으니
-   main 직접 커밋 여부를 사용자에게 확인 후 처리 — 브랜치 보호로 push가 막힐 수
-   있음).
-10. 최종 결과(merge 커밋, PR URL)를 사용자에게 전달한다.
+9. 최종 결과(merge 커밋, PR URL)를 사용자에게 전달한다.
 

@@ -15,18 +15,17 @@ merge 확인 대기중.>
 | 항목 | 값 |
 |---|---|
 | PR | `<PR URL>` |
-| 테스트 스위트(드라이런) | `<실행한 커맨드>` — `<n> passed, <m> skipped/failed>` |
+| AI 코드리뷰 | `<findings 수>`건 (`medium`, `--comment`) |
 | index.md Status | `validated` → `pr_requested` |
-| 다음 액션 | PR이 GitHub에서 merge되면 `/spec-pr` 재실행 |
+| 다음 액션 | CI 결과는 `/spec-pr` 재실행 때 확인, PR이 GitHub에서 merge되면 다시 재실행 |
 
 ### PR 생성/CI 실패
 
 | 항목 | 값 |
 |---|---|
-| 실패 단계 | <충돌(5번) / 테스트(6번) / PR CI 체크(A1번)> |
-| 유형 | `[설계]` / `[구현]` / (해당 없음 — 충돌 등 git 자체 이슈) |
-| 이유 | <실패한 테스트/충돌 파일/CI 체크 이름 요약, 왜 그런지> |
-| 되돌린 것 | `git merge --abort`로 드라이런 취소함 (PR CI 실패는 되돌릴 git 작업 없음) |
+| 실패 단계 | PR CI 체크 |
+| 유형 | `[설계]` / `[구현]` / (해당 없음 — 매핑 안 되는 회귀) |
+| 이유 | <실패한 CI 체크 이름/로그 요약, 왜 그런지> |
 | index.md Status | <`validated` 그대로 / `pr_requested` → `blocked`로 변경> |
 | 다음 액션 | `/spec-design` / `/spec-implement` / 사용자 판단 필요 |
 

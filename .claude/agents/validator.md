@@ -45,11 +45,14 @@ model: sonnet
    - 역방향 참조만 실제로 Read/Grep해 import 방향을 확인한다(여러 파일이면 병렬로 조회).
    - 불일치가 있으면 관련 AC를 `[설계]` FAIL 후보로 표시한다.
 3. **AC별 검증** — 결과를 "완료 기준 검증" 표에 바로 채운다(이후 다시 옮겨 적지 않음).
-   - 2번에서 FAIL 후보로 표시된 AC는 테스트 없이 바로 `[설계]` FAIL로 기록한다.
-   - 나머지는 `uv run pytest -q <경로>` 또는 spec.md의 수동 확인 절차로 검증한다 —
-     같은 테스트 경로에 매핑된 AC는 한 번만 실행하고 결과를 나눠 반영한다. 실패는
-     `[구현]` FAIL(1번에서 채운 매핑 Task ID가 되돌림 대상).
-   - 파일을 고치는 건 command 몫이다 — validator는 기록만 한다.
+   - 2번 FAIL 후보 AC는 테스트 없이 바로 `[설계]` FAIL로 기록한다.
+   - 나머지는 매핑된 Task "진행 기록"의 최신 `done` 블록 기준으로 판단한다: `done`
+     블록이 있고 task.md "관련 파일"이 전부 `implementation.md`보다 오래됐으면(미변경)
+     그 결과를 재사용하고(비고: `(재사용: implementation.md)`), 아니면
+     `uv run pytest -q <경로>`(또는 spec.md 수동 확인 절차)로 직접 검증한다.
+   - 같은 테스트 경로에 매핑된 AC는 한 번만 확인해 나눠 반영한다. 실패는 `[구현]`
+     FAIL(1번에서 채운 매핑 Task ID가 되돌림 대상).
+   - 파일 수정은 command 몫 — validator는 기록만 한다.
 4. **전체 회귀 검증** (spec.md AC 체계와 무관한 별도 판정) — `make test`, `make lint`,
    `make typecheck`를 실행하고 검사별 PASS/FAIL을 "전체 회귀 검증" 표에 기록한다.
    실패가 있으면 위치별로 task.md 어느 Task의 "관련 파일"에 속하는지 확인해 "실패
