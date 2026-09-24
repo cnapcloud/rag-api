@@ -1,54 +1,21 @@
 # Specs Index
 
-`.claude/backlogs/`+`plans/`에 있던 US-01~52를 이 인덱스 아래로 이관했다 (각 항목
-`backlogs/US-NN-*.md` → `specs/US-NN-*/spec.md`, 대응하는 `plans/*.md`가 있으면
-`specs/US-NN-*/plan.md`로 통합, 없으면 원래도 "통합(backlog 참고)"라 plan.md 없음).
-`backlogs/spec.md`·`plans/plan.md` 인덱스 자체는 이관 완료 표시만 남기고 더 이상
-갱신하지 않는다 — 이제부터는 이 파일이 유일한 인덱스다.
-
 ## 마지막 채번 번호
+
+<!-- 다음 번호는 이 값 + 1. "진행 중" 표는 비어 있을 수 있으니 표 스캔 대신 반드시 이 필드만 본다. -->
 
 **US-55**
 
-`/spec-new`가 새 번호를 줄 때 이 값 + 1을 쓰고, 쓰자마자 이 줄도 그 번호로 갱신한다.
-"진행 중" 표는 완료되면 History로 옮겨져 비어 있을 수 있으므로, 다음 번호는 표를
-스캔해서 구하지 말고 반드시 이 필드 하나만 보고 정한다.
-
 ## 진행 중
 
-`/spec-new`로 항목이 생성되면 여기 한 줄 추가된다(status: `todo`). `/spec-pr`이 PR을
-생성하고, 그 PR이 GitHub에서 실제로 merge된 것까지 재확인한 순간에만 이 표에서 지우고
-아래 History로 그 행을 옮긴다. 즉 이 표에는 항상 아직 main에 merge되지 않은 spec만
-남는다.
-
-Status는 마지막으로 완료된 단계를 나타낸다(`done`은 별도 값이 아니라 History로
-옮겨지는 것 자체로 표현한다):
-
-| Status | 완료된 단계 |
-|---|---|
-| `todo` | (없음 — 방금 생성됨) |
-| `specified` | spec.md |
-| `designed` | design.md/task.md |
-| `implemented` | 전체 task |
-| `validated` | AC 전수 검증 통과 — `/spec-pr`로 PR 생성 대기 |
-| `pr_requested` | `/spec-pr`이 GitHub PR을 생성함 — 실제 merge 대기, merge되면 `/spec-pr` 재실행으로 `done` 전환 |
-| `blocked` | 설계/구현/검증/merge 중 이슈로 정지 |
-
-정확한 갱신 시점·조건은 이 값을 쓰는 각 command(`spec-new`/`spec-design`/
-`spec-implement`/`spec-validate`/`spec-pr`)가 유일한 소스다 — 여기서 다시
-설명하지 않는다.
+<!-- status: todo -> specified -> designed -> implemented -> validated -> pr_requested -> (merge 확인 후 History로 이동, blocked는 언제든 가능) -->
 
 | Spec | Title | Status |
 |------|-------|--------|
 
 ## History
 
-완료된 spec만 여기 쌓인다. 최근 항목이 위로 오게 추가한다.
-
-> 아래 US-01~52 이관분은 옛 `backlogs/spec.md`에 완료 날짜가 없어 "Completed"에
-> 실제 날짜를 채우지 못했다 — US 번호 내림차순(번호가 클수록 최근)을 실제 완료 순서의
-> 근사치로 대신 사용한다. US-53 이후 신규 항목부터는 validator가 `done` 전환 시점의
-> 실제 날짜를 기록한다.
+<!-- US-01~52는 backlog 이관분이라 완료일 미상, 번호 내림차순을 근사 순서로 사용 -->
 
 | Spec | Title | Completed |
 |------|-------|-----------|
