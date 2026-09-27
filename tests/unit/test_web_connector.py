@@ -925,7 +925,9 @@ class TestDispatchSync:
 
 class TestExtractTitle:
 
+    # AC: F2-1 (US-56-connector-title-last-segment/T2)
     def test_og_title_wins(self):
+        """og:title wins even when <title> and h1/article h1 elements are also present."""
         from rag_api.connectors.web import _extract_title
 
         html = """
@@ -936,25 +938,20 @@ class TestExtractTitle:
         """
         assert _extract_title(html, "fallback") == "OG Title"
 
-    def test_article_h1_wins_over_h1(self):
+    # AC: F2-2 (US-56-connector-title-last-segment/T2)
+    def test_html_title_used_when_no_og_even_with_article_h1(self):
+        """Without og:title, <title> wins even when article h1 text differs — h1 is no longer consulted."""
         from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head><title>HTML Title</title></head>
-        <body><article><h1>Article H1</h1></article><h1>Top H1</h1></body></html>
+        <body><article><h1>다른 텍스트</h1></article></body></html>
         """
-        assert _extract_title(html, "fallback") == "Article H1"
+        assert _extract_title(html, "fallback") == "HTML Title"
 
-    def test_h1_wins_over_title(self):
-        from rag_api.connectors.web import _extract_title
-
-        html = """
-        <html><head><title>HTML Title</title></head>
-        <body><h1>Page H1</h1></body></html>
-        """
-        assert _extract_title(html, "fallback") == "Page H1"
-
+    # AC: F2-2 (US-56-connector-title-last-segment/T2)
     def test_html_title_used_when_no_h1(self):
+        """<title> is used when there is no og:title and no headings at all."""
         from rag_api.connectors.web import _extract_title
 
         html = """
@@ -964,12 +961,14 @@ class TestExtractTitle:
         assert _extract_title(html, "fallback") == "HTML Title"
 
     def test_fallback_url_used_when_no_metadata(self):
+        """When neither og:title nor <title> is present, the caller-provided fallback is returned as-is."""
         from rag_api.connectors.web import _extract_title
 
         html = "<html><body><p>No metadata.</p></body></html>"
         assert _extract_title(html, "https://example.com/page") == "https://example.com/page"
 
     def test_empty_og_content_falls_through(self):
+        """Empty og:title content falls through to <title>."""
         from rag_api.connectors.web import _extract_title
 
         html = """
@@ -980,14 +979,46 @@ class TestExtractTitle:
         """
         assert _extract_title(html, "fallback") == "HTML Title"
 
-    def test_empty_h1_falls_through_to_title(self):
+    # AC: F2-2 (US-56-connector-title-last-segment/T2)
+    def test_h1_never_wins_over_title(self):
+        """A bare h1 (no article wrapper) is never consulted; <title> wins."""
         from rag_api.connectors.web import _extract_title
 
         html = """
         <html><head><title>HTML Title</title></head>
-        <body><h1>   </h1></body></html>
+        <body><h1>Page H1</h1></body></html>
         """
         assert _extract_title(html, "fallback") == "HTML Title"
+
+
+# ──────────────────────────────────────────────
+# _url_last_segment — fallback title source
+# ──────────────────────────────────────────────
+
+class TestUrlLastSegment:
+
+    # AC: F2-3 (US-56-connector-title-last-segment/T2)
+    def test_returns_last_path_segment(self):
+        """A URL with a multi-segment path yields its final segment."""
+        from rag_api.connectors.web import _url_last_segment
+
+        assert _url_last_segment("https://example.com/docs/getting-started") == "getting-started"
+
+    # AC: F2-4 (US-56-connector-title-last-segment/T2)
+    def test_trailing_slash_falls_back_to_previous_segment(self):
+        """A trailing-slash URL still yields a non-empty, human-identifiable segment."""
+        from rag_api.connectors.web import _url_last_segment
+
+        assert _url_last_segment("https://example.com/docs/") == "docs"
+
+    # AC: F2-4 (US-56-connector-title-last-segment/T2)
+    def test_root_url_falls_back_to_netloc(self):
+        """A root URL with no path segments falls back to the domain rather than an empty string."""
+        from rag_api.connectors.web import _url_last_segment
+
+        result = _url_last_segment("https://example.com/")
+        assert result == "example.com"
+        assert result != ""
 
 
 # ──────────────────────────────────────────────

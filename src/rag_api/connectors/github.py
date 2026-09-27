@@ -214,7 +214,7 @@ class GitHubConnector:
             doc = create_doc(
                 kb_id=kb_id,
                 source=source_uri,
-                title=path,
+                title=Path(path).name,
                 source_type="github",
                 status="fetching",
                 connector_id=connector_id,
@@ -252,7 +252,9 @@ class GitHubConnector:
             logger.warning("S3 stage failed for file: source_uri=%s err=%s", source_uri, e)
             return
 
-        set_staged(doc_id, title=path, storage_key=storage_key, content_version=sha, file_size=len(content))
+        set_staged(
+            doc_id, title=Path(path).name, storage_key=storage_key, content_version=sha, file_size=len(content)
+        )
         enqueue_upload_event(doc_id, force=False)
         logger.info(
             "GitHub file staged: source_uri=%s doc_id=%s path=%r",

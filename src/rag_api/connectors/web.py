@@ -73,9 +73,24 @@ def _has_sufficient_content(html: str, min_chars: int) -> bool:
         return True
 
 
+def _url_last_segment(url: str) -> str:
+    """Return the last non-empty path segment of a URL, falling back to netloc or the raw URL.
+
+    Used as the final fallback for title extraction so a bare URL string is never
+    surfaced as a document title (F2-4).
+    """
+    parsed = urlparse(url)
+    segments = [seg for seg in parsed.path.split("/") if seg]
+    if segments:
+        return segments[-1]
+    if parsed.netloc:
+        return parsed.netloc
+    return url
+
+
 def _extract_title(html: str, fallback: str) -> str:
     """Return page title from HTML using priority order:
-    og:title -> article h1 -> h1 -> <title> -> fallback URL.
+    og:title -> <title> -> fallback.
     """
     try:
         from bs4 import BeautifulSoup
@@ -85,18 +100,6 @@ def _extract_title(html: str, fallback: str) -> str:
         og = soup.select_one('meta[property="og:title"]')
         if og and og.get("content"):
             return str(og["content"]).strip()
-
-        article_h1 = soup.select_one("article h1")
-        if article_h1:
-            text = article_h1.get_text(strip=True)
-            if text:
-                return text
-
-        h1 = soup.select_one("h1")
-        if h1:
-            text = h1.get_text(strip=True)
-            if text:
-                return text
 
         tag = soup.find("title")
         if tag and tag.string:
@@ -361,7 +364,7 @@ class WebConnector:
                 fields: dict = {}
                 if doc.get("connector_id") != connector_id:
                     fields["connector_id"] = connector_id
-                new_title = _extract_title(html, source_uri)
+                new_title = _extract_title(html, _url_last_segment(source_uri))
                 if new_title != doc.get("title"):
                     fields["title"] = new_title
                     logger.info(
@@ -391,7 +394,7 @@ class WebConnector:
             set_fetching(doc["doc_id"], connector_id=connector_id)
 
         doc_id = doc["doc_id"]
-        title = _extract_title(html, source_uri)
+        title = _extract_title(html, _url_last_segment(source_uri))
 
         # [3-3] Stage raw HTML to object storage.
         storage_key = f"{kb_id}/web/{doc_id}.html"
