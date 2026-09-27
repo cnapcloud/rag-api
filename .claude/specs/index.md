@@ -4,7 +4,7 @@
 
 <!-- 다음 번호는 이 값 + 1. "진행 중" 표는 비어 있을 수 있으니 표 스캔 대신 반드시 이 필드만 본다. -->
 
-**US-55**
+**US-56**
 
 ## 진행 중
 
@@ -12,6 +12,7 @@
 
 | Spec | Title | Status |
 |------|-------|--------|
+| [US-56](US-56-connector-title-last-segment/spec.md) | GitHub/Web 커넥터 title 결정 방식 변경 | validated |
 
 ## History
 

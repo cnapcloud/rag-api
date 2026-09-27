@@ -185,6 +185,10 @@ class TestProcessFile:
         assert call_kwargs["source_type"] == "github"
         assert call_kwargs["doc_type"] == "py"
         assert call_kwargs["source"] == _SOURCE_URI
+        # AC: F1-1 (US-56-connector-title-last-segment/T1)
+        assert call_kwargs["title"] == "main.py"
+        # AC: F1-4 (US-56-connector-title-last-segment/T1)
+        assert call_kwargs["source"] == _SOURCE_URI
 
         mock_upload.assert_called_once()
         mock_enqueue.assert_called_once_with(_DOC_ID, force=False)
@@ -242,6 +246,31 @@ class TestProcessFile:
             connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, self._item())
 
         mock_update.assert_any_call(_DOC_ID, {"status": "fetching", "connector_id": CONNECTOR_ID})
+        # AC: F1-3 (US-56-connector-title-last-segment/T1)
+        # Re-staging (update path, not initial create) also sets title to the last path segment.
+        staged_call = next(
+            call for call in mock_update.call_args_list if "title" in call.args[1]
+        )
+        assert staged_call.args[1]["title"] == "main.py"
+
+    def test_root_file_title_is_full_name(self):
+        """A root-level file (no directory segments) uses its own name as title."""
+        connector = _make_connector()
+        new_doc = {"doc_id": _DOC_ID}
+        item = self._item(path="README.md", sha="readme-sha", size=200)
+
+        with (
+            patch("rag_api.infra.postgres.get_doc_by_source", return_value=None),
+            patch("rag_api.infra.postgres.create_doc", return_value=new_doc) as mock_create,
+            patch("rag_api.infra.postgres.update_doc_fields"),
+            patch("rag_api.infra.s3.upload_object"),
+            patch("rag_api.pipeline.queue.enqueue.enqueue_upload_event"),
+            patch.object(connector, "_download_file", return_value=b"# hello"),
+        ):
+            connector._process_file(MagicMock(), KB_ID, CONNECTOR_ID, item)
+
+        # AC: F1-2 (US-56-connector-title-last-segment/T1)
+        assert mock_create.call_args.kwargs["title"] == "README.md"
 
 
 # ─── chunk.py code routing ────────────────────────────────────────────────────
