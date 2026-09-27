@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 
 from llama_index.core.schema import BaseNode
+from tenacity import retry, retry_if_exception_message, stop_after_attempt, wait_exponential
 
 from rag_api.config.settings import get_settings, resolve_provider_conn
 from rag_api.exceptions import ConfigError
@@ -157,9 +158,18 @@ async def _embed_batch_async(
     """Dense + Sparse 벡터를 asyncio.gather로 병렬 생성한다."""
     from rag_api.pipeline.utils.sparse import compute_sparse_tf
 
+    @retry(
+        retry=retry_if_exception_message(match=r".*[Cc]oncurrency limit exceeded.*"),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(5),
+        reraise=True,
+    )
+    def _get_text_embedding_batch(batch: list[str]) -> list[list[float]]:
+        return embed_model.get_text_embedding_batch(batch)
+
     async def embed_dense_batch(batch: list[str]) -> list[list[float]]:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, embed_model.get_text_embedding_batch, batch)
+        return await loop.run_in_executor(None, _get_text_embedding_batch, batch)
 
     async def embed_sparse_batch(batch: list[str]) -> list[tuple[list[int], list[float]]]:
         all_indices, all_values = compute_sparse_tf(batch)

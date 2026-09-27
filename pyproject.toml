@@ -40,6 +40,8 @@ dependencies = [
     "olefile>=0.46",
     # 리랭커
     "httpx>=0.27.0",
+    # 재시도/백오프
+    "tenacity>=9.0.0",
     # 웹 커넥터
     "trafilatura>=0.9.0",
     # GitHub 커넥터 — CodeSplitter
