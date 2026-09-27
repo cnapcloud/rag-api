@@ -1,4 +1,4 @@
-.PHONY: install sync lock check-lock build push test lint typecheck compile clean docker-build docker-push
+.PHONY: install sync lock lock-upgrade check-lock build push test lint typecheck compile clean docker-build docker-push
 
 UV = uv
 
@@ -18,9 +18,12 @@ sync:
 lock:
 	$(UV) lock
 
-# Fail fast if uv.lock is out of date w.r.t. pyproject.toml. The Docker build runs
-# `uv sync --frozen`, which installs strictly from uv.lock and never re-resolves, so a stale
-# lock silently ships an image missing newly-added deps. Run `make lock` (and commit) first.
+# Re-resolve all deps to latest compatible versions (e.g. for Dependabot patches)
+lock-upgrade:
+	$(UV) lock --upgrade
+
+# Fail fast if uv.lock is stale — Docker's `uv sync --frozen` never re-resolves.
+# Run `make lock` (and commit) first.
 check-lock:
 	$(UV) lock --check
 
