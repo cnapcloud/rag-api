@@ -12,7 +12,6 @@
 
 | Spec | Title | Status |
 |------|-------|--------|
-| [US-56](US-56-connector-title-last-segment/spec.md) | GitHub/Web 커넥터 title 결정 방식 변경 | validated |
 
 ## History
 
@@ -20,6 +19,7 @@
 
 | Spec | Title | Completed |
 |------|-------|-----------|
+| [US-56](US-56-connector-title-last-segment/spec.md) | GitHub/Web 커넥터 title 결정 방식 변경 | 2026-09-27 |
 | [US-55](US-55-search-cache-gate-hook/spec.md) | 검색 캐시 lookup/store 데코레이터 통합 + 캐시 게이트 훅(set_cache_gate) 추가 | 2026-09-14 |
 | [US-54](US-54-search-cache-retrieval-move/spec.md) | search_cache 설정을 retrieval.cache로 이동 + 개명 | 2026-09-13 |
 | [US-53](US-53-search-cache/spec.md) | 검색 응답 캐싱 — Redis 큐+캐시 겸용 확장 | 2026-09-13 |
