@@ -70,6 +70,7 @@ async def search(
                 **({"page_num": r.page_num} if r.page_num is not None else {}),
                 **({"page_label": r.page_label} if r.page_label else {}),
                 **({"rerank_score": round(r.rerank_score, 6)} if r.rerank_score is not None else {}),
+                **({"download_url": r.download_url} if r.download_url else {}),
             }
             for r in final_results
         ],
