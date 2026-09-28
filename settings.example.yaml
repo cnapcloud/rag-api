@@ -102,6 +102,9 @@ knowledge_bases:
     name: "Knowledge Base 02"
     description: "Second knowledge base."
 
+download:
+  base_url: null   # set to an absolute origin (e.g. "https://rag-api.internal") to make search results' download_url absolute
+
 mcp:
   enabled: true
   transport: streamable-http

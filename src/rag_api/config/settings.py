@@ -317,6 +317,12 @@ class LogSettings(BaseModel):
     names: list[str] = Field(default_factory=lambda: ["rag_api"])
 
 
+class DownloadSettings(BaseModel):
+    # Set when search results' download_url should be an absolute URL (e.g. exposed to an
+    # LLM outside this API's own request context). None keeps the existing relative path.
+    base_url: str | None = None
+
+
 class McpSettings(BaseModel):
     enabled: bool = True
     transport: str = "stdio"   # stdio | sse | streamable-http
@@ -434,6 +440,7 @@ class Settings(BaseModel):
     provider: ProviderSettings = Field(default_factory=ProviderSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    download: DownloadSettings = Field(default_factory=DownloadSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     tracing: TracingSettings = Field(default_factory=TracingSettings)
     logging: LogSettings = Field(default_factory=LogSettings)

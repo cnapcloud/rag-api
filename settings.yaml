@@ -126,6 +126,9 @@ knowledge_bases:
     name: "지식베이스 02"
     description: "두 번째 지식베이스입니다."
 
+download:
+  base_url: null   # set to absolute origin (e.g. "https://rag-api.internal") to make search results' download_url absolute
+
 mcp:
   enabled: true
   transport: streamable-http

@@ -65,12 +65,20 @@ def _build_index(kb_id: str, embed_model=None):
     return VectorStoreIndex.from_vector_store(vector_store, embed_model=em)
 
 
+def _build_download_url(kb_id: str, doc_id: str, source_type: str) -> str | None:
+    if source_type != "s3":
+        return None
+    path = f"/api/kb/{kb_id}/docs/{doc_id}/download"
+    base_url = get_settings().download.base_url
+    return f"{base_url.rstrip('/')}{path}" if base_url else path
+
+
 def _node_to_result(kb_id: str, node) -> QueryResult:
     meta = node.metadata
     source = meta.get("source", "")
     source_type = meta.get("source_type", "")
     doc_id = meta.get("doc_id", "")
-    download_url = f"/api/kb/{kb_id}/docs/{doc_id}/download" if source_type == "s3" else None
+    download_url = _build_download_url(kb_id, doc_id, source_type)
     return QueryResult(
         chunk_id=node.node_id,
         kb_id=kb_id,
