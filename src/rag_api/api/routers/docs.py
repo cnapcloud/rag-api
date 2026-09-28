@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +39,39 @@ def _check_ext(filename: str) -> str:
 
 def _build_storage_key(kb_id: str, filename: str) -> str:
     return f"{kb_id}/{filename}"
+
+
+_DOWNLOAD_TITLE_MAX_LEN = 30
+_ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_FILENAME_BOUNDARY = re.compile(r"[^0-9A-Za-z가-힣]")
+
+
+def _sanitize_filename_part(name: str) -> str:
+    return _ILLEGAL_FILENAME_CHARS.sub("_", name).strip(" ._")
+
+
+def _truncate_at_boundary(name: str, max_len: int) -> str:
+    if len(name) <= max_len:
+        return name
+    window = name[:max_len]
+    boundary = max((m.start() for m in _FILENAME_BOUNDARY.finditer(window)), default=-1)
+    return window[:boundary] if boundary > 0 else window
+
+
+def _build_download_filename(title: str | None, doc_type: str | None, doc_id: str) -> str:
+    """Derive a download filename from the doc title, falling back to doc_id."""
+    base = (title or "").strip() or doc_id
+
+    ext = Path(base).suffix.lstrip(".")
+    stem = base[: -(len(ext) + 1)] if ext else base
+    if not ext and doc_type:
+        ext = doc_type
+
+    stem = _truncate_at_boundary(_sanitize_filename_part(stem), _DOWNLOAD_TITLE_MAX_LEN)
+    stem = re.sub(r"[^0-9A-Za-z가-힣]+$", "", stem)  # trim trailing separator remnants from truncation
+    stem = _sanitize_filename_part(stem) or doc_id
+
+    return f"{stem}.{ext}" if ext else stem
 
 
 @router.post("/kb/{kb_id}/docs/upload", status_code=202)
@@ -540,8 +574,10 @@ async def download_doc(kb_id: str, doc_id: str):
     except ClientError as e:
         raise NotFoundError(f"File not found in storage: {storage_key}") from e
 
-    filename = Path(storage_key).name
-    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    storage_filename = Path(storage_key).name
+    content_type = mimetypes.guess_type(storage_filename)[0] or "application/octet-stream"
+    doc_type = doc.get("doc_type") or Path(storage_key).suffix.lstrip(".")
+    filename = _build_download_filename(doc.get("title"), doc_type, doc_id)
 
     def _iter():
         yield from resp["Body"].iter_chunks(chunk_size=65536)
