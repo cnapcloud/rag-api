@@ -34,6 +34,7 @@ class QueryResult:
     source: str = ""
     parent_chunk_id: str | None = None
     merged: bool = False
+    download_url: str | None = None
 
 
 def _build_vector_store(kb_id: str, qdrant_client=None):
@@ -67,13 +68,17 @@ def _build_index(kb_id: str, embed_model=None):
 def _node_to_result(kb_id: str, node) -> QueryResult:
     meta = node.metadata
     source = meta.get("source", "")
+    source_type = meta.get("source_type", "")
+    doc_id = meta.get("doc_id", "")
+    download_url = f"/api/kb/{kb_id}/docs/{doc_id}/download" if source_type == "s3" else None
     return QueryResult(
         chunk_id=node.node_id,
         kb_id=kb_id,
-        doc_id=meta.get("doc_id", ""),
+        doc_id=doc_id,
         title=meta.get("title", ""),
-        source_type=meta.get("source_type", ""),
+        source_type=source_type,
         source=source,
+        download_url=download_url,
         doc_type=meta.get("doc_type", ""),
         chunk_index=int(meta.get("chunk_index", 0)),
         page_num=meta.get("page_num"),
@@ -130,8 +135,8 @@ def _build_merged_result(a: dict, children: list[QueryResult]) -> QueryResult:
     docs/internal/design/parent-child-chunking.md §5.1).
 
     Non-text/score fields are copied from children[0] — doc_id/kb_id/title/source_type/source/
-    doc_type/updated_at are always identical across children of the same document. chunk_index
-    is set to None: a merged block no longer maps to a single sequence position.
+    doc_type/updated_at/download_url are always identical across children of the same document.
+    chunk_index is set to None: a merged block no longer maps to a single sequence position.
     """
     base = children[0]
     return QueryResult(
@@ -140,6 +145,7 @@ def _build_merged_result(a: dict, children: list[QueryResult]) -> QueryResult:
         text=a["text"], score=sum(c.score for c in children) / len(children),
         rerank_score=None, updated_at=base.updated_at, source_type=base.source_type,
         source=base.source, parent_chunk_id=None, merged=True,
+        download_url=base.download_url,
     )
 
 

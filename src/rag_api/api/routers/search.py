@@ -63,6 +63,7 @@ class SearchResultItem(BaseModel):
     updated_at: str
     merged: bool
     parent_chunk_id: str | None
+    download_url: str | None
 
 
 class SearchMeta(BaseModel):
@@ -167,6 +168,7 @@ async def search(req: SearchRequest):
                 updated_at=r.updated_at,
                 merged=r.merged,
                 parent_chunk_id=r.parent_chunk_id,
+                download_url=r.download_url,
             )
             for r in final_results
         ],
