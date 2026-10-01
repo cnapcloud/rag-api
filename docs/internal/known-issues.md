@@ -36,6 +36,7 @@
   - [26. upsert 단계의 delete-then-insert 구조로 reindex 중 insert 실패 시 기존 Qdrant 청크가 유실됨](#26-upsert-단계의-delete-then-insert-구조로-reindex-중-insert-실패-시-기존-qdrant-청크가-유실됨)
   - [27. trafilatura favor_recall 모드가 인라인 서식 태그(strong/b/em/i) 주변 텍스트를 통째로 유실](#27-trafilatura-favor_recall-모드가-인라인-서식-태그strongbemi-주변-텍스트를-통째로-유실)
   - [28. config.settings의 llama_index import 체인 + .pyc 미프리컴파일로 Dagster code server 콜드 스타트가 gRPC probe 타임아웃](#28-configsettings의-llama_index-import-체인--pyc-미프리컴파일로-dagster-code-server-콜드-스타트가-grpc-probe-타임아웃)
+  - [29. 다중 KB 검색 시 Jina 무료 키 동시 요청 한도(2) 초과로 일부 KB 검색이 조용히 누락됨](#29-다중-kb-검색-시-jina-무료-키-동시-요청-한도2-초과로-일부-kb-검색이-조용히-누락됨)
 
 ---
 
@@ -1416,3 +1417,46 @@ rag-ent-api 배포에서 Dagster code server 컨테이너 기동이 ~24초 걸�
 타임에 Postgres 쿼리를 실행하며 `postgres.connect_timeout`(기본 30초)에 묶인다. code server가
 Postgres보다 먼저 기동하는 배포에서는 이 경로만으로도 최대 30초 블로킹이 남는다 — 위 두 변경과
 독립적이며, probe가 계속 불안정하면 스케줄 로딩을 지연시키거나 이 경로의 timeout을 낮춰야 한다.
+
+---
+
+## 29. 다중 KB 검색 시 Jina 무료 키 동시 요청 한도(2) 초과로 일부 KB 검색이 조용히 누락됨
+
+| 항목 | 내용 |
+|------|------|
+| 상태 | open (부분 완화: ed1b484) |
+| 발견일 | 2026-10-01 |
+| 심각도 | MED |
+
+**문제**
+
+dev에서 KB 4개(kb-01/02/03/10)를 동시에 검색하면 kb-02, kb-10이 아래 에러로 실패하고, kb-01,
+kb-03 결과만으로 응답이 나간다.
+
+```
+ERROR rag_api.query.retriever: KB search failed: kb=kb-02 err=Concurrency limit exceeded: 2/2 concurrent requests. ...
+```
+
+`query()`가 실패 KB를 빈 결과로 대체하므로 HTTP 200으로 응답하고 클라이언트는 일부 KB가 빠진
+사실을 알 수 없다.
+
+**원인**
+
+1. `query()`가 KB마다 `_query_kb`를 스레드로 병렬 실행하고, `query_embedding`이 `None`이면
+   retriever가 KB마다 같은 쿼리를 Jina로 다시 임베딩한다. 시맨틱 캐시(`match_mode: semantic`)
+   경로에서만 임베딩이 미리 계산되는데 dev는 `exact`라 항상 `None`이었다. KB 4개 = 동시 임베딩 4건.
+2. Jina 무료 API 키는 동시 요청 2개로 제한된다(RPM 100 / TPM 100,000, 유료 키는 동시 50).
+   임베딩 4건이 동시에 나가 2건이 거절됐다. 동시 요청 수치는 공식 rate-limit 페이지에 없고
+   제3자 정리(apis.io)와 에러 메시지의 `2/2`로 확인했다.
+
+**대안**
+
+- (적용됨, ed1b484) KB가 2개 이상이고 `query_embedding`이 없으면 쿼리를 한 번만 임베딩해 모든
+  KB에 넘긴다. 검색당 Jina 호출이 임베딩 1 + rerank 1로 줄지만, 동시 검색이 3건 이상이면 한도에
+  다시 걸릴 수 있다.
+- Jina 유료 키로 전환(동시 50). 근본 해결이며 설정 변경만 필요하다.
+- 프로세스 단위 Jina 호출 세마포어(동시 2 이하)로 거절 대신 대기시킨다. 동시 사용자가 많으면
+  지연이 늘어난다.
+- `provider.name`을 ollama/TEI 등 자체 호스팅 임베딩으로 전환. 모델이 바뀌면 벡터 공간이 달라져
+  전체 KB 재인덱싱이 필요하다.
+- 일부 KB 실패를 응답 meta에 노출(예: `failed_kbs`)해 누락을 클라이언트가 알 수 있게 한다.
