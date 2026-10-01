@@ -209,6 +209,12 @@ def _auto_merge_parents(
     return settled + active
 
 
+def _embed_query(query: str) -> list[float]:
+    from rag_api.pipeline.steps.embed import build_embed_model
+
+    return build_embed_model().get_query_embedding(query)
+
+
 def _query_kb(
     kb_id: str,
     query: str,
@@ -289,6 +295,15 @@ async def query(
         logger.warning("alpha parameter is ignored in similarity mode")
 
     loop = asyncio.get_running_loop()
+    if query_embedding is None and len(kb_ids) > 1:
+        # 모든 KB가 전역 임베딩 모델을 공유하므로 KB마다 retriever가 같은 쿼리를 다시 임베딩하지
+        # 않도록 한 번만 계산해 넘긴다 (Jina 무료 키 동시 요청 한도 2 초과 방지). 실패하면 기존처럼
+        # KB별 임베딩으로 폴백한다.
+        try:
+            query_embedding = await loop.run_in_executor(None, _embed_query, query)
+        except Exception as exc:
+            logger.warning("Shared query embedding failed, falling back to per-KB: %s", exc)
+
     tasks = [
         loop.run_in_executor(
             None, _query_kb, kb_id, query, _top_k, _alpha, mode, min_score, query_embedding,

@@ -212,3 +212,55 @@ class TestSearchSimilarity:
             results, _, _, _ = asyncio.run(query("query", ["kb-test"], mode="similarity", min_score=0.5))
 
         assert results == []
+
+
+class TestSharedQueryEmbedding:
+    """다중 KB 검색 시 쿼리 임베딩을 한 번만 계산해 모든 KB에 재사용한다."""
+
+    def _make_settings(self):
+        s = MagicMock()
+        s.retrieval.top_k = 10
+        s.retrieval.hybrid.alpha = 0.5
+        s.retrieval.rerank.enabled = False
+        s.retrieval.auto_merge.enabled = False
+        s.chunking.chunk_size = 1024
+        return s
+
+    def _run(self, kb_ids, embed_side_effect=None, embedding=None):
+        mock_index = MagicMock()
+        mock_index.as_retriever.return_value.retrieve.return_value = []
+        with (
+            patch("rag_api.query.retriever._build_index", return_value=mock_index),
+            patch("rag_api.query.retriever._embed_query", side_effect=embed_side_effect, return_value=[0.1, 0.2]) as mock_embed,
+            patch("rag_api.config.settings.get_settings", return_value=self._make_settings()),
+            patch("rag_api.infra.postgres.get_existing_doc_ids", side_effect=lambda ids: set(ids)),
+            patch("rag_api.infra.postgres.get_kb_settings_overrides", return_value={}),
+        ):
+            asyncio.run(query("query", kb_ids, query_embedding=embedding))
+        return mock_embed, mock_index.as_retriever.return_value.retrieve
+
+    def test_multi_kb_embeds_once_and_reuses(self):
+        mock_embed, mock_retrieve = self._run(["kb-1", "kb-2", "kb-3"])
+
+        assert mock_embed.call_count == 1
+        assert mock_retrieve.call_count == 3
+        for call in mock_retrieve.call_args_list:
+            assert call.args[0].embedding == [0.1, 0.2]
+
+    def test_single_kb_skips_shared_embedding(self):
+        mock_embed, mock_retrieve = self._run(["kb-1"])
+
+        mock_embed.assert_not_called()
+        assert mock_retrieve.call_args.args[0] == "query"
+
+    def test_provided_embedding_is_not_recomputed(self):
+        mock_embed, mock_retrieve = self._run(["kb-1", "kb-2"], embedding=[0.9])
+
+        mock_embed.assert_not_called()
+        assert mock_retrieve.call_args.args[0].embedding == [0.9]
+
+    def test_embedding_failure_falls_back_to_per_kb(self):
+        mock_embed, mock_retrieve = self._run(["kb-1", "kb-2"], embed_side_effect=RuntimeError("429"))
+
+        assert mock_embed.call_count == 1
+        assert [c.args[0] for c in mock_retrieve.call_args_list] == ["query", "query"]
