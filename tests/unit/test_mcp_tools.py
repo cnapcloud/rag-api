@@ -17,6 +17,7 @@ DOC_ID = "11111111-1111-1111-1111-111111111111"
 # list_knowledge_bases
 # ──────────────────────────────────────────────
 
+
 def test_list_knowledge_bases_returns_all():
     fake_kbs = [
         {"kb_id": "kb-a", "kb_name": "Alpha", "description": "Alpha KB", "tags": ["eng"]},
@@ -45,6 +46,7 @@ def test_list_knowledge_bases_empty():
 # get_document_status
 # ──────────────────────────────────────────────
 
+
 def test_get_document_status_indexed():
     with patch("rag_api.mcp_server.tools.docs.get_doc_by_id") as mock_get:
         mock_get.return_value = {
@@ -67,12 +69,22 @@ def test_get_document_status_not_found():
     with patch("rag_api.mcp_server.tools.docs.get_doc_by_id", return_value=None):
         result = get_document_status("kb-a", DOC_ID)
 
-    assert result == {"status": "not_found", "updated_at": None, "file_size": None, "content_version": None}
+    assert result == {
+        "status": "not_found",
+        "updated_at": None,
+        "file_size": None,
+        "content_version": None,
+    }
 
 
 def test_get_document_status_kb_mismatch_is_not_found():
     with patch("rag_api.mcp_server.tools.docs.get_doc_by_id") as mock_get:
-        mock_get.return_value = {"doc_id": DOC_ID, "kb_id": "kb-other", "status": "indexed", "file_size": None}
+        mock_get.return_value = {
+            "doc_id": DOC_ID,
+            "kb_id": "kb-other",
+            "status": "indexed",
+            "file_size": None,
+        }
         result = get_document_status("kb-a", DOC_ID)
 
     assert result["status"] == "not_found"
@@ -80,7 +92,14 @@ def test_get_document_status_kb_mismatch_is_not_found():
 
 def test_get_document_status_no_size():
     with patch("rag_api.mcp_server.tools.docs.get_doc_by_id") as mock_get:
-        mock_get.return_value = {"doc_id": DOC_ID, "kb_id": "kb-a", "status": "running", "updated_at": None, "file_size": None, "content_version": None}
+        mock_get.return_value = {
+            "doc_id": DOC_ID,
+            "kb_id": "kb-a",
+            "status": "running",
+            "updated_at": None,
+            "file_size": None,
+            "content_version": None,
+        }
         result = get_document_status("kb-a", DOC_ID)
 
     assert result["status"] == "running"
@@ -91,6 +110,7 @@ def test_get_document_status_no_size():
 # search
 # ──────────────────────────────────────────────
 
+
 def _make_result(
     text="hello",
     kb_id="kb-a",
@@ -100,8 +120,10 @@ def _make_result(
     page_num=1,
     page_label=None,
     rerank_score=None,
+    download_url=None,
 ):
     from rag_api.query.retriever import QueryResult
+
     return QueryResult(
         chunk_id="chunk-1",
         kb_id=kb_id,
@@ -117,6 +139,7 @@ def _make_result(
         score=score,
         rerank_score=rerank_score,
         updated_at="2026-06-08T00:00:00Z",
+        download_url=download_url,
     )
 
 
@@ -130,7 +153,10 @@ async def test_search_with_explicit_kb_ids():
 
     with (
         patch("rag_api.mcp_server.tools.search.get_settings", return_value=fake_settings),
-        patch("rag_api.mcp_server.tools.search.retriever_search", new=AsyncMock(return_value=([reranked], 1, "jina", False))),
+        patch(
+            "rag_api.mcp_server.tools.search.retriever_search",
+            new=AsyncMock(return_value=([reranked], 1, "jina", False)),
+        ),
     ):
         result = await search(query="what is TDF?", kb_ids=["kb-a"], top_k=5)
 
@@ -144,7 +170,10 @@ async def test_search_with_explicit_kb_ids():
 async def test_search_expands_to_all_kbs_when_none_specified():
     with (
         patch("rag_api.mcp_server.tools.search.list_kb_ids", return_value=["kb-a", "kb-b"]),
-        patch("rag_api.mcp_server.tools.search.retriever_search", new=AsyncMock(return_value=([], 0, "none", False))) as mock_search,
+        patch(
+            "rag_api.mcp_server.tools.search.retriever_search",
+            new=AsyncMock(return_value=([], 0, "none", False)),
+        ) as mock_search,
     ):
         await search(query="hello")
 
@@ -186,6 +215,23 @@ async def test_search_result_omits_source_when_equals_title():
     result = await _search_with_result(_make_result(source="doc.pdf", title="doc.pdf"))
 
     assert "source" not in result["results"][0]
+
+
+@pytest.mark.asyncio
+async def test_search_result_uses_download_url_as_source():
+    result = await _search_with_result(
+        _make_result(
+            source="doc.pdf",
+            title="doc.pdf",
+            download_url="https://rag.example.com/api/kb/kb-a/docs/doc-id-1/download",
+        )
+    )
+
+    assert (
+        result["results"][0]["source"]
+        == "https://rag.example.com/api/kb/kb-a/docs/doc-id-1/download"
+    )
+    assert "download_url" not in result["results"][0]
 
 
 @pytest.mark.asyncio

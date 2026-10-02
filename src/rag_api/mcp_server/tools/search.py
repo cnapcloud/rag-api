@@ -33,6 +33,9 @@ async def search(
           Defaults to server setting.
     min_score: minimum similarity score threshold (0.0~1.0), applies only in
                'similarity' mode. Omit to use server default.
+
+    Each result's 'source', when present, is where the original can be opened
+    (a web page URL, or a download URL for uploaded files).
     """
     span = trace.get_current_span()
     span.set_attribute("rag.query", query)
@@ -66,11 +69,16 @@ async def search(
                 "title": r.title,
                 "chunk_id": r.chunk_id,
                 "score": round(r.score, 6),
-                **({"source": r.source} if r.source and r.source != r.title else {}),
+                **(
+                    {"source": src}
+                    if (src := r.download_url or (r.source if r.source != r.title else ""))
+                    else {}
+                ),
                 **({"page_num": r.page_num} if r.page_num is not None else {}),
                 **({"page_label": r.page_label} if r.page_label else {}),
-                **({"rerank_score": round(r.rerank_score, 6)} if r.rerank_score is not None else {}),
-                **({"download_url": r.download_url} if r.download_url else {}),
+                **(
+                    {"rerank_score": round(r.rerank_score, 6)} if r.rerank_score is not None else {}
+                ),
             }
             for r in final_results
         ],
