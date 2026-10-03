@@ -14,6 +14,7 @@ RUN python -m uv pip install \
     dagster-graphql \
     dagster-webserver \
     dagster-postgres \
+    "sqlalchemy<2.1" \
     dagster-k8s \
     "dagster-celery[flower,redis,kubernetes]" \
     dagster-celery-k8s
