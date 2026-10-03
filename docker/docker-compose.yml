@@ -2,10 +2,15 @@ x-env-file: &env-file
   env_file:
     - .env
 
+# vllm-mlx runs on the host; make host.docker.internal resolvable in every environment
+x-host-gateway: &host-gateway
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 services:
 
   rag-api:
-    <<: *env-file
+    <<: [*env-file, *host-gateway]
     build:
       context: ..
       dockerfile: Dockerfile
@@ -38,7 +43,7 @@ services:
         condition: service_started
 
   dagster-rag-api:
-    <<: *env-file
+    <<: [*env-file, *host-gateway]
     build:
       context: ..
       dockerfile: Dockerfile
